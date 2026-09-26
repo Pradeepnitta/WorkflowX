@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { createTask, listTasks, updateTask } from '../services/taskService.js'
 import { checkRedisHealth } from '../config/redis.js'
+import { prisma } from '../config/prisma.js'
 import { getIO } from '../sockets/socketServer.js'
 
 import {
