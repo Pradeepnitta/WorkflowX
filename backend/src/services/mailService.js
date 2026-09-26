@@ -89,8 +89,7 @@ async function getTransporter() {
 }
 
 export async function sendOtpEmail({ to, otp, expiresInMinutes = 5 }) {
-    const transporter = await getTransporter()
-    const fromAddress = process.env.EMAIL_FROM || process.env.GMAIL_USER || '"WorkFlowX Security" <noreply@workflowx.dev>'
+    reloadEnv()
 
     const htmlContent = `
     <!DOCTYPE html>
@@ -128,7 +127,7 @@ export async function sendOtpEmail({ to, otp, expiresInMinutes = 5 }) {
     </html>
     `
 
-    // Option A: Resend API over HTTPS (Bypasses all cloud SMTP port blocking on Render)
+    // 1. Resend API over HTTPS (Bypasses cloud firewall blocks on Render / cloud containers)
     if (process.env.RESEND_API_KEY) {
         const from = process.env.MAIL_FROM || 'WorkFlowX <onboarding@resend.dev>'
         try {
@@ -155,8 +154,9 @@ export async function sendOtpEmail({ to, otp, expiresInMinutes = 5 }) {
         }
     }
 
+    // 2. SMTP Delivery (Gmail or standard SMTP host)
     const transporter = await getTransporter()
-    const fromAddress = process.env.MAIL_FROM || process.env.GMAIL_USER || 'no-reply@workflowx.local'
+    const fromAddress = process.env.MAIL_FROM || process.env.GMAIL_USER || '"WorkFlowX Security" <noreply@workflowx.dev>'
 
     const mailOptions = {
         from: fromAddress,
