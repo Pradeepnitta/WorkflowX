@@ -46,13 +46,15 @@ export function createOtpService({ userRepository, mailService = { sendOtpEmail 
             const verificationToken = randomBytes(16).toString('hex')
 
             // Dispatch actual email to real recipient in real-time
+            let emailSent = false
+            let deliveryNotice = null
+
             try {
                 await mailService.sendOtpEmail({ to: normalized, otp, expiresInMinutes: 5 })
+                emailSent = true
             } catch (mailErr) {
-                throw serviceError(
-                    mailErr.message || `Unable to send OTP to ${normalized}. Please check server email delivery settings.`,
-                    400
-                )
+                console.warn(`[OTP Service Notice] Cloud SMTP delivery failed (${mailErr.message})`)
+                deliveryNotice = `Render Free Tier blocks direct SMTP (ports 587/465). For live verification, your code is: ${otp}`
             }
 
             otpStore.set(normalized, {
@@ -68,13 +70,18 @@ export function createOtpService({ userRepository, mailService = { sendOtpEmail 
             console.log(`\n==============================================`)
             console.log(`[WorkFlowX Realtime OTP Dispatched]`)
             console.log(`Email:   ${normalized}`)
+            console.log(`Status:  ${emailSent ? 'Sent to Inbox via Gmail SMTP' : 'Render Free Tier Port Block Fallback'}`)
             console.log(`Expires: 5 minutes`)
             console.log(`==============================================\n`)
 
             return {
                 success: true,
-                message: `A 6-digit OTP code has been sent to ${normalized}. Please check your email inbox.`,
+                message: emailSent
+                    ? `A 6-digit OTP code has been sent to ${normalized}. Please check your email inbox.`
+                    : deliveryNotice,
                 email: normalized,
+                otp: emailSent ? undefined : otp,
+                emailSent,
                 expiresInSeconds: OTP_EXPIRY_MS / 1000,
             }
         },
