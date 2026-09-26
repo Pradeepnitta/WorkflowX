@@ -8,7 +8,10 @@ export function rateLimiterMiddleware(request, { windowMs = defaultWindowMs, max
         return // Bypass during testing
     }
 
-    const ip = request.socket.remoteAddress || 'unknown'
+    const forwarded = typeof request.headers?.['x-forwarded-for'] === 'string'
+        ? request.headers['x-forwarded-for'].split(',')[0].trim()
+        : null
+    const ip = forwarded || request.headers?.['x-real-ip'] || request.socket?.remoteAddress || 'unknown'
     const now = Date.now()
 
     let record = requestCounts.get(ip)

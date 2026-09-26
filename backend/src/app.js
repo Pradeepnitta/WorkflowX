@@ -43,16 +43,31 @@ function sendJson(response, status, payload) {
 }
 
 async function readBody(request) {
-    let body = ''
-    let bodyBytes = 0
-    for await (const chunk of request) {
-        bodyBytes += Buffer.byteLength(chunk)
-        if (bodyBytes > maxBodyBytes) {
-            const error = new Error('Request body is too large')
-            error.statusCode = 413
+    if (request.body && typeof request.body === 'object') {
+        return request.body
+    }
+    if (typeof request.body === 'string') {
+        try {
+            return JSON.parse(request.body || '{}')
+        } catch {
+            const error = new Error('Request body must be valid JSON')
+            error.statusCode = 400
             throw error
         }
-        body += chunk
+    }
+
+    let body = ''
+    let bodyBytes = 0
+    if (request[Symbol.asyncIterator]) {
+        for await (const chunk of request) {
+            bodyBytes += Buffer.byteLength(chunk)
+            if (bodyBytes > maxBodyBytes) {
+                const error = new Error('Request body is too large')
+                error.statusCode = 413
+                throw error
+            }
+            body += chunk
+        }
     }
     try {
         return JSON.parse(body || '{}')
