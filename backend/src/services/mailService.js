@@ -31,15 +31,24 @@ async function getTransporter() {
 
         if (!cachedTransporter || cachedTransporter._user !== normalizedUser || cachedTransporter._pass !== normalizedPass) {
             cachedTransporter = nodemailer.createTransport({
-                service: 'gmail',
+                host: 'smtp.gmail.com',
+                port: 587,
+                secure: false, // Use STARTTLS on port 587 for cloud compatibility
+                requireTLS: true,
+                connectionTimeout: 8000,
+                greetingTimeout: 8000,
+                socketTimeout: 10000,
                 auth: {
                     user: normalizedUser,
                     pass: normalizedPass,
                 },
+                tls: {
+                    rejectUnauthorized: false,
+                },
             })
             cachedTransporter._user = normalizedUser
             cachedTransporter._pass = normalizedPass
-            console.log(`[MailService] Configured with Gmail SMTP (${normalizedUser})`)
+            console.log(`[MailService] Configured with Gmail SMTP over port 587 (${normalizedUser})`)
         }
         return cachedTransporter
     }

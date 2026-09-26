@@ -9,10 +9,16 @@ async function request(url, options = {}) {
         ...options,
         headers: { 'Content-Type': 'application/json', ...options.headers },
     })
-    const payload = await response.json()
+    let payload = {}
+    const text = await response.text()
+    try {
+        payload = text ? JSON.parse(text) : {}
+    } catch {
+        payload = { error: text || `HTTP ${response.status}: Server communication error` }
+    }
 
     if (!response.ok) {
-        const error = new Error(payload.error || 'Authentication request failed')
+        const error = new Error(payload.error || `Request failed with status ${response.status}`)
         error.statusCode = response.status
         throw error
     }
