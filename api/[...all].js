@@ -9,7 +9,14 @@ function getApp() {
     return app
 }
 
-export default async function handler(req, res) {
+export default function handler(req, res) {
     const application = getApp()
-    return application(req, res)
+    return new Promise((resolve) => {
+        const originalEnd = res.end.bind(res)
+        res.end = (...args) => {
+            originalEnd(...args)
+            resolve()
+        }
+        application(req, res)
+    })
 }
