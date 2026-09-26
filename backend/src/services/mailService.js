@@ -128,6 +128,36 @@ export async function sendOtpEmail({ to, otp, expiresInMinutes = 5 }) {
     </html>
     `
 
+    // Option A: Resend API over HTTPS (Bypasses all cloud SMTP port blocking on Render)
+    if (process.env.RESEND_API_KEY) {
+        const from = process.env.MAIL_FROM || 'WorkFlowX <onboarding@resend.dev>'
+        try {
+            const res = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${process.env.RESEND_API_KEY.trim()}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    from,
+                    to: [to],
+                    subject: `Your WorkFlowX Verification Code: ${otp}`,
+                    html: htmlContent,
+                }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.message || 'Resend delivery failed')
+            console.log(`[MailService] Successfully dispatched via Resend HTTPS API (${data.id}) to ${to}`)
+            return { success: true, messageId: data.id }
+        } catch (err) {
+            console.error('[MailService Error] Resend API failed:', err.message)
+            throw new Error(`Resend email delivery failed: ${err.message}`)
+        }
+    }
+
+    const transporter = await getTransporter()
+    const fromAddress = process.env.MAIL_FROM || process.env.GMAIL_USER || 'no-reply@workflowx.local'
+
     const mailOptions = {
         from: fromAddress,
         to,
@@ -152,6 +182,10 @@ export async function sendOtpEmail({ to, otp, expiresInMinutes = 5 }) {
         }
     } catch (err) {
         console.error(`[MailService Error] Failed to send email to ${to}:`, err.message)
+        const isTimeout = err.code === 'ETIMEDOUT' || err.message.toLowerCase().includes('timeout')
+        if (isTimeout && process.env.NODE_ENV === 'production') {
+            throw new Error(`Email delivery timed out. Cloud platforms (like Render Free Tier) block direct SMTP ports. To send emails from Render, add RESEND_API_KEY to your Render environment variables.`)
+        }
         throw new Error(`Email delivery to ${to} failed: ${err.message}`)
     }
 }
