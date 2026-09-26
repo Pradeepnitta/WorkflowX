@@ -12,9 +12,17 @@ function normalizeDatabaseUrl(url) {
     return normalized
 }
 
-const defaultDbUrl = 'postgresql://workflowx_db_user:Pm2tMq64rUeWah9Qwfj6A7UCXrcowmc2@dpg-darou8d9fdbs73ag117g-a.oregon-postgres.render.com/workflowx_db?sslmode=require'
-const rawDbUrl = process.env.DATABASE_URL || defaultDbUrl
-const dbUrl = normalizeDatabaseUrl(rawDbUrl)
+function resolveDatabaseUrl() {
+    const defaultDbUrl = 'postgresql://workflowx_db_user:Pm2tMq64rUeWah9Qwfj6A7UCXrcowmc2@dpg-darou8d9fdbs73ag117g-a.oregon-postgres.render.com/workflowx_db?sslmode=require'
+    let url = process.env.DATABASE_URL
+    // If not set or points to localhost/127.0.0.1 in cloud environment
+    if (!url || url.includes('localhost') || url.includes('127.0.0.1')) {
+        url = defaultDbUrl
+    }
+    return normalizeDatabaseUrl(url)
+}
+
+const dbUrl = resolveDatabaseUrl()
 
 const globalForPrisma = globalThis
 
