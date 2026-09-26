@@ -80,7 +80,6 @@ export function createOtpService({ userRepository, mailService = { sendOtpEmail 
                     ? `A 6-digit OTP code has been sent to ${normalized}. Please check your email inbox.`
                     : deliveryNotice,
                 email: normalized,
-                otp: emailSent ? undefined : otp,
                 emailSent,
                 expiresInSeconds: OTP_EXPIRY_MS / 1000,
             }

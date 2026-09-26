@@ -85,14 +85,11 @@ function RegisterPage() {
 
         setOtpError('')
         setIsSendingOtp(true)
+        setOtpCode('') // Keep field empty so user manually enters their OTP
         try {
-            const res = await sendOtp({ email: trimmedEmail, type: 'signup' })
+            await sendOtp({ email: trimmedEmail, type: 'signup' })
             setOtpSent(true)
             setOtpCooldown(30)
-            const fallbackOtp = res?.data?.otp || res?.otp
-            if (fallbackOtp) {
-                setOtpCode(fallbackOtp)
-            }
         } catch (err) {
             setOtpError(err.message || 'Failed to send OTP code. Please try again.')
         } finally {
