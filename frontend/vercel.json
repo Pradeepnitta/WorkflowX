@@ -5,6 +5,10 @@
       "destination": "/api/health"
     },
     {
+      "source": "/api/:path*",
+      "destination": "/api/entry"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
