@@ -38,26 +38,27 @@ async function getTransporter() {
             cachedTransporter = nodemailer.createTransport({
                 host: 'smtp.gmail.com',
                 port: 587,
-                secure: false, // Standard STARTTLS on submission port 587 (bypasses cloud port 465 blocking)
+                secure: false, // Standard STARTTLS on submission port 587
                 requireTLS: true,
-                family: 4,     // IPv4 first prevents cloud container IPv6 network drops
-                pool: true,    // Persistent connection pooling: keeps SMTP channel warm for instant dispatch
-                maxConnections: 5,
-                maxMessages: 100,
-                connectionTimeout: 8000,
-                greetingTimeout: 8000,
-                socketTimeout: 10000,
+                // Explicitly enforce IPv4 resolution to eliminate Linux ENETUNREACH 2607:f8b0:... IPv6 drops
+                lookup: (hostname, options, callback) => {
+                    dns.lookup(hostname, { family: 4 }, callback)
+                },
+                connectionTimeout: 10000,
+                greetingTimeout: 10000,
+                socketTimeout: 15000,
                 auth: {
                     user: normalizedUser,
                     pass: normalizedPass,
                 },
                 tls: {
+                    servername: 'smtp.gmail.com',
                     rejectUnauthorized: false,
                 },
             })
             cachedTransporter._user = normalizedUser
             cachedTransporter._pass = normalizedPass
-            console.log(`[MailService] Configured with fast pooled Gmail SMTP over port 587 IPv4 (${normalizedUser})`)
+            console.log(`[MailService] Configured with IPv4-enforced Gmail SMTP over port 587 (${normalizedUser})`)
         }
         return cachedTransporter
     }
@@ -69,7 +70,12 @@ async function getTransporter() {
                 host: SMTP_HOST.trim(),
                 port: Number(SMTP_PORT || 587),
                 secure: SMTP_SECURE === 'true' || Number(SMTP_PORT) === 465,
-                family: 4,
+                lookup: (hostname, options, callback) => {
+                    dns.lookup(hostname, { family: 4 }, callback)
+                },
+                connectionTimeout: 10000,
+                greetingTimeout: 10000,
+                socketTimeout: 15000,
                 auth: SMTP_USER && SMTP_PASS ? {
                     user: SMTP_USER.trim(),
                     pass: SMTP_PASS.trim(),
