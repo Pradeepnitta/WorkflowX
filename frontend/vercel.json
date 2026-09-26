@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://workflowx-bcu9.onrender.com/api/:path*"
+    },
+    {
+      "source": "/health",
+      "destination": "https://workflowx-bcu9.onrender.com/health"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

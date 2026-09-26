@@ -1,8 +1,10 @@
 import { getAccessToken } from './authService.js'
 
+const API_BASE = import.meta.env.VITE_API_URL || ''
+
 export async function uploadAttachment(taskId, fileData) {
     const token = getAccessToken()
-    const response = await fetch(`http://localhost:3001/api/projects/tasks/${taskId}/attachments`, {
+    const response = await fetch(`${API_BASE}/api/projects/tasks/${taskId}/attachments`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -17,7 +19,7 @@ export async function uploadAttachment(taskId, fileData) {
 
 export async function getTaskAttachments(taskId) {
     const token = getAccessToken()
-    const response = await fetch(`http://localhost:3001/api/projects/tasks/${taskId}/attachments`, {
+    const response = await fetch(`${API_BASE}/api/projects/tasks/${taskId}/attachments`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
     const body = await response.json()
@@ -27,7 +29,7 @@ export async function getTaskAttachments(taskId) {
 
 export async function deleteAttachment(attachmentId) {
     const token = getAccessToken()
-    const response = await fetch(`http://localhost:3001/api/attachments/${attachmentId}`, {
+    const response = await fetch(`${API_BASE}/api/attachments/${attachmentId}`, {
         method: 'DELETE',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
     })

@@ -9,7 +9,13 @@ export function connectSocket(token) {
         socket.disconnect()
     }
 
-    socket = io('http://localhost:3001', {
+    const backendUrl = import.meta.env.VITE_SOCKET_URL || 
+        import.meta.env.VITE_API_URL || 
+        (typeof window !== 'undefined' && window.location.hostname === 'localhost' 
+            ? 'http://localhost:3001' 
+            : 'https://workflowx-bcu9.onrender.com')
+
+    socket = io(backendUrl, {
         auth: { token: authToken },
         transports: ['websocket', 'polling'],
         autoConnect: true,

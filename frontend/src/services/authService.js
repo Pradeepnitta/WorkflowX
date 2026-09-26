@@ -1,8 +1,11 @@
 const accessTokenKey = 'workflowx.accessToken'
 const refreshTokenKey = 'workflowx.refreshToken'
 
+const API_BASE = import.meta.env.VITE_API_URL || ''
+
 async function request(url, options = {}) {
-    const response = await fetch(url, {
+    const targetUrl = url.startsWith('http') ? url : `${API_BASE}${url}`
+    const response = await fetch(targetUrl, {
         ...options,
         headers: { 'Content-Type': 'application/json', ...options.headers },
     })
