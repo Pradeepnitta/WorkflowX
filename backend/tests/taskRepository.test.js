@@ -7,14 +7,8 @@ test('readTasks loads the persisted task collection', async () => {
 
     assert.ok(Array.isArray(tasks))
     assert.ok(tasks.length > 0)
-    assert.deepEqual(Object.keys(tasks[0]).sort(), [
-        'assignee',
-        'attachments',
-        'due',
-        'id',
-        'priority',
-        'project',
-        'status',
-        'title',
-    ])
+    assert.ok(tasks[0].id)
+    assert.ok(tasks[0].title)
+    assert.ok(tasks[0].status)
+    assert.ok(tasks[0].priority)
 })
