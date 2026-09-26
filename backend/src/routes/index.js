@@ -122,7 +122,6 @@ export function createRoutes({
             database: dbStatus,
             databaseError: dbError,
             hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
-            hasResendKey: Boolean(process.env.RESEND_API_KEY),
             hasGmailUser: Boolean(process.env.GMAIL_USER || process.env.MAIL_USER),
             hasGmailPass: Boolean(process.env.GMAIL_APP_PASSWORD || process.env.MAIL_PASS),
             redis: redisHealth.status,

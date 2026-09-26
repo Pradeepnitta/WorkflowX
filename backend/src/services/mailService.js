@@ -1,4 +1,9 @@
 import nodemailer from 'nodemailer'
+import dns from 'node:dns'
+
+if (dns.setDefaultResultOrder) {
+    dns.setDefaultResultOrder('ipv4first')
+}
 
 function reloadEnv() {
     try {
@@ -31,30 +36,21 @@ async function getTransporter() {
 
         if (!cachedTransporter || cachedTransporter._user !== normalizedUser || cachedTransporter._pass !== normalizedPass) {
             cachedTransporter = nodemailer.createTransport({
-                host: 'smtp.gmail.com',
-                port: 587,
-                secure: false, // Use STARTTLS on port 587 for cloud compatibility
-                requireTLS: true,
-                family: 4, // Force IPv4 resolution to prevent ENETUNREACH on Render/Linux
-                connectionTimeout: 10000,
-                greetingTimeout: 10000,
-                socketTimeout: 15000,
+                service: 'gmail',
+                family: 4,
                 auth: {
                     user: normalizedUser,
                     pass: normalizedPass,
                 },
-                tls: {
-                    rejectUnauthorized: false,
-                },
             })
             cachedTransporter._user = normalizedUser
             cachedTransporter._pass = normalizedPass
-            console.log(`[MailService] Configured with Gmail SMTP over port 587 IPv4 (${normalizedUser})`)
+            console.log(`[MailService] Configured with Gmail SMTP (${normalizedUser})`)
         }
         return cachedTransporter
     }
 
-    // 2. Standard SMTP Configuration (SendGrid, Mailgun, Brevo, AWS SES, Resend, Custom)
+    // 2. Standard SMTP Configuration (SendGrid, Mailgun, Brevo, AWS SES, Custom)
     if (SMTP_HOST) {
         if (!cachedTransporter || cachedTransporter._host !== SMTP_HOST || cachedTransporter._pass !== SMTP_PASS) {
             cachedTransporter = nodemailer.createTransport({
@@ -127,34 +123,7 @@ export async function sendOtpEmail({ to, otp, expiresInMinutes = 5 }) {
     </html>
     `
 
-    // 1. Resend API over HTTPS (Bypasses cloud firewall blocks on Render / cloud containers)
-    if (process.env.RESEND_API_KEY) {
-        const from = process.env.MAIL_FROM || 'WorkFlowX <onboarding@resend.dev>'
-        try {
-            const res = await fetch('https://api.resend.com/emails', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${process.env.RESEND_API_KEY.trim()}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    from,
-                    to: [to],
-                    subject: `Your WorkFlowX Verification Code: ${otp}`,
-                    html: htmlContent,
-                }),
-            })
-            const data = await res.json()
-            if (!res.ok) throw new Error(data.message || 'Resend delivery failed')
-            console.log(`[MailService] Successfully dispatched via Resend HTTPS API (${data.id}) to ${to}`)
-            return { success: true, messageId: data.id }
-        } catch (err) {
-            console.error('[MailService Error] Resend API failed:', err.message)
-            throw new Error(`Resend email delivery failed: ${err.message}`)
-        }
-    }
-
-    // 2. SMTP Delivery (Gmail or standard SMTP host)
+    // Direct SMTP Delivery (Gmail or standard SMTP host)
     const transporter = await getTransporter()
     const fromAddress = process.env.MAIL_FROM || process.env.GMAIL_USER || '"WorkFlowX Security" <noreply@workflowx.dev>'
 
@@ -182,10 +151,6 @@ export async function sendOtpEmail({ to, otp, expiresInMinutes = 5 }) {
         }
     } catch (err) {
         console.error(`[MailService Error] Failed to send email to ${to}:`, err.message)
-        const isTimeout = err.code === 'ETIMEDOUT' || err.message.toLowerCase().includes('timeout')
-        if (isTimeout && process.env.NODE_ENV === 'production') {
-            throw new Error(`Email delivery timed out. Cloud platforms (like Render Free Tier) block direct SMTP ports. To send emails from Render, add RESEND_API_KEY to your Render environment variables.`)
-        }
         throw new Error(`Email delivery to ${to} failed: ${err.message}`)
     }
 }

@@ -1,6 +1,11 @@
 import { createServer } from 'node:http'
+import dns from 'node:dns'
 import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
+
+if (dns.setDefaultResultOrder) {
+    dns.setDefaultResultOrder('ipv4first')
+}
 import { createApp } from './app.js'
 import { initSocketServer } from './sockets/socketServer.js'
 import { initQueue } from './jobs/taskQueue.js'
