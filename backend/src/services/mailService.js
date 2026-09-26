@@ -1,8 +1,23 @@
 import nodemailer from 'nodemailer'
 import dns from 'node:dns'
+import dnsPromises from 'node:dns/promises'
 
 if (dns.setDefaultResultOrder) {
     dns.setDefaultResultOrder('ipv4first')
+}
+
+async function resolveHostToIpv4(host) {
+    // If it's already an IP address, return it
+    if (/^(\d{1,3}\.){3}\d{1,3}$/.test(host)) return host
+    try {
+        const addresses = await dnsPromises.resolve4(host)
+        if (addresses && addresses.length > 0) {
+            return addresses[Math.floor(Math.random() * addresses.length)]
+        }
+    } catch (err) {
+        console.warn(`[MailService] IPv4 DNS resolution for ${host} fallback:`, err.message)
+    }
+    return host
 }
 
 function reloadEnv() {
@@ -33,17 +48,14 @@ async function getTransporter() {
     if (GMAIL_USER && GMAIL_APP_PASSWORD) {
         const normalizedUser = GMAIL_USER.trim().includes('@') ? GMAIL_USER.trim() : `${GMAIL_USER.trim()}@gmail.com`
         const normalizedPass = GMAIL_APP_PASSWORD.replace(/\s+/g, '')
+        const resolvedIpv4Host = await resolveHostToIpv4('smtp.gmail.com')
 
         if (!cachedTransporter || cachedTransporter._user !== normalizedUser || cachedTransporter._pass !== normalizedPass) {
             cachedTransporter = nodemailer.createTransport({
-                host: 'smtp.gmail.com',
+                host: resolvedIpv4Host,
                 port: 587,
                 secure: false, // Standard STARTTLS on submission port 587
                 requireTLS: true,
-                // Explicitly enforce IPv4 resolution to eliminate Linux ENETUNREACH 2607:f8b0:... IPv6 drops
-                lookup: (hostname, options, callback) => {
-                    dns.lookup(hostname, { family: 4 }, callback)
-                },
                 connectionTimeout: 10000,
                 greetingTimeout: 10000,
                 socketTimeout: 15000,
@@ -58,21 +70,19 @@ async function getTransporter() {
             })
             cachedTransporter._user = normalizedUser
             cachedTransporter._pass = normalizedPass
-            console.log(`[MailService] Configured with IPv4-enforced Gmail SMTP over port 587 (${normalizedUser})`)
+            console.log(`[MailService] Configured with direct IPv4 Gmail SMTP (${resolvedIpv4Host}:587 for ${normalizedUser})`)
         }
         return cachedTransporter
     }
 
     // 2. Standard SMTP Configuration (SendGrid, Mailgun, Brevo, AWS SES, Custom)
     if (SMTP_HOST) {
-        if (!cachedTransporter || cachedTransporter._host !== SMTP_HOST || cachedTransporter._pass !== SMTP_PASS) {
+        const resolvedSmtpHost = await resolveHostToIpv4(SMTP_HOST.trim())
+        if (!cachedTransporter || cachedTransporter._host !== resolvedSmtpHost || cachedTransporter._pass !== SMTP_PASS) {
             cachedTransporter = nodemailer.createTransport({
-                host: SMTP_HOST.trim(),
+                host: resolvedSmtpHost,
                 port: Number(SMTP_PORT || 587),
                 secure: SMTP_SECURE === 'true' || Number(SMTP_PORT) === 465,
-                lookup: (hostname, options, callback) => {
-                    dns.lookup(hostname, { family: 4 }, callback)
-                },
                 connectionTimeout: 10000,
                 greetingTimeout: 10000,
                 socketTimeout: 15000,
@@ -80,10 +90,14 @@ async function getTransporter() {
                     user: SMTP_USER.trim(),
                     pass: SMTP_PASS.trim(),
                 } : undefined,
+                tls: {
+                    servername: SMTP_HOST.trim(),
+                    rejectUnauthorized: false,
+                },
             })
-            cachedTransporter._host = SMTP_HOST
+            cachedTransporter._host = resolvedSmtpHost
             cachedTransporter._pass = SMTP_PASS
-            console.log(`[MailService] Configured with SMTP host: ${SMTP_HOST}:${SMTP_PORT || 587}`)
+            console.log(`[MailService] Configured with direct IPv4 SMTP host: ${resolvedSmtpHost}:${SMTP_PORT || 587}`)
         }
         return cachedTransporter
     }
@@ -142,7 +156,7 @@ export async function sendOtpEmail({ to, otp, expiresInMinutes = 5 }) {
     `
 
     // Direct SMTP Delivery (Gmail or standard SMTP host)
-    const transporter = await getTransporter()
+    let transporter = await getTransporter()
     const fromAddress = process.env.MAIL_FROM || process.env.GMAIL_USER || '"WorkFlowX Security" <noreply@workflowx.dev>'
 
     const mailOptions = {
@@ -168,7 +182,18 @@ export async function sendOtpEmail({ to, otp, expiresInMinutes = 5 }) {
             messageId: info.messageId,
         }
     } catch (err) {
-        console.error(`[MailService Error] Failed to send email to ${to}:`, err.message)
-        throw new Error(`Email delivery to ${to} failed: ${err.message}`)
+        console.warn(`[MailService Warning] Primary attempt failed (${err.message}), refreshing IPv4 route...`)
+        cachedTransporter = null
+        try {
+            const retryTransporter = await getTransporter()
+            const info = await retryTransporter.sendMail(mailOptions)
+            return {
+                success: true,
+                messageId: info.messageId,
+            }
+        } catch (retryErr) {
+            console.error(`[MailService Error] Failed to send email to ${to}:`, retryErr.message)
+            throw new Error(`Email delivery to ${to} failed: ${retryErr.message}`)
+        }
     }
 }
