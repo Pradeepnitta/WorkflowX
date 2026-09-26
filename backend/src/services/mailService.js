@@ -35,9 +35,10 @@ async function getTransporter() {
                 port: 587,
                 secure: false, // Use STARTTLS on port 587 for cloud compatibility
                 requireTLS: true,
-                connectionTimeout: 8000,
-                greetingTimeout: 8000,
-                socketTimeout: 10000,
+                family: 4, // Force IPv4 resolution to prevent ENETUNREACH on Render/Linux
+                connectionTimeout: 10000,
+                greetingTimeout: 10000,
+                socketTimeout: 15000,
                 auth: {
                     user: normalizedUser,
                     pass: normalizedPass,
@@ -48,7 +49,7 @@ async function getTransporter() {
             })
             cachedTransporter._user = normalizedUser
             cachedTransporter._pass = normalizedPass
-            console.log(`[MailService] Configured with Gmail SMTP over port 587 (${normalizedUser})`)
+            console.log(`[MailService] Configured with Gmail SMTP over port 587 IPv4 (${normalizedUser})`)
         }
         return cachedTransporter
     }
@@ -60,6 +61,7 @@ async function getTransporter() {
                 host: SMTP_HOST.trim(),
                 port: Number(SMTP_PORT || 587),
                 secure: SMTP_SECURE === 'true' || Number(SMTP_PORT) === 465,
+                family: 4,
                 auth: SMTP_USER && SMTP_PASS ? {
                     user: SMTP_USER.trim(),
                     pass: SMTP_PASS.trim(),
