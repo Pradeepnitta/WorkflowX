@@ -12,7 +12,8 @@ function normalizeDatabaseUrl(url) {
     return normalized
 }
 
-const rawDbUrl = process.env.DATABASE_URL || 'postgresql://postgres:Prad6309%40@localhost:5432/mydatabase'
+const defaultDbUrl = 'postgresql://workflowx_db_user:Pm2tMq64rUeWah9Qwfj6A7UCXrcowmc2@dpg-darou8d9fdbs73ag117g-a.oregon-postgres.render.com/workflowx_db?sslmode=require'
+const rawDbUrl = process.env.DATABASE_URL || defaultDbUrl
 const dbUrl = normalizeDatabaseUrl(rawDbUrl)
 
 const globalForPrisma = globalThis
