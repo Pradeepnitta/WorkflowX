@@ -1,0 +1,79 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: workflowx-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: workflowx
+      POSTGRES_PASSWORD: workflowx
+      POSTGRES_DB: workflowx
+    ports:
+      - "5432:5432"
+    volumes:
+      - workflowx-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workflowx -d workflowx"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: workflowx-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: workflowx-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+      DATABASE_URL: "postgresql://workflowx:workflowx@postgres:5432/workflowx?schema=public"
+      REDIS_URL: "redis://redis:6379"
+      AUTH_ACCESS_TOKEN_SECRET: "production-grade-workflowx-secret-key-2026"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: workflowx-worker
+    restart: unless-stopped
+    command: ["node", "src/jobs/emailWorker.js"]
+    environment:
+      DATABASE_URL: "postgresql://workflowx:workflowx@postgres:5432/workflowx?schema=public"
+      REDIS_URL: "redis://redis:6379"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: workflowx-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  workflowx-postgres-data:
