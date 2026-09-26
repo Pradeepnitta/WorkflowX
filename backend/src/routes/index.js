@@ -105,14 +105,47 @@ export function createRoutes({
     // 2. Initialize Router & Register modular route modules
     const router = new ApiRouter()
 
-    // Common/Health/Docs routes
     router.add('GET', '/health', async (req, res) => {
+        let dbStatus = 'connected'
+        let dbError = null
+        try {
+            await prisma.$queryRaw`SELECT 1`
+        } catch (err) {
+            dbStatus = 'disconnected'
+            dbError = err.message
+        }
         const redisHealth = await checkRedisHealth()
-        sendJson(res, 200, { status: 'healthy', service: 'workflowx-api', database: 'connected', redis: redisHealth.status })
+        sendJson(res, 200, {
+            status: dbStatus === 'connected' ? 'healthy' : 'degraded',
+            service: 'workflowx-api',
+            database: dbStatus,
+            databaseError: dbError,
+            hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
+            hasGmailUser: Boolean(process.env.GMAIL_USER || process.env.MAIL_USER),
+            hasGmailPass: Boolean(process.env.GMAIL_APP_PASSWORD || process.env.MAIL_PASS),
+            redis: redisHealth.status,
+        })
     })
     router.add('GET', '/api/health', async (req, res) => {
+        let dbStatus = 'connected'
+        let dbError = null
+        try {
+            await prisma.$queryRaw`SELECT 1`
+        } catch (err) {
+            dbStatus = 'disconnected'
+            dbError = err.message
+        }
         const redisHealth = await checkRedisHealth()
-        sendJson(res, 200, { status: 'healthy', service: 'workflowx-api', database: 'connected', redis: redisHealth.status })
+        sendJson(res, 200, {
+            status: dbStatus === 'connected' ? 'healthy' : 'degraded',
+            service: 'workflowx-api',
+            database: dbStatus,
+            databaseError: dbError,
+            hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
+            hasGmailUser: Boolean(process.env.GMAIL_USER || process.env.MAIL_USER),
+            hasGmailPass: Boolean(process.env.GMAIL_APP_PASSWORD || process.env.MAIL_PASS),
+            redis: redisHealth.status,
+        })
     })
     router.add('GET', '/api/docs', (req, res) => sendJson(res, 200, openapiSpec))
     router.add('GET', '/docs/swagger.json', (req, res) => sendJson(res, 200, openapiSpec))

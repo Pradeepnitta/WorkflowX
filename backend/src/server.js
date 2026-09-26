@@ -1,8 +1,12 @@
 import { createServer } from 'node:http'
+import { exec } from 'node:child_process'
+import { promisify } from 'node:util'
 import { createApp } from './app.js'
 import { initSocketServer } from './sockets/socketServer.js'
 import { initQueue } from './jobs/taskQueue.js'
 import { startWorker } from './jobs/emailWorker.js'
+
+const execAsync = promisify(exec)
 
 try {
     process.loadEnvFile()
@@ -29,8 +33,20 @@ initSocketServer(server)
 initQueue()
 startWorker()
 
-server.listen(port, () => {
+async function syncDatabase() {
+    if (process.env.DATABASE_URL) {
+        try {
+            console.log('🔄 Checking and syncing Prisma schema with database...')
+            await execAsync('npx prisma db push --skip-generate --schema=./prisma/schema.prisma')
+            console.log('✅ Database schema synchronized successfully')
+        } catch (err) {
+            console.warn('⚠️ Database sync notice:', err.message)
+        }
+    }
+}
+
+server.listen(port, async () => {
     console.log(`🚀 WorkFlowX Backend API running at http://localhost:${port}`)
     console.log('📡 Socket.IO server initialized')
+    await syncDatabase()
 })
-
