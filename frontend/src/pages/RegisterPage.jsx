@@ -561,9 +561,15 @@ function RegisterPage() {
                             </div>
                             <input
                                 id="register-admin-key-input"
-                                name="admin_secret_key"
-                                autoComplete="new-password"
-                                type={showAdminKey ? 'text' : 'password'}
+                                name="master_admin_token"
+                                type="text"
+                                autoComplete="off"
+                                autoCorrect="off"
+                                autoCapitalize="off"
+                                spellCheck={false}
+                                data-lpignore="true"
+                                data-form-type="other"
+                                data-1p-ignore="true"
                                 value={adminKey}
                                 onChange={(event) => setAdminKey(event.target.value)}
                                 placeholder="Enter ADMIN_SECRET_KEY"
@@ -577,6 +583,7 @@ function RegisterPage() {
                                     borderRadius: '6px',
                                     color: '#7f1d1d',
                                     outline: 'none',
+                                    WebkitTextSecurity: showAdminKey ? 'none' : 'disc',
                                 }}
                             />
                             <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#b91c1c', lineHeight: '1.4' }}>
