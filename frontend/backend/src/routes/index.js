@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { createTask, listTasks, updateTask } from '../services/taskService.js'
 import { checkRedisHealth } from '../config/redis.js'
-import { prisma } from '../config/prisma.js'
+import { pool } from '../config/db.js'
 import { getIO } from '../sockets/socketServer.js'
 
 import {
@@ -110,7 +110,7 @@ export function createRoutes({
         let dbStatus = 'connected'
         let dbError = null
         try {
-            await prisma.$queryRaw`SELECT 1`
+            await pool.query('SELECT 1')
         } catch (err) {
             dbStatus = 'disconnected'
             dbError = err.message
@@ -131,7 +131,7 @@ export function createRoutes({
         let dbStatus = 'connected'
         let dbError = null
         try {
-            await prisma.$queryRaw`SELECT 1`
+            await pool.query('SELECT 1')
         } catch (err) {
             dbStatus = 'disconnected'
             dbError = err.message

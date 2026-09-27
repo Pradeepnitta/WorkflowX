@@ -1,4 +1,4 @@
-import { prisma } from '../config/prisma.js'
+import { query } from '../config/db.js'
 
 export const RoleHierarchy = {
     ADMIN: 4,
@@ -10,16 +10,11 @@ export const RoleHierarchy = {
 export async function getUserOrgRole(organizationId, userId) {
     if (!organizationId || !userId) return null
     try {
-        const member = await prisma.organizationMember.findUnique({
-            where: {
-                organizationId_userId: {
-                    organizationId,
-                    userId,
-                },
-            },
-            select: { role: true },
-        })
-        return member?.role || null
+        const res = await query(
+            `SELECT role FROM "OrganizationMember" WHERE "organizationId" = $1 AND "userId" = $2 LIMIT 1`,
+            [organizationId, userId]
+        )
+        return res.rows[0]?.role || null
     } catch {
         return null
     }

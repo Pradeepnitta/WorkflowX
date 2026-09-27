@@ -1,28 +1,40 @@
-import { prisma } from '../config/prisma.js'
+import { withTransaction } from '../config/db.js'
 import { hashRefreshToken } from '../utils/refreshToken.js'
 
-export function accept({ token, userId }) {
-    return prisma.$transaction(async (transaction) => {
-        const invitation = await transaction.invitation.findUnique({ where: { tokenHash: hashRefreshToken(token) } })
-        if (!invitation || invitation.status !== 'PENDING' || invitation.expiresAt <= new Date()) {
+export async function accept({ token, userId }) {
+    return withTransaction(async (client) => {
+        const tokenHash = hashRefreshToken(token)
+        const invRes = await client.query(
+            `SELECT * FROM "Invitation" WHERE "tokenHash" = $1 LIMIT 1`,
+            [tokenHash]
+        )
+        const invitation = invRes.rows[0]
+        if (!invitation || invitation.status !== 'PENDING' || new Date(invitation.expiresAt) <= new Date()) {
             const error = new Error('Invalid or expired invitation')
             error.statusCode = 400
             throw error
         }
 
-        const user = await transaction.user.findUnique({ where: { id: userId } })
+        const userRes = await client.query(`SELECT * FROM "User" WHERE id = $1`, [userId])
+        const user = userRes.rows[0]
         if (!user || user.email !== invitation.email) {
             const error = new Error('Invitation email does not match the authenticated user')
             error.statusCode = 403
             throw error
         }
 
-        await transaction.organizationMember.upsert({
-            where: { organizationId_userId: { organizationId: invitation.organizationId, userId } },
-            update: { role: invitation.role },
-            create: { organizationId: invitation.organizationId, userId, role: invitation.role },
-        })
-        await transaction.invitation.update({ where: { id: invitation.id }, data: { status: 'ACCEPTED' } })
-        return invitation
+        const now = new Date()
+        await client.query(
+            `INSERT INTO "OrganizationMember" ("organizationId", "userId", role, "joinedAt")
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT ("organizationId", "userId") DO UPDATE SET role = EXCLUDED.role`,
+            [invitation.organizationId, userId, invitation.role, now]
+        )
+
+        const updateRes = await client.query(
+            `UPDATE "Invitation" SET status = 'ACCEPTED' WHERE id = $1 RETURNING *`,
+            [invitation.id]
+        )
+        return updateRes.rows[0]
     })
 }

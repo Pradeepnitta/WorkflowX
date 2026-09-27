@@ -4,29 +4,23 @@
     "version": "0.1.0",
     "type": "module",
     "scripts": {
-        "predev": "prisma generate --schema ./prisma/schema.prisma",
         "dev": "nodemon src/server.js",
-        "prestart": "prisma generate --schema ./prisma/schema.prisma",
         "start": "node src/server.js",
         "check": "node --check src/server.js",
-        "pretest": "prisma generate --schema ./prisma/schema.prisma",
         "test": "node --test tests/*.test.js",
-        "prisma:validate": "prisma validate --schema ./prisma/schema.prisma",
-        "prisma:generate": "prisma generate --schema ./prisma/schema.prisma",
-        "prisma:migrate": "prisma migrate dev --schema ./prisma/schema.prisma",
-        "prisma:seed": "node scripts/seed.js",
+        "seed": "node scripts/seed.js",
+        "seed:roles": "node scripts/seedRoles.js",
         "seed:users": "node scripts/seedUsers.js",
         "users:delete": "node scripts/deleteUsers.js"
     },
     "dependencies": {
-        "@prisma/client": "^6.19.3",
         "bullmq": "^6.3.8",
         "cors": "^2.8.6",
         "helmet": "^8.3.0",
         "ioredis": "^6.0.0",
         "jsonwebtoken": "^9.0.3",
         "nodemailer": "^10.0.10",
-        "prisma": "^6.19.3",
+        "pg": "^8.23.0",
         "socket.io": "^4.8.3"
     }
 }

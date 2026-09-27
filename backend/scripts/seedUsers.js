@@ -1,5 +1,6 @@
-import { prisma } from '../src/config/prisma.js'
+import { pool, query } from '../src/config/db.js'
 import { hashPassword } from '../src/utils/password.js'
+import { randomUUID } from 'node:crypto'
 
 const defaultPassword = 'Password123!'
 
@@ -51,149 +52,127 @@ const seedUsersList = [
 async function seedUsers() {
     console.log('🌱 Starting user seeding process...')
 
-    const passwordHash = await hashPassword(defaultPassword)
+    try {
+        const passwordHash = await hashPassword(defaultPassword)
+        const now = new Date()
 
-    // 1. Ensure primary Organization exists
-    let organization = await prisma.organization.findFirst({
-        where: { name: 'WorkFlowX Enterprise' },
-    })
+        // 1. Ensure primary Organization exists
+        let orgRes = await query(`SELECT * FROM "Organization" WHERE name = $1 LIMIT 1`, ['WorkFlowX Enterprise'])
+        let organization = orgRes.rows[0]
 
-    if (!organization) {
-        organization = await prisma.organization.create({
-            data: {
-                name: 'WorkFlowX Enterprise',
-                description: 'Main collaborative workspace for engineering, product, and design teams.',
-            },
-        })
-        console.log(`✅ Created Organization: ${organization.name} (${organization.id})`)
-    } else {
-        console.log(`ℹ️ Using existing Organization: ${organization.name}`)
-    }
-
-    // 2. Ensure Teams exist
-    const teamsMap = {}
-    const teamNames = ['Executive Team', 'Core Engineering', 'Product Design']
-    for (const teamName of teamNames) {
-        let team = await prisma.team.findFirst({
-            where: { organizationId: organization.id, name: teamName },
-        })
-        if (!team) {
-            team = await prisma.team.create({
-                data: {
-                    name: teamName,
-                    description: `${teamName} division at WorkFlowX Enterprise`,
-                    organizationId: organization.id,
-                },
-            })
-            console.log(`  + Created Team: ${team.name}`)
-        }
-        teamsMap[teamName] = team
-    }
-
-    // 3. Ensure default Project exists
-    let project = await prisma.project.findFirst({
-        where: { organizationId: organization.id, name: 'WorkFlowX Web Platform' },
-    })
-    const adminUser = seedUsersList.find(u => u.orgRole === 'ADMIN')
-
-    // Seed Users and assign Organization/Team/Project Memberships
-    const createdUsers = []
-
-    for (const userData of seedUsersList) {
-        const user = await prisma.user.upsert({
-            where: { email: userData.email },
-            update: {
-                name: userData.name,
-                avatarUrl: userData.avatarUrl,
-                passwordHash,
-            },
-            create: {
-                name: userData.name,
-                email: userData.email,
-                avatarUrl: userData.avatarUrl,
-                passwordHash,
-            },
-        })
-
-        // Organization membership
-        await prisma.organizationMember.upsert({
-            where: {
-                organizationId_userId: {
-                    organizationId: organization.id,
-                    userId: user.id,
-                },
-            },
-            update: { role: userData.orgRole },
-            create: {
-                organizationId: organization.id,
-                userId: user.id,
-                role: userData.orgRole,
-            },
-        })
-
-        // Team membership
-        if (userData.teamName && teamsMap[userData.teamName]) {
-            await prisma.teamMember.upsert({
-                where: {
-                    teamId_userId: {
-                        teamId: teamsMap[userData.teamName].id,
-                        userId: user.id,
-                    },
-                },
-                update: {},
-                create: {
-                    teamId: teamsMap[userData.teamName].id,
-                    userId: user.id,
-                },
-            })
+        if (!organization) {
+            const orgId = randomUUID()
+            const newOrgRes = await query(
+                `INSERT INTO "Organization" (id, name, description, "createdAt", "updatedAt")
+                 VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+                [orgId, 'WorkFlowX Enterprise', 'Main collaborative workspace for engineering, product, and design teams.', now, now]
+            )
+            organization = newOrgRes.rows[0]
+            console.log(`✅ Created Organization: ${organization.name} (${organization.id})`)
+        } else {
+            console.log(`ℹ️ Using existing Organization: ${organization.name}`)
         }
 
-        createdUsers.push(user)
-        console.log(`👤 Seeded User: ${user.name} <${user.email}> [Role: ${userData.orgRole}]`)
-    }
+        // 2. Ensure Teams exist
+        const teamsMap = {}
+        const teamNames = ['Executive Team', 'Core Engineering', 'Product Design']
+        for (const teamName of teamNames) {
+            let teamRes = await query(
+                `SELECT * FROM "Team" WHERE "organizationId" = $1 AND name = $2 LIMIT 1`,
+                [organization.id, teamName]
+            )
+            let team = teamRes.rows[0]
+            if (!team) {
+                const teamId = randomUUID()
+                const newTeamRes = await query(
+                    `INSERT INTO "Team" (id, name, description, "organizationId", "createdAt", "updatedAt")
+                     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+                    [teamId, teamName, `${teamName} division at WorkFlowX Enterprise`, organization.id, now, now]
+                )
+                team = newTeamRes.rows[0]
+                console.log(`  + Created Team: ${team.name}`)
+            }
+            teamsMap[teamName] = team
+        }
 
-    // Create project if missing
-    if (!project) {
-        const creatorId = createdUsers[0].id
-        project = await prisma.project.create({
-            data: {
-                name: 'WorkFlowX Web Platform',
-                description: 'Main project for full-stack collaboration web app development',
-                organizationId: organization.id,
-                createdById: creatorId,
-                status: 'ACTIVE',
-                visibility: 'ORGANIZATION',
-            },
-        })
-        console.log(`🚀 Created Project: ${project.name}`)
-    }
+        // 3. Ensure default Project exists
+        let projRes = await query(
+            `SELECT * FROM "Project" WHERE "organizationId" = $1 AND name = $2 LIMIT 1`,
+            [organization.id, 'WorkFlowX Web Platform']
+        )
+        let project = projRes.rows[0]
 
-    // Add all seeded users to the project
-    for (const user of createdUsers) {
-        await prisma.projectMember.upsert({
-            where: {
-                projectId_userId: {
-                    projectId: project.id,
-                    userId: user.id,
-                },
-            },
-            update: {},
-            create: {
-                projectId: project.id,
-                userId: user.id,
-            },
-        })
-    }
+        // Seed Users and assign Organization/Team/Project Memberships
+        const createdUsers = []
 
-    console.log('\n🎉 User seeding completed successfully!')
-    console.log(`🔑 All user passwords set to: ${defaultPassword}\n`)
+        for (const userData of seedUsersList) {
+            const userRes = await query(
+                `INSERT INTO "User" (id, name, email, "avatarUrl", "passwordHash", "createdAt", "updatedAt")
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)
+                 ON CONFLICT (email) DO UPDATE SET
+                   name = EXCLUDED.name,
+                   "avatarUrl" = EXCLUDED."avatarUrl",
+                   "passwordHash" = EXCLUDED."passwordHash",
+                   "updatedAt" = EXCLUDED."updatedAt"
+                 RETURNING *`,
+                [randomUUID(), userData.name, userData.email, userData.avatarUrl, passwordHash, now, now]
+            )
+            const user = userRes.rows[0]
+
+            // Organization membership
+            await query(
+                `INSERT INTO "OrganizationMember" ("organizationId", "userId", role, "joinedAt")
+                 VALUES ($1, $2, $3, $4)
+                 ON CONFLICT ("organizationId", "userId") DO UPDATE SET role = EXCLUDED.role`,
+                [organization.id, user.id, userData.orgRole, now]
+            )
+
+            // Team membership
+            if (userData.teamName && teamsMap[userData.teamName]) {
+                await query(
+                    `INSERT INTO "TeamMember" ("teamId", "userId", "joinedAt")
+                     VALUES ($1, $2, $3)
+                     ON CONFLICT ("teamId", "userId") DO NOTHING`,
+                    [teamsMap[userData.teamName].id, user.id, now]
+                )
+            }
+
+            createdUsers.push(user)
+            console.log(`👤 Seeded User: ${user.name} <${user.email}> [Role: ${userData.orgRole}]`)
+        }
+
+        // Create project if missing
+        if (!project) {
+            const creatorId = createdUsers[0].id
+            const projId = randomUUID()
+            const newProjRes = await query(
+                `INSERT INTO "Project" (id, name, description, "organizationId", "createdById", status, visibility, "createdAt", "updatedAt")
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+                [projId, 'WorkFlowX Web Platform', 'Main project for full-stack collaboration web app development', organization.id, creatorId, 'ACTIVE', 'ORGANIZATION', now, now]
+            )
+            project = newProjRes.rows[0]
+            console.log(`🚀 Created Project: ${project.name}`)
+        }
+
+        // Add all seeded users to the project
+        for (const user of createdUsers) {
+            await query(
+                `INSERT INTO "ProjectMember" ("projectId", "userId", "joinedAt")
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT ("projectId", "userId") DO NOTHING`,
+                [project.id, user.id, now]
+            )
+        }
+
+        console.log('\n🎉 User seeding completed successfully!')
+        console.log(`🔑 All user passwords set to: ${defaultPassword}\n`)
+    } finally {
+        await pool.end()
+    }
 }
 
 seedUsers()
     .catch((error) => {
         console.error('❌ Seeding failed:', error)
         process.exitCode = 1
-    })
-    .finally(async () => {
-        await prisma.$disconnect()
     })

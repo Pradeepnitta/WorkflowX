@@ -3,7 +3,11 @@ import jwt from 'jsonwebtoken'
 const accessTokenLifetime = '15m'
 
 function tokenSecret() {
-    return process.env.AUTH_ACCESS_TOKEN_SECRET || 'workflowx-development-access-token-secret-key-2026'
+    const secret = process.env.AUTH_ACCESS_TOKEN_SECRET
+    if (!secret) {
+        throw new Error('AUTH_ACCESS_TOKEN_SECRET is not configured')
+    }
+    return secret
 }
 
 export function createAccessToken(user) {

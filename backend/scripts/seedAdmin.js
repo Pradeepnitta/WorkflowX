@@ -1,51 +1,49 @@
 import { hashPassword } from '../src/utils/password.js'
-import { prisma } from '../src/config/prisma.js'
+import { pool, query } from '../src/config/db.js'
+import { randomUUID } from 'node:crypto'
 
 async function run() {
-    const hash = await hashPassword('password123')
+    try {
+        const hash = await hashPassword('password123')
 
-    let org = await prisma.organization.findFirst({
-        where: { name: 'WorkFlowX Enterprise' },
-    })
-    if (!org) {
-        org = await prisma.organization.create({
-            data: {
-                name: 'WorkFlowX Enterprise',
-                description: 'Main production workspace for agile project and team execution',
-            },
-        })
+        let orgRes = await query(`SELECT * FROM "Organization" WHERE name = $1 LIMIT 1`, ['WorkFlowX Enterprise'])
+        let org = orgRes.rows[0]
+        if (!org) {
+            const orgId = randomUUID()
+            const now = new Date()
+            const newOrgRes = await query(
+                `INSERT INTO "Organization" (id, name, description, "createdAt", "updatedAt")
+                 VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+                [orgId, 'WorkFlowX Enterprise', 'Main production workspace for agile project and team execution', now, now]
+            )
+            org = newOrgRes.rows[0]
+        }
+
+        const now = new Date()
+        const adminRes = await query(
+            `INSERT INTO "User" (id, name, email, "passwordHash", "createdAt", "updatedAt")
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (email) DO UPDATE SET "passwordHash" = EXCLUDED."passwordHash", name = EXCLUDED.name, "updatedAt" = EXCLUDED."updatedAt"
+             RETURNING *`,
+            [randomUUID(), 'Pradeep Admin', 'admin@workflowx.dev', hash, now, now]
+        )
+        const admin = adminRes.rows[0]
+
+        await query(
+            `INSERT INTO "OrganizationMember" ("organizationId", "userId", role, "joinedAt")
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT ("organizationId", "userId") DO UPDATE SET role = 'ADMIN'`,
+            [org.id, admin.id, 'ADMIN', now]
+        )
+
+        console.log('Admin user configured with ADMIN role:', admin.email, org.name)
+    } finally {
+        await pool.end()
     }
-
-    const admin = await prisma.user.upsert({
-        where: { email: 'admin@workflowx.dev' },
-        update: { passwordHash: hash, name: 'Pradeep Admin' },
-        create: {
-            name: 'Pradeep Admin',
-            email: 'admin@workflowx.dev',
-            passwordHash: hash,
-        },
-    })
-
-    await prisma.organizationMember.upsert({
-        where: {
-            organizationId_userId: {
-                organizationId: org.id,
-                userId: admin.id,
-            },
-        },
-        update: { role: 'ADMIN' },
-        create: {
-            organizationId: org.id,
-            userId: admin.id,
-            role: 'ADMIN',
-        },
-    })
-
-    console.log('Admin user configured with ADMIN role:', admin.email, org.name)
     process.exit(0)
 }
 
 run().catch((err) => {
-    console.error(err)
+    console.error('Seeding error:', err)
     process.exit(1)
 })

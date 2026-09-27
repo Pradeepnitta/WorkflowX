@@ -1,7 +1,5 @@
 import { createServer } from 'node:http'
 import dns from 'node:dns'
-import { exec } from 'node:child_process'
-import { promisify } from 'node:util'
 
 if (dns.setDefaultResultOrder) {
     dns.setDefaultResultOrder('ipv4first')
@@ -10,8 +8,6 @@ import { createApp } from './app.js'
 import { initSocketServer } from './sockets/socketServer.js'
 import { initQueue } from './jobs/taskQueue.js'
 import { startWorker } from './jobs/emailWorker.js'
-
-const execAsync = promisify(exec)
 
 try {
     process.loadEnvFile()
@@ -38,20 +34,19 @@ initSocketServer(server)
 initQueue()
 startWorker()
 
-async function syncDatabase() {
-    if (process.env.DATABASE_URL) {
-        try {
-            console.log('🔄 Checking and syncing Prisma schema with database...')
-            await execAsync('npx prisma db push --skip-generate --schema=./prisma/schema.prisma')
-            console.log('✅ Database schema synchronized successfully')
-        } catch (err) {
-            console.warn('⚠️ Database sync notice:', err.message)
-        }
+import { pool } from './config/db.js'
+
+async function checkDatabase() {
+    try {
+        await pool.query('SELECT 1')
+        console.log('✅ PostgreSQL database connected successfully')
+    } catch (err) {
+        console.warn('⚠️ PostgreSQL connection notice:', err.message)
     }
 }
 
 server.listen(port, async () => {
     console.log(`🚀 WorkFlowX Backend API running at http://localhost:${port}`)
     console.log('📡 Socket.IO server initialized')
-    await syncDatabase()
+    await checkDatabase()
 })
