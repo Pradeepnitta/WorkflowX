@@ -5,69 +5,6 @@ import { createTeam, getTeams, addTeamMember, removeTeamMember, deleteTeam } fro
 import { getProjects } from '../services/projectService.js'
 import '../App.css'
 
-// Default sample teams matching WorkFlowX role & project hierarchy
-const DEFAULT_SAMPLE_TEAMS = [
-    {
-        id: 'team-frontend-01',
-        name: 'Frontend Team',
-        department: 'Engineering',
-        description: 'Modern React, Vite, responsive UI components, state management, and user interaction design.',
-        lead: 'Pradeep Kumar (Developer)',
-        projects: ['E-Commerce Website', 'Mobile App v2.0', 'Design System Refresh'],
-        members: [
-            { userId: 'usr-pradeep', user: { id: 'usr-pradeep', name: 'Pradeep Kumar', email: 'pradeep@workflowx.dev', role: 'DEVELOPER' } },
-            { userId: 'usr-anil', user: { id: 'usr-anil', name: 'Anil Verma', email: 'anil@workflowx.dev', role: 'DEVELOPER' } },
-            { userId: 'usr-sneha', user: { id: 'usr-sneha', name: 'Sneha Patel', email: 'sneha@workflowx.dev', role: 'VIEWER' } },
-        ],
-    },
-    {
-        id: 'team-backend-02',
-        name: 'Backend Team',
-        department: 'Engineering',
-        description: 'Node.js microservices, Prisma PostgreSQL database migrations, REST APIs, and Redis caching.',
-        lead: 'Rahul Sharma (Manager)',
-        projects: ['E-Commerce Website', 'Cloud Infrastructure Migration', 'Legacy Billing Migration'],
-        members: [
-            { userId: 'usr-rahul', user: { id: 'usr-rahul', name: 'Rahul Sharma', email: 'rahul@workflowx.dev', role: 'MANAGER' } },
-            { userId: 'usr-pradeep', user: { id: 'usr-pradeep', name: 'Pradeep Kumar', email: 'pradeep@workflowx.dev', role: 'DEVELOPER' } },
-        ],
-    },
-    {
-        id: 'team-qa-03',
-        name: 'QA & Testing Team',
-        department: 'Quality Assurance',
-        description: 'Automated end-to-end testing, integration test suites, regression verification, and load testing.',
-        lead: 'Sneha Patel (QA Lead)',
-        projects: ['E-Commerce Website', 'Mobile App v2.0', 'Legacy Billing Migration'],
-        members: [
-            { userId: 'usr-sneha', user: { id: 'usr-sneha', name: 'Sneha Patel', email: 'sneha@workflowx.dev', role: 'VIEWER' } },
-            { userId: 'usr-rahul', user: { id: 'usr-rahul', name: 'Rahul Sharma', email: 'rahul@workflowx.dev', role: 'MANAGER' } },
-        ],
-    },
-    {
-        id: 'team-devops-04',
-        name: 'DevOps & Cloud SRE',
-        department: 'DevOps & SRE',
-        description: 'Kubernetes orchestration, Docker containers, CI/CD pipelines, and automated Terraform infrastructure.',
-        lead: 'Sneha Patel (DevOps)',
-        projects: ['Cloud Infrastructure Migration'],
-        members: [
-            { userId: 'usr-sneha', user: { id: 'usr-sneha', name: 'Sneha Patel', email: 'sneha@workflowx.dev', role: 'VIEWER' } },
-        ],
-    },
-    {
-        id: 'team-design-05',
-        name: 'Product & UX Design',
-        department: 'Product & Design',
-        description: 'Wireframing, interactive prototypes, user journey testing, design system tokens, and accessibility.',
-        lead: 'Anil Verma (Designer)',
-        projects: ['Design System Refresh', 'Mobile App v2.0'],
-        members: [
-            { userId: 'usr-anil', user: { id: 'usr-anil', name: 'Anil Verma', email: 'anil@workflowx.dev', role: 'DEVELOPER' } },
-            { userId: 'usr-pradeep', user: { id: 'usr-pradeep', name: 'Pradeep Kumar', email: 'pradeep@workflowx.dev', role: 'DEVELOPER' } },
-        ],
-    },
-]
 
 const DEPARTMENTS = ['All Teams', 'Engineering', 'Quality Assurance', 'DevOps & SRE', 'Product & Design']
 
@@ -137,11 +74,11 @@ export default function TeamsPage() {
                 if (orgs.length > 0) {
                     setOrganizationId(orgs[0].id)
                 } else {
-                    setTeams(DEFAULT_SAMPLE_TEAMS)
+                    setTeams([])
                 }
             })
             .catch(() => {
-                setTeams(DEFAULT_SAMPLE_TEAMS)
+                setTeams([])
             })
             .finally(() => setIsLoading(false))
     }, [])
@@ -149,7 +86,7 @@ export default function TeamsPage() {
     // Load teams, members, and projects when organization changes
     useEffect(() => {
         if (!organizationId) {
-            setTeams(DEFAULT_SAMPLE_TEAMS)
+            setTeams([])
             return
         }
 
@@ -160,21 +97,18 @@ export default function TeamsPage() {
             getProjects(organizationId).catch(() => []),
         ])
             .then(([loadedTeams, members, loadedProjects]) => {
-                const teamList = Array.isArray(loadedTeams) && loadedTeams.length > 0
-                    ? loadedTeams
-                    : DEFAULT_SAMPLE_TEAMS
+                const teamList = Array.isArray(loadedTeams) ? loadedTeams : []
 
                 // Enrich teams with defaults if fields are minimal
                 const enriched = teamList.map((t, idx) => {
-                    const sample = DEFAULT_SAMPLE_TEAMS[idx % DEFAULT_SAMPLE_TEAMS.length]
                     return {
-                        id: t.id || `team-custom-${idx}`,
+                        id: t.id || `team-${idx}`,
                         name: t.name,
-                        department: t.department || sample.department,
-                        description: t.description || sample.description,
-                        lead: t.lead || sample.lead,
-                        projects: t.projects || sample.projects,
-                        members: t.members && t.members.length > 0 ? t.members : sample.members,
+                        department: t.department || 'General',
+                        description: t.description || '',
+                        lead: t.lead || 'Unassigned',
+                        projects: t.projects || [],
+                        members: Array.isArray(t.members) ? t.members : [],
                     }
                 })
 
@@ -183,7 +117,7 @@ export default function TeamsPage() {
                 setProjects(Array.isArray(loadedProjects) ? loadedProjects : [])
             })
             .catch(() => {
-                setTeams(DEFAULT_SAMPLE_TEAMS)
+                setTeams([])
             })
             .finally(() => setIsLoading(false))
     }, [organizationId])
@@ -240,13 +174,7 @@ export default function TeamsPage() {
                 avatarUrl: m.avatarUrl || m.user?.avatarUrl || null,
             }))
         }
-        return [
-            { userId: 'usr-rahul', name: 'Rahul Sharma', email: 'rahul@workflowx.dev', role: 'MANAGER' },
-            { userId: 'usr-pradeep', name: 'Pradeep Kumar', email: 'pradeep@workflowx.dev', role: 'ADMIN' },
-            { userId: 'usr-sneha', name: 'Sneha Patel', email: 'sneha@workflowx.dev', role: 'MEMBER' },
-            { userId: 'usr-anil', name: 'Anil Verma', email: 'anil@workflowx.dev', role: 'MEMBER' },
-            { userId: 'usr-ananya', name: 'Ananya Gupta', email: 'ananya@workflowx.dev', role: 'MEMBER' },
-        ]
+        return []
     }, [orgMembers])
 
     // Handler: Create Team
@@ -264,19 +192,12 @@ export default function TeamsPage() {
             name: newTeamName.trim(),
             department: newTeamDept,
             description: newTeamDescription.trim() || 'Cross-functional engineering and delivery squad.',
-            lead: newTeamLead || (newTeamMembers[0]?.name ? `${newTeamMembers[0].name} (${newTeamMembers[0].role || 'Member'})` : 'Rahul Sharma (Manager)'),
-            projects: newTeamProjects.length > 0 ? newTeamProjects : ['E-Commerce Website'],
-            members: newTeamMembers.length > 0
-                ? newTeamMembers.map((m) => ({
-                    userId: m.userId,
-                    user: { id: m.userId, name: m.name, email: m.email, role: m.role || 'MEMBER', avatarUrl: m.avatarUrl },
-                }))
-                : [
-                    {
-                        userId: 'usr-lead',
-                        user: { id: 'usr-lead', name: newTeamLead || 'Rahul Sharma', email: 'rahul@workflowx.dev', role: 'MANAGER' },
-                    },
-                ],
+            lead: newTeamLead || (newTeamMembers[0]?.name ? `${newTeamMembers[0].name} (${newTeamMembers[0].role || 'Member'})` : 'Unassigned'),
+            projects: newTeamProjects,
+            members: newTeamMembers.map((m) => ({
+                userId: m.userId,
+                user: { id: m.userId, name: m.name, email: m.email, role: m.role || 'MEMBER', avatarUrl: m.avatarUrl },
+            })),
         }
 
         try {
@@ -341,7 +262,7 @@ export default function TeamsPage() {
         const memberObj = orgMembers.find((m) => m.userId === selectedMemberToAdd) || {
             userId: selectedMemberToAdd,
             name: selectedMemberToAdd.includes('@') ? selectedMemberToAdd.split('@')[0] : selectedMemberToAdd,
-            email: selectedMemberToAdd.includes('@') ? selectedMemberToAdd : `${selectedMemberToAdd}@workflowx.dev`,
+            email: selectedMemberToAdd.includes('@') ? selectedMemberToAdd : '',
             role: 'DEVELOPER',
         }
 
@@ -1433,10 +1354,6 @@ export default function TeamsPage() {
                                         style={{ flex: 1, padding: '7px 10px', fontSize: '12px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff' }}
                                     >
                                         <option value="">Select organization member to add...</option>
-                                        <option value="usr-rahul">Rahul Sharma (rahul@workflowx.dev)</option>
-                                        <option value="usr-pradeep">Pradeep Kumar (pradeep@workflowx.dev)</option>
-                                        <option value="usr-anil">Anil Verma (anil@workflowx.dev)</option>
-                                        <option value="usr-sneha">Sneha Patel (sneha@workflowx.dev)</option>
                                         {orgMembers.map((m) => (
                                             <option key={m.userId} value={m.userId}>
                                                 {m.name || m.email} ({m.role})
@@ -1473,7 +1390,7 @@ export default function TeamsPage() {
                                 {(detailTeam.members || []).map((m, idx) => {
                                     const user = m.user || {}
                                     const name = user.name || user.email || m.userId || 'Team Member'
-                                    const email = user.email || `${m.userId}@workflowx.dev`
+                                    const email = user.email || ''
                                     const role = user.role || 'MEMBER'
 
                                     return (

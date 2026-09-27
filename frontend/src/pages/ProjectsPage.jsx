@@ -12,90 +12,6 @@ import {
 import { getOrganizations, getOrganizationMembers } from '../services/organizationService.js'
 import '../App.css'
 
-// Default sample projects for instant sandbox / offline fidelity
-const DEFAULT_SAMPLE_PROJECTS = [
-    {
-        id: 'proj-ecomm-01',
-        name: 'E-Commerce Website',
-        key: 'ECOMM',
-        description: 'End-to-end shopping catalog, cart checkout, Stripe payment integration, and customer order dashboard.',
-        status: 'ACTIVE',
-        priority: 'HIGH',
-        dueDate: '2026-10-15',
-        lead: 'Rahul (Manager)',
-        teams: ['Frontend Team', 'Backend Team', 'QA Team'],
-        members: [
-            { id: 'usr-rahul', name: 'Rahul Sharma', email: 'rahul@workflowx.dev', role: 'MANAGER' },
-            { id: 'usr-pradeep', name: 'Pradeep Kumar', email: 'pradeep@workflowx.dev', role: 'DEVELOPER' },
-            { id: 'usr-anil', name: 'Anil Verma', email: 'anil@workflowx.dev', role: 'DEVELOPER' },
-            { id: 'usr-sneha', name: 'Sneha Patel', email: 'sneha@workflowx.dev', role: 'VIEWER' },
-        ],
-        tasksSummary: { total: 35, completed: 25, inProgress: 6, review: 2, todo: 2 },
-    },
-    {
-        id: 'proj-mbl-02',
-        name: 'Mobile App v2.0',
-        key: 'MBL-2',
-        description: 'Cross-platform React Native update featuring biometric authentication, push notifications, and offline sync.',
-        status: 'ACTIVE',
-        priority: 'URGENT',
-        dueDate: '2026-10-05',
-        lead: 'Pradeep (Developer)',
-        teams: ['Frontend Team', 'QA Team'],
-        members: [
-            { id: 'usr-pradeep', name: 'Pradeep Kumar', email: 'pradeep@workflowx.dev', role: 'DEVELOPER' },
-            { id: 'usr-sneha', name: 'Sneha Patel', email: 'sneha@workflowx.dev', role: 'VIEWER' },
-        ],
-        tasksSummary: { total: 20, completed: 12, inProgress: 5, review: 2, todo: 1 },
-    },
-    {
-        id: 'proj-infra-03',
-        name: 'Cloud Infrastructure Migration',
-        key: 'INFRA',
-        description: 'Multi-region Kubernetes deployment, PostgreSQL replication clusters, and automated Terraform IaC pipeline.',
-        status: 'PLANNING',
-        priority: 'MEDIUM',
-        dueDate: '2026-11-01',
-        lead: 'Sneha (DevOps)',
-        teams: ['DevOps Team', 'Backend Team'],
-        members: [
-            { id: 'usr-sneha', name: 'Sneha Patel', email: 'sneha@workflowx.dev', role: 'VIEWER' },
-            { id: 'usr-rahul', name: 'Rahul Sharma', email: 'rahul@workflowx.dev', role: 'MANAGER' },
-        ],
-        tasksSummary: { total: 15, completed: 3, inProgress: 4, review: 1, todo: 7 },
-    },
-    {
-        id: 'proj-ds-04',
-        name: 'Design System & Component Kit',
-        key: 'DS-UI',
-        description: 'Unified brand tokens, dark mode palette, glassmorphism UI components, and WCAG AAA accessibility compliance.',
-        status: 'ON_HOLD',
-        priority: 'LOW',
-        dueDate: '2026-11-20',
-        lead: 'Anil (Designer)',
-        teams: ['Frontend Team'],
-        members: [
-            { id: 'usr-anil', name: 'Anil Verma', email: 'anil@workflowx.dev', role: 'DEVELOPER' },
-        ],
-        tasksSummary: { total: 10, completed: 5, inProgress: 1, review: 1, todo: 3 },
-    },
-    {
-        id: 'proj-bill-05',
-        name: 'Legacy Billing Migration',
-        key: 'BILL',
-        description: 'Migrated legacy recurring subscription database to modern event-driven webhooks and automated invoicing.',
-        status: 'COMPLETED',
-        priority: 'MEDIUM',
-        dueDate: '2026-09-15',
-        lead: 'Rahul (Manager)',
-        teams: ['Backend Team', 'QA Team'],
-        members: [
-            { id: 'usr-rahul', name: 'Rahul Sharma', email: 'rahul@workflowx.dev', role: 'MANAGER' },
-            { id: 'usr-pradeep', name: 'Pradeep Kumar', email: 'pradeep@workflowx.dev', role: 'DEVELOPER' },
-        ],
-        tasksSummary: { total: 28, completed: 28, inProgress: 0, review: 0, todo: 0 },
-    },
-]
 
 const AVAILABLE_TEAMS = ['Frontend Team', 'Backend Team', 'QA Team', 'DevOps Team', 'Product & Design']
 
@@ -199,11 +115,11 @@ export default function ProjectsPage() {
                 if (orgs.length > 0) {
                     setOrganizationId(orgs[0].id)
                 } else {
-                    setProjects(DEFAULT_SAMPLE_PROJECTS)
+                    setProjects([])
                 }
             })
             .catch(() => {
-                setProjects(DEFAULT_SAMPLE_PROJECTS)
+                setProjects([])
             })
             .finally(() => setIsLoading(false))
     }, [])
@@ -211,7 +127,7 @@ export default function ProjectsPage() {
     // Load projects and members when organization changes
     useEffect(() => {
         if (!organizationId) {
-            setProjects(DEFAULT_SAMPLE_PROJECTS)
+            setProjects([])
             return
         }
 
@@ -220,25 +136,21 @@ export default function ProjectsPage() {
             getOrganizationMembers(organizationId).catch(() => []),
         ])
             .then(([loadedProjects, loadedMembers]) => {
-                const pList = Array.isArray(loadedProjects) && loadedProjects.length > 0
-                    ? loadedProjects
-                    : DEFAULT_SAMPLE_PROJECTS
+                const pList = Array.isArray(loadedProjects) ? loadedProjects : []
 
-                // Merge sample enrichments (teams, progress, tasksSummary) if backend returns minimal fields
                 const enriched = pList.map((p, idx) => {
-                    const sample = DEFAULT_SAMPLE_PROJECTS[idx % DEFAULT_SAMPLE_PROJECTS.length]
                     return {
-                        id: p.id || `proj-custom-${idx}`,
+                        id: p.id || `proj-${idx}`,
                         name: p.name,
-                        key: p.key || (p.name.slice(0, 5).toUpperCase().replace(/[^A-Z]/g, '') || `PRJ-${idx + 1}`),
-                        description: p.description || sample.description,
-                        status: p.status || sample.status,
-                        priority: p.priority || sample.priority,
-                        dueDate: p.dueDate ? new Date(p.dueDate).toISOString().slice(0, 10) : sample.dueDate,
-                        lead: p.lead || sample.lead,
-                        teams: p.teams || sample.teams,
-                        members: p.members || sample.members,
-                        tasksSummary: p.tasksSummary || sample.tasksSummary,
+                        key: p.key || (p.name ? p.name.slice(0, 5).toUpperCase().replace(/[^A-Z]/g, '') : `PRJ-${idx + 1}`),
+                        description: p.description || '',
+                        status: p.status || 'ACTIVE',
+                        priority: p.priority || 'MEDIUM',
+                        dueDate: p.dueDate ? new Date(p.dueDate).toISOString().slice(0, 10) : '',
+                        lead: p.lead || (p.createdBy?.name || 'Unassigned'),
+                        teams: p.teams || [],
+                        members: p.members || [],
+                        tasksSummary: p.tasksSummary || { total: 0, completed: 0, inProgress: 0, review: 0, todo: 0 },
                     }
                 })
 
@@ -246,7 +158,7 @@ export default function ProjectsPage() {
                 setOrgMembers(Array.isArray(loadedMembers) ? loadedMembers : [])
             })
             .catch(() => {
-                setProjects(DEFAULT_SAMPLE_PROJECTS)
+                setProjects([])
             })
     }, [organizationId])
 
@@ -321,11 +233,9 @@ export default function ProjectsPage() {
             status: newProjectStatus,
             priority: newProjectPriority,
             dueDate: newProjectDueDate || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
-            lead: newProjectLead || 'Rahul (Manager)',
-            teams: newProjectTeams.length > 0 ? newProjectTeams : ['Frontend Team'],
-            members: [
-                { id: 'usr-lead', name: newProjectLead || 'Rahul Sharma', email: 'rahul@workflowx.dev', role: 'MANAGER' },
-            ],
+            lead: newProjectLead || 'Unassigned',
+            teams: newProjectTeams.length > 0 ? newProjectTeams : [],
+            members: newProjectLead ? [{ id: 'usr-lead', name: newProjectLead, email: '', role: 'LEAD' }] : [],
             tasksSummary: { total: 0, completed: 0, inProgress: 0, review: 0, todo: 0 },
         }
 
@@ -431,7 +341,7 @@ export default function ProjectsPage() {
         const memberObj = orgMembers.find((m) => m.userId === selectedMemberToAdd) || {
             id: selectedMemberToAdd,
             name: selectedMemberToAdd.includes('@') ? selectedMemberToAdd.split('@')[0] : selectedMemberToAdd,
-            email: selectedMemberToAdd.includes('@') ? selectedMemberToAdd : `${selectedMemberToAdd}@workflowx.dev`,
+            email: selectedMemberToAdd.includes('@') ? selectedMemberToAdd : '',
             role: 'DEVELOPER',
         }
 
@@ -1668,10 +1578,6 @@ export default function ProjectsPage() {
                                     style={{ flex: 1, padding: '7px 10px', fontSize: '12px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff' }}
                                 >
                                     <option value="">Select organization member to assign...</option>
-                                    <option value="usr-rahul">Rahul Sharma (rahul@workflowx.dev)</option>
-                                    <option value="usr-pradeep">Pradeep Kumar (pradeep@workflowx.dev)</option>
-                                    <option value="usr-anil">Anil Verma (anil@workflowx.dev)</option>
-                                    <option value="usr-sneha">Sneha Patel (sneha@workflowx.dev)</option>
                                     {orgMembers.map((m) => (
                                         <option key={m.userId} value={m.userId}>
                                             {m.name || m.email} ({m.role})

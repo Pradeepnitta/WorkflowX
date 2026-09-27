@@ -43,12 +43,12 @@ export default function AnalyticsPage() {
             .finally(() => setIsLoading(false))
     }, [organizationId])
 
-    const completed = overview?.completedTasks || 72
-    const inProgress = 18
-    const todo = 10
-    const overdue = overview?.overdueTasks || 5
+    const completed = overview?.completedTasks || 0
+    const inProgress = overview?.inProgressTasks || 0
+    const todo = overview?.todoTasks || 0
+    const overdue = overview?.overdueTasks || 0
     const total = completed + inProgress + todo
-    const progressPercent = Math.round((completed / total) * 100) || 72
+    const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0
 
     // Burndown data configurations
     const burndownData = {

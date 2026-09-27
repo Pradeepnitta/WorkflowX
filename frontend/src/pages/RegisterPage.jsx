@@ -604,7 +604,7 @@ function RegisterPage() {
                             type="text"
                             value={workspaceName}
                             onChange={(event) => setWorkspaceName(event.target.value)}
-                            placeholder={name ? `${name}'s Workspace` : 'Acme Corp'}
+                            placeholder={name ? `${name}'s Workspace` : 'My Organization'}
                         />
                     </label>
 

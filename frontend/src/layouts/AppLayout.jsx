@@ -138,10 +138,10 @@ export default function AppLayout() {
 
                 <div className="workspace-switcher" onClick={() => navigate('/settings')} style={{ cursor: 'pointer' }}>
                     <span className="workspace-avatar">
-                        {organization?.name ? organization.name[0].toUpperCase() : 'A'}
+                        {organization?.name ? organization.name[0].toUpperCase() : 'W'}
                     </span>
                     <span>
-                        <strong>{organization?.name || 'Acme Inc.'}</strong>
+                        <strong>{organization?.name || 'Workspace'}</strong>
                         <small>{organization?.role ? `${organization.role} Workspace` : 'Workspace'}</small>
                     </span>
                     <span className="chevron">⌄</span>

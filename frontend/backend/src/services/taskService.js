@@ -60,7 +60,7 @@ export async function createTask(input) {
     const task = {
         id: Date.now(),
         title,
-        project: input.project || 'Website refresh',
+        project: input.project || 'General',
         status: input.status || 'Todo',
         priority,
         assignee: input.assignee || 'Unassigned',

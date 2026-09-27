@@ -48,20 +48,8 @@ export default function TasksPage() {
 
     // Selected Task Modal State
     const [activeTask, setActiveTask] = useState(null)
-    const [newComment, setNewComment] = useState('')
-    const [commentsMap, setCommentsMap] = useState({
-        default: [
-            { id: 1, author: 'Developer', text: 'JWT authentication is implemented. Please review the middleware.', time: '20 mins ago' },
-            { id: 2, author: 'Manager (Rahul)', text: 'Looks good. Please add refresh-token support.', time: '10 mins ago' },
-        ]
-    })
-    const [attachmentsMap, setAttachmentsMap] = useState({
-        default: [
-            { name: 'authController.ts', size: 14200, type: 'text/typescript', content: `// WorkFlowX Auth Controller\nimport { Request, Response } from 'express'\nimport { verifyToken } from '../utils/token'\n\nexport async function handleLogin(req: Request, res: Response) {\n  const { email, password } = req.body;\n  // Validating credentials...\n  return res.status(200).json({ status: 'authenticated' });\n}` },
-            { name: 'authMiddleware.ts', size: 8400, type: 'text/typescript', content: `// WorkFlowX Auth Middleware\nimport { authenticateRequest } from './auth'\n\nexport function requireAuth(req, res, next) {\n  const user = authenticateRequest(req);\n  if (!user) return res.status(401).json({ error: 'Unauthorized' });\n  next();\n}` },
-            { name: 'login-architecture.pdf', size: 124000, type: 'application/pdf', content: null },
-        ]
-    })
+    const [commentsMap, setCommentsMap] = useState({})
+    const [attachmentsMap, setAttachmentsMap] = useState({})
     const [newAttachmentName, setNewAttachmentName] = useState('')
 
     // Rich Attachment Preview Modal State
@@ -358,7 +346,7 @@ export default function TasksPage() {
             text: newComment.trim(),
             time: 'Just now',
         }
-        const updatedList = [...(commentsMap[activeTask.id] || commentsMap.default || []), commentObj]
+        const updatedList = [...(commentsMap[activeTask.id] || []), commentObj]
         setCommentsMap((prev) => ({
             ...prev,
             [activeTask.id]: updatedList
@@ -416,7 +404,7 @@ export default function TasksPage() {
         }
 
         async function persistAttachment(newFileObj) {
-            const currentList = attachmentsMap[activeTask.id] || attachmentsMap.default || []
+            const currentList = attachmentsMap[activeTask.id] || []
             const updatedList = [...currentList, newFileObj]
             setAttachmentsMap((prev) => ({
                 ...prev,
@@ -442,12 +430,12 @@ export default function TasksPage() {
             size: 36000,
             type: newAttachmentName.endsWith('.pdf') ? 'application/pdf' : newAttachmentName.match(/\.(png|jpg|jpeg|webp)$/i) ? 'image/png' : 'text/plain',
             url: null,
-            content: `// Sample code & notes for ${newAttachmentName.trim()}`,
+            content: `// Notes for ${newAttachmentName.trim()}`,
             uploadedAt: 'Just now',
         }
         setAttachmentsMap((prev) => ({
             ...prev,
-            [activeTask.id]: [...(prev[activeTask.id] || prev.default || []), newObj]
+            [activeTask.id]: [...(prev[activeTask.id] || []), newObj]
         }))
         setNewAttachmentName('')
         setSuccessMessage(`File "${newObj.name}" attached.`)
@@ -1067,8 +1055,8 @@ export default function TasksPage() {
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                             {colTasks.map((task) => {
                                                 const isDragging = draggedTaskId === task.id
-                                                const attachments = attachmentsMap[task.id] || attachmentsMap.default || []
-                                                const comments = commentsMap[task.id] || commentsMap.default || []
+                                                const attachments = attachmentsMap[task.id] || []
+                                                const comments = commentsMap[task.id] || []
 
                                                 return (
                                                     <article
@@ -1269,7 +1257,7 @@ export default function TasksPage() {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                                 <div>
                                     <strong style={{ fontSize: '13.5px', color: '#111827', display: 'block' }}>
-                                        📎 Attachments & Documents ({((attachmentsMap[activeTask.id] || attachmentsMap.default) || []).length})
+                                        📎 Attachments & Documents ({(attachmentsMap[activeTask.id] || []).length})
                                     </strong>
                                     <span style={{ fontSize: '11px', color: '#6b7280' }}>Physical uploads: PDFs, images, code files, and documents</span>
                                 </div>
@@ -1277,7 +1265,12 @@ export default function TasksPage() {
 
                             {/* Attachment Items List */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
-                                {((attachmentsMap[activeTask.id] || attachmentsMap.default) || []).map((fileItem, idx) => {
+                                {(attachmentsMap[activeTask.id] || []).length === 0 ? (
+                                    <div style={{ padding: '12px', textAlign: 'center', color: '#9ca3af', fontSize: '12px', fontStyle: 'italic' }}>
+                                        No attachments uploaded yet. Use the upload button below.
+                                    </div>
+                                ) : (
+                                    (attachmentsMap[activeTask.id] || []).map((fileItem, idx) => {
                                     const file = getFileHelper(fileItem)
                                     const isPdf = file.name.endsWith('.pdf')
                                     const isImg = file.name.match(/\.(png|jpg|jpeg|webp|svg|gif)$/i)
@@ -1360,7 +1353,7 @@ export default function TasksPage() {
                                                 <button
                                                     type="button"
                                                     onClick={() => {
-                                                        const currentList = attachmentsMap[activeTask.id] || attachmentsMap.default || []
+                                                        const currentList = attachmentsMap[activeTask.id] || []
                                                         const updatedList = currentList.filter((_, i) => i !== idx)
                                                         setAttachmentsMap((prev) => ({
                                                             ...prev,
@@ -1376,7 +1369,7 @@ export default function TasksPage() {
                                             </div>
                                         </div>
                                     )
-                                })}
+                                }))}
                             </div>
 
                             {/* Multipart File Upload Controls */}
@@ -1431,15 +1424,21 @@ export default function TasksPage() {
                                 💬 Team Discussion & Collaboration
                             </strong>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto', marginBottom: '12px', padding: '10px', background: '#fafaf9', borderRadius: '8px', border: '1px solid #ebe9e5' }}>
-                                {((commentsMap[activeTask.id] || commentsMap.default) || []).map((cmt) => (
-                                    <div key={cmt.id} style={{ background: '#fff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #ebe9e5' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '3px' }}>
-                                            <strong style={{ color: '#ee785e' }}>{cmt.author}</strong>
-                                            <span style={{ color: '#9ca3af', fontSize: '10px' }}>{cmt.time}</span>
-                                        </div>
-                                        <p style={{ margin: 0, fontSize: '12.5px', color: '#1f2937', lineHeight: '1.4' }}>{cmt.text}</p>
+                                {(commentsMap[activeTask.id] || []).length === 0 ? (
+                                    <div style={{ padding: '12px', textAlign: 'center', color: '#9ca3af', fontSize: '12px', fontStyle: 'italic' }}>
+                                        No comments yet. Start the discussion below!
                                     </div>
-                                ))}
+                                ) : (
+                                    (commentsMap[activeTask.id] || []).map((cmt) => (
+                                        <div key={cmt.id} style={{ background: '#fff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #ebe9e5' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '3px' }}>
+                                                <strong style={{ color: '#ee785e' }}>{cmt.author}</strong>
+                                                <span style={{ color: '#9ca3af', fontSize: '10px' }}>{cmt.time}</span>
+                                            </div>
+                                            <p style={{ margin: 0, fontSize: '12.5px', color: '#1f2937', lineHeight: '1.4' }}>{cmt.text}</p>
+                                        </div>
+                                    ))
+                                )}
                             </div>
 
                             <form onSubmit={handleAddComment} style={{ display: 'flex', gap: '8px' }}>

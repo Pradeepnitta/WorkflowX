@@ -28,32 +28,6 @@ const PERMISSIONS_MATRIX = [
     { action: 'Organization settings', admin: true, manager: false, developer: false, viewer: false },
 ]
 
-const SAMPLE_ACTIVITY_LOGS = [
-    { id: 'log-1', actor: 'Pradeep', action: 'created project', target: 'Payment System', time: '10 mins ago', type: 'project' },
-    { id: 'log-2', actor: 'Rahul', action: 'assigned task #123 to', target: 'Anil', time: '25 mins ago', type: 'task' },
-    { id: 'log-3', actor: 'Anil', action: 'changed task #123 status →', target: 'Completed', time: '1 hour ago', type: 'task' },
-    { id: 'log-4', actor: 'Sneha', action: 'was added to', target: 'Frontend Team', time: '2 hours ago', type: 'team' },
-    { id: 'log-5', actor: 'Rahul', action: 'archived project', target: 'Old Website', time: 'Yesterday', type: 'project' },
-]
-
-const DEFAULT_SAMPLE_MEMBERS = [
-    { userId: 'usr-pradeep', name: 'Pradeep', email: 'pradeep@workflowx.dev', role: 'MEMBER', title: 'Senior Developer', team: 'Frontend Team', joinedAt: 'Jan 15, 2026' },
-    { userId: 'usr-rahul', name: 'Rahul', email: 'rahul.manager@workflowx.dev', role: 'MANAGER', title: 'Engineering Manager', team: 'E-Commerce Website', joinedAt: 'Feb 1, 2026' },
-    { userId: 'usr-anil', name: 'Anil', email: 'anil.dev@workflowx.dev', role: 'MEMBER', title: 'Backend Developer', team: 'Backend Team', joinedAt: 'Feb 10, 2026' },
-    { userId: 'usr-sneha', name: 'Sneha', email: 'sneha.qa@workflowx.dev', role: 'VIEWER', title: 'QA & Viewer', team: 'QA Team', joinedAt: 'Mar 1, 2026' },
-]
-
-const DEFAULT_SAMPLE_TEAMS = [
-    { id: 'team-frontend', name: 'Frontend Team', description: 'Core web UI, design system, and client architecture', organizationId: 'org-default', members: [{ userId: 'usr-pradeep' }] },
-    { id: 'team-backend', name: 'Backend Team', description: 'APIs, microservices, database, and integrations', organizationId: 'org-default', members: [{ userId: 'usr-anil' }] },
-    { id: 'team-qa', name: 'QA & Testing Team', description: 'End-to-end testing, automation, and release quality', organizationId: 'org-default', members: [{ userId: 'usr-sneha' }] },
-]
-
-const DEFAULT_SAMPLE_PROJECTS = [
-    { id: 'proj-ecommerce', name: 'E-Commerce Website', description: 'Customer store, catalog, and checkout platform', status: 'ACTIVE', priority: 'HIGH', organizationId: 'org-default' },
-    { id: 'proj-payment', name: 'Payment System v2', description: 'Stripe, PayPal, and multi-currency processing', status: 'PLANNING', priority: 'URGENT', organizationId: 'org-default' },
-    { id: 'proj-legacy', name: 'Legacy Web Portal', description: 'Deprecated monolith frontend for historical reporting', status: 'ARCHIVED', priority: 'LOW', organizationId: 'org-default' },
-]
 
 function highlightMatch(text, query) {
     if (!query || !text) return text
@@ -110,6 +84,7 @@ export default function AdminPage() {
     const [ssoEnabled, setSsoEnabled] = useState(true)
     const [passwordMinLength, setPasswordMinLength] = useState('8')
     const [billingPlan, setBillingPlan] = useState('Enterprise Pro Plan')
+    const [activityLogs, setActivityLogs] = useState([])
 
     const [isLoading, setIsLoading] = useState(true)
     const [isActionBusy, setIsActionBusy] = useState(false)
@@ -118,7 +93,7 @@ export default function AdminPage() {
 
     const DEFAULT_ORGANIZATION = {
         id: 'org-default',
-        name: 'Acme Inc.',
+        name: 'Workspace',
         role: 'ADMIN',
         description: 'Primary Workspace',
     }
@@ -146,9 +121,9 @@ export default function AdminPage() {
 
     useEffect(() => {
         if (!organizationId) {
-            setMembers(DEFAULT_SAMPLE_MEMBERS)
-            setProjects(DEFAULT_SAMPLE_PROJECTS)
-            setTeams(DEFAULT_SAMPLE_TEAMS)
+            setMembers([])
+            setProjects([])
+            setTeams([])
             return
         }
         setIsLoading(true)
@@ -172,14 +147,9 @@ export default function AdminPage() {
 
         Promise.all([fetchMembers, fetchProjects, fetchTeams])
             .then(([loadedMembers, loadedProjects, loadedTeams]) => {
-                let mList = Array.isArray(loadedMembers) ? [...loadedMembers] : []
-                DEFAULT_SAMPLE_MEMBERS.forEach((sample) => {
-                    if (!mList.some((m) => (m.email || '').toLowerCase() === sample.email.toLowerCase())) {
-                        mList.push(sample)
-                    }
-                })
-                const pList = Array.isArray(loadedProjects) && loadedProjects.length > 0 ? loadedProjects : [...DEFAULT_SAMPLE_PROJECTS]
-                const tList = Array.isArray(loadedTeams) && loadedTeams.length > 0 ? loadedTeams : [...DEFAULT_SAMPLE_TEAMS]
+                const mList = Array.isArray(loadedMembers) ? [...loadedMembers] : []
+                const pList = Array.isArray(loadedProjects) ? [...loadedProjects] : []
+                const tList = Array.isArray(loadedTeams) ? [...loadedTeams] : []
                 setMembers(mList)
                 setProjects(pList)
                 setTeams(tList)
@@ -469,8 +439,12 @@ export default function AdminPage() {
     }
 
     function handleExportLogs() {
+        if (!activityLogs || activityLogs.length === 0) {
+            setSuccessMessage('No audit logs available to export.')
+            return
+        }
         const csvHeader = 'ID,Actor,Action,Target,Time,Type\n'
-        const csvRows = SAMPLE_ACTIVITY_LOGS.map(
+        const csvRows = activityLogs.map(
             (l) => `"${l.id}","${l.actor}","${l.action}","${l.target}","${l.time}","${l.type}"`
         ).join('\n')
         const blob = new Blob([csvHeader + csvRows], { type: 'text/csv;charset=utf-8;' })
@@ -531,33 +505,33 @@ export default function AdminPage() {
                     <span style={{ font: "700 13px 'Space Grotesk'", letterSpacing: '1px', color: '#ee785e', textTransform: 'uppercase' }}>
                         ADMIN DASHBOARD OVERVIEW
                     </span>
-                    <span style={{ fontSize: '11px', color: '#858996' }}>Workspace: <b>{activeOrg?.name || 'Acme Inc.'}</b></span>
+                    <span style={{ fontSize: '11px', color: '#858996' }}>Workspace: <b>{activeOrg?.name || 'Workspace'}</b></span>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '16px' }}>
                     <div style={{ background: '#292c38', padding: '14px', borderRadius: '8px', borderLeft: '4px solid #ee785e' }}>
                         <p style={{ margin: 0, fontSize: '11px', color: '#858996', textTransform: 'uppercase' }}>Users</p>
-                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>{(members?.length || 0) || 124}</strong>
+                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>{members?.length || 0}</strong>
                     </div>
                     <div style={{ background: '#292c38', padding: '14px', borderRadius: '8px', borderLeft: '4px solid #6d9ee8' }}>
                         <p style={{ margin: 0, fontSize: '11px', color: '#858996', textTransform: 'uppercase' }}>Projects</p>
-                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>{(projects?.length || 0) || 18}</strong>
+                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>{projects?.length || 0}</strong>
                     </div>
                     <div style={{ background: '#292c38', padding: '14px', borderRadius: '8px', borderLeft: '4px solid #f2c85b' }}>
                         <p style={{ margin: 0, fontSize: '11px', color: '#858996', textTransform: 'uppercase' }}>Teams</p>
-                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>{(teams?.length || 0) || 7}</strong>
+                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>{teams?.length || 0}</strong>
                     </div>
                     <div style={{ background: '#292c38', padding: '14px', borderRadius: '8px', borderLeft: '4px solid #72b79a' }}>
                         <p style={{ margin: 0, fontSize: '11px', color: '#858996', textTransform: 'uppercase' }}>Active Tasks</p>
-                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>342</strong>
+                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>{projects?.reduce((acc, p) => acc + (p.tasksSummary?.inProgress || 0) + (p.tasksSummary?.todo || 0), 0) || 0}</strong>
                     </div>
                     <div style={{ background: '#292c38', padding: '14px', borderRadius: '8px', borderLeft: '4px solid #72b79a' }}>
                         <p style={{ margin: 0, fontSize: '11px', color: '#858996', textTransform: 'uppercase' }}>Completed Tasks</p>
-                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>891</strong>
+                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>{projects?.reduce((acc, p) => acc + (p.tasksSummary?.completed || 0), 0) || 0}</strong>
                     </div>
                     <div style={{ background: '#292c38', padding: '14px', borderRadius: '8px', borderLeft: '4px solid #ee785e' }}>
                         <p style={{ margin: 0, fontSize: '11px', color: '#858996', textTransform: 'uppercase' }}>Overdue Tasks</p>
-                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#e96f59' }}>27</strong>
+                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#e96f59' }}>0</strong>
                     </div>
                 </div>
             </section>
@@ -1152,17 +1126,24 @@ export default function AdminPage() {
                     </div>
 
                     <div className="activity-list">
-                        {SAMPLE_ACTIVITY_LOGS.map((log) => (
-                            <div key={log.id} className="activity-item" style={{ alignItems: 'center', padding: '12px 0' }}>
-                                <span className={`activity-avatar ${log.type === 'project' ? 'coral-bg' : log.type === 'task' ? 'blue-bg' : 'green-bg'}`}>
-                                    {log.actor.slice(0, 2).toUpperCase()}
-                                </span>
-                                <p style={{ margin: 0, flex: 1, fontSize: '12px' }}>
-                                    <strong>{log.actor}</strong> {log.action} <b style={{ color: '#20222b' }}>"{log.target}"</b>
-                                    <small style={{ marginTop: '2px' }}>{log.time}</small>
-                                </p>
+                        {activityLogs.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '36px 20px', color: '#858996' }}>
+                                <p style={{ margin: '0 0 6px', fontWeight: 600 }}>No audit logs recorded yet.</p>
+                                <span style={{ fontSize: '12px' }}>Administrative actions, role modifications, and project updates will appear here.</span>
                             </div>
-                        ))}
+                        ) : (
+                            activityLogs.map((log) => (
+                                <div key={log.id} className="activity-item" style={{ alignItems: 'center', padding: '12px 0' }}>
+                                    <span className={`activity-avatar ${log.type === 'project' ? 'coral-bg' : log.type === 'task' ? 'blue-bg' : 'green-bg'}`}>
+                                        {(log.actor || 'SY').slice(0, 2).toUpperCase()}
+                                    </span>
+                                    <p style={{ margin: 0, flex: 1, fontSize: '12px' }}>
+                                        <strong>{log.actor}</strong> {log.action} <b style={{ color: '#20222b' }}>"{log.target}"</b>
+                                        <small style={{ marginTop: '2px' }}>{log.time}</small>
+                                    </p>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </section>
             )}

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import test from 'node:test'
 import { createApp } from '../src/app.js'
+import { saveTasks } from '../src/repositories/taskRepository.js'
 import { createAccessToken } from '../src/utils/token.js'
 
 process.env.AUTH_ACCESS_TOKEN_SECRET = 'test-only-workflowx-secret'
@@ -21,6 +22,11 @@ test('app serves health and tasks without starting the production listener', asy
     const { server, baseUrl } = await startTestServer()
 
     try {
+        await saveTasks([
+            { id: 1, title: 'Audit API permissions', status: 'Todo', priority: 'High' },
+            { id: 2, title: 'Security review', status: 'Todo', priority: 'High' },
+        ])
+
         const rootResponse = await fetch(`${baseUrl}/`)
         const root = await rootResponse.json()
         const healthResponse = await fetch(`${baseUrl}/health`)
@@ -63,6 +69,7 @@ test('app serves health and tasks without starting the production listener', asy
         assert.equal(searchTasks.meta.total, 1)
         assert.equal(searchTasks.data[0].title, 'Audit API permissions')
     } finally {
+        await saveTasks([])
         await stopTestServer(server)
     }
 })
