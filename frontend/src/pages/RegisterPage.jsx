@@ -35,14 +35,13 @@ function RegisterPage() {
     const [name, setName] = useState('')
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
-    const [saveCredentials, setSaveCredentials] = useState(true)
+    const [pendingSaveModal, setPendingSaveModal] = useState(null)
     const [selectedRole, setSelectedRole] = useState('ADMIN')
     const [adminKey, setAdminKey] = useState('')
     const [showAdminKey, setShowAdminKey] = useState(false)
     const [workspaceName, setWorkspaceName] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [error, setError] = useState('')
-    const [signupSuccess, setSignupSuccess] = useState(null)
 
     // Realtime Email OTP Verification States
     const [otpSent, setOtpSent] = useState(false)
@@ -165,41 +164,11 @@ function RegisterPage() {
             // Save role preference in localStorage for client-side role presentation
             localStorage.setItem('workflowx_registered_role', selectedRole)
 
-            // Save email and password if the save option is selected
-            if (saveCredentials) {
-                localStorage.setItem(
-                    'workflowx_saved_credentials',
-                    JSON.stringify({
-                        email: email.trim(),
-                        password,
-                        name: name.trim(),
-                        role: selectedRole,
-                        savedAt: new Date().toISOString(),
-                    })
-                )
-
-                // Native browser password store (if supported by environment)
-                if (window.PasswordCredential && navigator.credentials?.store) {
-                    try {
-                        const cred = new window.PasswordCredential({
-                            id: email.trim(),
-                            password,
-                            name: name.trim(),
-                        })
-                        navigator.credentials.store(cred).catch(() => null)
-                    } catch {
-                        // ignore unsupported browser environments
-                    }
-                }
-            } else {
-                localStorage.removeItem('workflowx_saved_credentials')
-            }
-
-            // Show post-signup confirmation dialog
-            setSignupSuccess({
+            // Trigger popup to ask user if they want to save credentials on this device (same as LoginPage)
+            setPendingSaveModal({
                 name: name.trim(),
                 email: email.trim(),
-                saved: saveCredentials,
+                password,
                 role: selectedRole,
             })
         } catch (requestError) {
@@ -207,6 +176,42 @@ function RegisterPage() {
         } finally {
             setIsSubmitting(false)
         }
+    }
+
+    function handleConfirmSave() {
+        if (pendingSaveModal) {
+            localStorage.setItem(
+                'workflowx_saved_credentials',
+                JSON.stringify({
+                    email: pendingSaveModal.email,
+                    password: pendingSaveModal.password,
+                    name: pendingSaveModal.name,
+                    role: pendingSaveModal.role,
+                    savedAt: new Date().toISOString(),
+                })
+            )
+
+            // Native browser password store (if supported by environment)
+            if (window.PasswordCredential && navigator.credentials?.store) {
+                try {
+                    const cred = new window.PasswordCredential({
+                        id: pendingSaveModal.email,
+                        password: pendingSaveModal.password,
+                        name: pendingSaveModal.name,
+                    })
+                    navigator.credentials.store(cred).catch(() => null)
+                } catch {
+                    // ignore unsupported browser environments
+                }
+            }
+        }
+        setPendingSaveModal(null)
+        navigate('/', { replace: true })
+    }
+
+    function handleDismissSave() {
+        setPendingSaveModal(null)
+        navigate('/', { replace: true })
     }
 
     return (
@@ -603,54 +608,6 @@ function RegisterPage() {
                         />
                     </label>
 
-                    {/* Save Option of Email and Password */}
-                    <div
-                        id="save-credentials-option"
-                        style={{
-                            margin: '12px 0 6px',
-                            padding: '10px 14px',
-                            background: saveCredentials ? '#f0fdf4' : '#f8fafc',
-                            border: saveCredentials ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
-                            borderRadius: '8px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease',
-                        }}
-                        onClick={() => setSaveCredentials(!saveCredentials)}
-                    >
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
-                            <input
-                                id="register-save-credentials-checkbox"
-                                type="checkbox"
-                                checked={saveCredentials}
-                                onChange={(e) => setSaveCredentials(e.target.checked)}
-                                onClick={(e) => e.stopPropagation()}
-                                style={{ accentColor: '#16a34a', width: '16px', height: '16px', cursor: 'pointer' }}
-                            />
-                            <div>
-                                <strong style={{ fontSize: '12px', color: saveCredentials ? '#15803d' : '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span>💾</span> Save email & password after signup
-                                </strong>
-                                <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>
-                                    Remember login credentials on this device
-                                </p>
-                            </div>
-                        </label>
-                        <span
-                            style={{
-                                fontSize: '10.5px',
-                                fontWeight: 700,
-                                padding: '2px 8px',
-                                borderRadius: '4px',
-                                background: saveCredentials ? '#dcfce7' : '#f1f5f9',
-                                color: saveCredentials ? '#15803d' : '#64748b',
-                            }}
-                        >
-                            {saveCredentials ? 'Enabled' : 'Off'}
-                        </span>
-                    </div>
 
                     {error && <p className="service-error" role="alert">{error}</p>}
 
@@ -676,127 +633,119 @@ function RegisterPage() {
                     Already have an account? <Link to="/login">Sign in</Link>
                 </p>
 
-                {/* Post-Signup Credentials Saved Confirmation Modal */}
-                {signupSuccess && (
+                {/* Save Credentials Popup Modal (Same as LoginPage) */}
+                {pendingSaveModal && (
                     <div
-                        id="signup-success-modal"
-                        className="modal-backdrop"
+                        id="save-credentials-popup-overlay"
                         style={{
                             position: 'fixed',
                             inset: 0,
-                            background: 'rgba(15, 23, 42, 0.65)',
+                            backgroundColor: 'rgba(15, 23, 42, 0.65)',
                             backdropFilter: 'blur(4px)',
-                            display: 'grid',
-                            placeItems: 'center',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
                             zIndex: 9999,
                             padding: '16px',
+                            animation: 'fadeIn 0.15s ease-out',
                         }}
                     >
                         <div
-                            className="panel"
+                            id="save-credentials-popup"
                             style={{
-                                maxWidth: '420px',
-                                width: '100%',
-                                padding: '28px 24px',
-                                textAlign: 'center',
                                 background: '#ffffff',
-                                borderRadius: '12px',
-                                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)',
-                                animation: 'fadeIn 0.2s ease-out',
+                                borderRadius: '16px',
+                                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                                maxWidth: '400px',
+                                width: '100%',
+                                padding: '24px',
+                                textAlign: 'center',
+                                border: '1px solid #e2e8f0',
                             }}
                         >
                             <div
                                 style={{
-                                    width: '56px',
-                                    height: '56px',
-                                    borderRadius: '50%',
-                                    background: '#ecfdf5',
-                                    color: '#059669',
-                                    fontSize: '28px',
-                                    display: 'grid',
-                                    placeItems: 'center',
+                                    width: '48px',
+                                    height: '48px',
+                                    borderRadius: '12px',
+                                    background: '#f0fdf4',
+                                    border: '1px solid #bbf7d0',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '24px',
                                     margin: '0 auto 16px',
                                 }}
                             >
-                                ✓
+                                💾
                             </div>
-                            <h2 style={{ margin: '0 0 6px', fontSize: '20px', color: '#111827' }}>
-                                Account Created Successfully!
-                            </h2>
-                            <p style={{ fontSize: '13px', color: '#6b7280', margin: '0 0 16px', lineHeight: '1.5' }}>
-                                Welcome to WorkFlowX, <b>{signupSuccess.name}</b>.
+
+                            <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>
+                                Save Credentials?
+                            </h3>
+
+                            <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#64748b', lineHeight: 1.5 }}>
+                                Would you like to save credentials for <strong>{pendingSaveModal.email}</strong> on this device for faster sign-in?
                             </p>
 
                             <div
                                 style={{
-                                    background: '#f0fdf4',
-                                    border: '1px solid #bbf7d0',
+                                    background: '#f8fafc',
+                                    border: '1px solid #e2e8f0',
                                     borderRadius: '8px',
-                                    padding: '8px 12px',
-                                    marginBottom: '14px',
-                                    fontSize: '11.5px',
-                                    color: '#15803d',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: '6px',
+                                    padding: '10px 14px',
+                                    marginBottom: '20px',
+                                    textAlign: 'left',
+                                    fontSize: '12px',
                                 }}
                             >
-                                <span>🛡️</span>
-                                <span>Email <b>{signupSuccess.email}</b> verified in real-time</span>
+                                <div style={{ color: '#64748b', marginBottom: '2px' }}>Email:</div>
+                                <div style={{ fontWeight: 600, color: '#1e293b' }}>{pendingSaveModal.email}</div>
+                                <div style={{ color: '#64748b', marginTop: '6px', marginBottom: '2px' }}>Password:</div>
+                                <div style={{ letterSpacing: '2px', color: '#475569' }}>••••••••••••</div>
                             </div>
 
-                            {signupSuccess.saved ? (
-                                <div
+                            <div style={{ display: 'flex', gap: '10px' }}>
+                                <button
+                                    id="save-credentials-dismiss-btn"
+                                    type="button"
+                                    onClick={handleDismissSave}
                                     style={{
-                                        background: '#f0fdf4',
-                                        border: '1px solid #bbf7d0',
+                                        flex: 1,
+                                        padding: '10px 16px',
                                         borderRadius: '8px',
-                                        padding: '12px 14px',
-                                        marginBottom: '20px',
-                                        textAlign: 'left',
-                                        fontSize: '12px',
-                                        color: '#166534',
-                                    }}
-                                >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, marginBottom: '4px' }}>
-                                        <span>💾</span> Email & Password Saved
-                                    </div>
-                                    <div style={{ lineHeight: '1.4' }}>
-                                        Your email (<b>{signupSuccess.email}</b>) and password are saved on this device. Future sign-ins will automatically pre-fill for one-click access.
-                                    </div>
-                                </div>
-                            ) : (
-                                <div
-                                    style={{
-                                        background: '#f8fafc',
-                                        border: '1px solid #e2e8f0',
-                                        borderRadius: '8px',
-                                        padding: '12px 14px',
-                                        marginBottom: '20px',
-                                        textAlign: 'left',
-                                        fontSize: '12px',
+                                        border: '1px solid #cbd5e1',
+                                        background: '#ffffff',
                                         color: '#475569',
+                                        fontSize: '13px',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease',
                                     }}
                                 >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, marginBottom: '4px' }}>
-                                        <span>ℹ️</span> Credentials Not Saved
-                                    </div>
-                                    <div style={{ lineHeight: '1.4' }}>
-                                        Your login details were not saved on this device. You will enter them manually when signing in.
-                                    </div>
-                                </div>
-                            )}
-
-                            <button
-                                id="signup-continue-btn"
-                                type="button"
-                                className="primary-button"
-                                style={{ width: '100%', padding: '12px', fontSize: '14px', fontWeight: 600 }}
-                                onClick={() => navigate('/', { replace: true })}
-                            >
-                                Continue to Workspace ➔
-                            </button>
+                                    Not Now
+                                </button>
+                                <button
+                                    id="save-credentials-confirm-btn"
+                                    type="button"
+                                    onClick={handleConfirmSave}
+                                    style={{
+                                        flex: 1,
+                                        padding: '10px 16px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: '#16a34a',
+                                        color: '#ffffff',
+                                        fontSize: '13px',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        boxShadow: '0 2px 4px rgba(22, 163, 74, 0.25)',
+                                        transition: 'all 0.15s ease',
+                                    }}
+                                >
+                                    Save Credentials
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
