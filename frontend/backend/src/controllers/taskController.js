@@ -1,4 +1,4 @@
-export function createTaskController({ projectTaskService, createTask, listTasks, updateTask, sendJson, readBody, getIO }) {
+export function createTaskController({ projectTaskService, createTask, listTasks, updateTask, deleteTask, sendJson, readBody, getIO }) {
     return {
         async listProjectTasks(request, response, user, projectId) {
             const data = await projectTaskService.list(projectId, user.sub)
@@ -39,6 +39,13 @@ export function createTaskController({ projectTaskService, createTask, listTasks
             const data = await updateTask(taskId, input)
             const io = getIO ? getIO() : null
             if (io) io.emit('task:updated', data)
+            sendJson(response, 200, { data })
+        },
+
+        async deleteGeneralTask(request, response, taskId) {
+            const data = await deleteTask(taskId)
+            const io = getIO ? getIO() : null
+            if (io) io.emit('task:deleted', { id: taskId })
             sendJson(response, 200, { data })
         },
     }

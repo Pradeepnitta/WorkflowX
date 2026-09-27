@@ -1,6 +1,6 @@
 import { readTasks, saveTasks } from '../repositories/taskRepository.js'
 
-const allowedPriorities = new Set(['Low', 'Medium', 'High'])
+const allowedPriorities = new Set(['Low', 'Medium', 'High', 'Critical'])
 
 function matchesFilter(value, filter) {
     return !filter || String(value).toLowerCase() === filter.toLowerCase()
@@ -100,5 +100,18 @@ export async function updateTask(id, input) {
     tasks[index] = updated
     await saveTasks(tasks)
     return updated
+}
+
+export async function deleteTask(id) {
+    const tasks = await readTasks()
+    const targetId = Number(id) || String(id)
+    const filtered = tasks.filter((t) => t.id !== targetId && String(t.id) !== String(targetId))
+    if (filtered.length === tasks.length) {
+        const error = new Error('Task not found')
+        error.statusCode = 404
+        throw error
+    }
+    await saveTasks(filtered)
+    return { success: true, id: targetId }
 }
 

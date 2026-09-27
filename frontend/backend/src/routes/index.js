@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { createTask, listTasks, updateTask } from '../services/taskService.js'
+import { createTask, listTasks, updateTask, deleteTask } from '../services/taskService.js'
 import { checkRedisHealth } from '../config/redis.js'
 import { pool } from '../config/db.js'
 import { getIO } from '../sockets/socketServer.js'
@@ -96,7 +96,7 @@ export function createRoutes({
     const orgController = createOrganizationController({ organizationService, invitationService, invitationAcceptanceService, sendJson, readBody })
     const teamController = createTeamController({ teamService, sendJson, readBody })
     const projectController = createProjectController({ projectService, projectMemberService, sendJson, readBody })
-    const taskController = createTaskController({ projectTaskService, createTask, listTasks, updateTask, sendJson, readBody, getIO })
+    const taskController = createTaskController({ projectTaskService, createTask, listTasks, updateTask, deleteTask, sendJson, readBody, getIO })
     const analyticsController = createAnalyticsController({ analyticsService, sendJson })
     const notificationController = createNotificationController({ notificationService, sendJson })
     const searchController = createSearchController({ searchService, sendJson })

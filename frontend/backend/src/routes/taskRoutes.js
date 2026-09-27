@@ -27,5 +27,9 @@ export function registerTaskRoutes({ router, taskController }) {
     router.addRegex('PATCH', /^\/api\/tasks\/([^/]+)$/, (req, res, matches) => {
         return taskController.updateGeneralTask(req, res, matches[1])
     })
+
+    router.addRegex('DELETE', /^\/api\/tasks\/([^/]+)$/, (req, res, matches) => {
+        return taskController.deleteGeneralTask(req, res, matches[1])
+    })
 }
 

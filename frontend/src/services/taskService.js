@@ -41,3 +41,10 @@ export async function updateTaskDetails(taskId, updates) {
     return payload.data
 }
 
+export async function deleteTask(taskId) {
+    const payload = await request(`/api/tasks/${taskId}`, {
+        method: 'DELETE',
+    })
+    return payload.data
+}
+

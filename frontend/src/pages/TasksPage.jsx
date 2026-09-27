@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { createTask, getTasks, updateTaskStatus, updateTaskDetails } from '../services/taskService.js'
+import { createTask, getTasks, updateTaskStatus, updateTaskDetails, deleteTask } from '../services/taskService.js'
 import { getOrganizations, getOrganizationMembers } from '../services/organizationService.js'
 import { getProjects } from '../services/projectService.js'
 import { getSocket } from '../services/socketService.js'
@@ -34,6 +34,8 @@ export default function TasksPage() {
     const [assigneeFilter, setAssigneeFilter] = useState('ALL')
     const [priorityFilter, setPriorityFilter] = useState('ALL')
     const [projectFilter, setProjectFilter] = useState(projectQuery || 'ALL')
+    const [searchQuery, setSearchQuery] = useState('')
+    const [onlyMyTasks, setOnlyMyTasks] = useState(false)
 
     // Task Creation Form
     const [title, setTitle] = useState('')
@@ -44,13 +46,15 @@ export default function TasksPage() {
     const [suggestionReason, setSuggestionReason] = useState('')
     const [assigningSuggestionId, setAssigningSuggestionId] = useState(null)
     const [assigneeForSuggestion, setAssigneeForSuggestion] = useState('')
-    const [onlyMyTasks, setOnlyMyTasks] = useState(false)
 
     // Selected Task Modal State
     const [activeTask, setActiveTask] = useState(null)
     const [commentsMap, setCommentsMap] = useState({})
     const [attachmentsMap, setAttachmentsMap] = useState({})
     const [newAttachmentName, setNewAttachmentName] = useState('')
+    const [newComment, setNewComment] = useState('')
+    const [isEditingTitle, setIsEditingTitle] = useState(false)
+    const [editingTitleText, setEditingTitleText] = useState('')
 
     // Rich Attachment Preview Modal State
     const [previewFile, setPreviewFile] = useState(null)
@@ -97,6 +101,14 @@ export default function TasksPage() {
             }
         }
 
+        function handleTaskDeleted(payload) {
+            const delId = payload?.id || payload?.taskId
+            setTasks((prev) => prev.filter((t) => t.id !== delId && String(t.id) !== String(delId)))
+            if (activeTask && (activeTask.id === delId || String(activeTask.id) === String(delId))) {
+                setActiveTask(null)
+            }
+        }
+
         function handleCommentCreated(payload) {
             if (activeTask && String(activeTask.id) === String(payload?.taskId)) {
                 const newCmt = {
@@ -114,11 +126,13 @@ export default function TasksPage() {
 
         socket.on('task:created', handleTaskCreated)
         socket.on('task:updated', handleTaskUpdated)
+        socket.on('task:deleted', handleTaskDeleted)
         socket.on('comment:created', handleCommentCreated)
 
         return () => {
             socket.off('task:created', handleTaskCreated)
             socket.off('task:updated', handleTaskUpdated)
+            socket.off('task:deleted', handleTaskDeleted)
             socket.off('comment:created', handleCommentCreated)
         }
     }, [activeTask])
@@ -173,6 +187,7 @@ export default function TasksPage() {
             const matchesAssignee = assigneeFilter === 'ALL' || task.assignee === assigneeFilter
             const matchesPriority = priorityFilter === 'ALL' || (task.priority || '').toLowerCase() === priorityFilter.toLowerCase()
             const matchesProject = projectFilter === 'ALL' || (task.project || '').toLowerCase().includes(projectFilter.toLowerCase())
+            const matchesSearch = !searchQuery.trim() || (task.title || '').toLowerCase().includes(searchQuery.toLowerCase().trim())
 
             const matchesOnlyMy = !onlyMyTasks || (
                 task.assignee && (
@@ -182,18 +197,27 @@ export default function TasksPage() {
                 )
             )
 
-            return matchesStatus && matchesAssignee && matchesPriority && matchesProject && matchesOnlyMy
+            return matchesStatus && matchesAssignee && matchesPriority && matchesProject && matchesOnlyMy && matchesSearch
         })
-    }, [filter, assigneeFilter, priorityFilter, projectFilter, onlyMyTasks, currentUser, tasks])
+    }, [filter, assigneeFilter, priorityFilter, projectFilter, onlyMyTasks, searchQuery, currentUser, tasks])
 
     // Status counts for Manager/Developer tracking
     const statusCounts = useMemo(() => {
         const boardTasks = tasks.filter((t) => (!t.isSuggestion || t.approvalStatus === 'APPROVED') && t.approvalStatus !== 'REJECTED')
+        const todo = boardTasks.filter((t) => t.status === 'Todo').length
+        const inProgress = boardTasks.filter((t) => t.status === 'In progress').length
+        const review = boardTasks.filter((t) => t.status === 'Review').length
+        const done = boardTasks.filter((t) => t.status === 'Done').length
+        const total = todo + inProgress + review + done
+        const completionRate = total > 0 ? Math.round((done / total) * 100) : 0
+
         return {
-            todo: boardTasks.filter((t) => t.status === 'Todo').length,
-            inProgress: boardTasks.filter((t) => t.status === 'In progress').length,
-            review: boardTasks.filter((t) => t.status === 'Review').length,
-            done: boardTasks.filter((t) => t.status === 'Done').length,
+            todo,
+            inProgress,
+            review,
+            done,
+            total,
+            completionRate,
             pendingSuggestions: pendingSuggestions.length,
         }
     }, [tasks, pendingSuggestions])
@@ -334,6 +358,56 @@ export default function TasksPage() {
             setTasks((prev) =>
                 prev.map((t) => (t.id === taskId ? { ...t, status: currentTask.status } : t))
             )
+        }
+    }
+
+    function openTaskModal(task) {
+        setActiveTask(task)
+        setEditingTitleText(task.title || '')
+        setIsEditingTitle(false)
+    }
+
+    async function handleDeleteTask(taskId, e) {
+        if (e) e.stopPropagation()
+        const target = tasks.find((t) => t.id === taskId || String(t.id) === String(taskId))
+        const taskTitle = target?.title || 'this task'
+        if (!window.confirm(`Are you sure you want to permanently delete "${taskTitle}"?`)) return
+        setError('')
+        try {
+            await deleteTask(taskId)
+            setTasks((prev) => prev.filter((t) => t.id !== taskId && String(t.id) !== String(taskId)))
+            if (activeTask && (activeTask.id === taskId || String(activeTask.id) === String(taskId))) {
+                setActiveTask(null)
+            }
+            setSuccessMessage(`✓ Task "${taskTitle}" was deleted successfully.`)
+        } catch (err) {
+            setError(err.message || 'Failed to delete task')
+        }
+    }
+
+    async function handleSaveTitle() {
+        if (!activeTask || !editingTitleText.trim()) return
+        const newTitle = editingTitleText.trim()
+        try {
+            await updateTaskDetails(activeTask.id, { title: newTitle })
+            setActiveTask((prev) => ({ ...prev, title: newTitle }))
+            setTasks((prev) => prev.map((t) => (t.id === activeTask.id ? { ...t, title: newTitle } : t)))
+            setIsEditingTitle(false)
+            setSuccessMessage('Task title updated successfully.')
+        } catch (err) {
+            setError(err.message || 'Failed to update task title')
+        }
+    }
+
+    async function handleUpdateActiveTaskField(field, value) {
+        if (!activeTask) return
+        try {
+            await updateTaskDetails(activeTask.id, { [field]: value })
+            setActiveTask((prev) => ({ ...prev, [field]: value }))
+            setTasks((prev) => prev.map((t) => (t.id === activeTask.id ? { ...t, [field]: value } : t)))
+            setSuccessMessage(`Updated task ${field}.`)
+        } catch (err) {
+            setError(err.message || `Failed to update ${field}`)
         }
     }
 
@@ -543,39 +617,83 @@ export default function TasksPage() {
             )}
 
             {/* Task Pipeline Metrics Header */}
-            <section className="stats-grid" aria-label="Task progress metrics" style={{ marginBottom: '20px' }}>
-                <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setFilter('Todo')}>
-                    <span className="stat-icon yellow">◌</span>
+            <section className="stats-grid" aria-label="Task progress metrics" style={{ marginBottom: '14px' }}>
+                <div
+                    className="stat-card"
+                    style={{
+                        cursor: 'pointer',
+                        border: filter === 'Todo' ? '2px solid #0284c7' : '1px solid #e2e8f0',
+                        transform: filter === 'Todo' ? 'translateY(-2px)' : 'none',
+                        boxShadow: filter === 'Todo' ? '0 8px 16px -4px rgba(2, 132, 199, 0.2)' : '0 1px 3px rgba(0,0,0,0.05)',
+                        transition: 'all 0.2s ease',
+                    }}
+                    onClick={() => setFilter(filter === 'Todo' ? 'All tasks' : 'Todo')}
+                >
+                    <span className="stat-icon yellow" style={{ background: '#e0f2fe', color: '#0284c7' }}>◌</span>
                     <div>
-                        <p>TODO</p>
+                        <p style={{ color: '#0369a1' }}>TODO</p>
                         <strong>{statusCounts.todo}</strong>
                         <small className="neutral">Awaiting start</small>
                     </div>
                 </div>
-                <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setFilter('In progress')}>
-                    <span className="stat-icon blue">◷</span>
+
+                <div
+                    className="stat-card"
+                    style={{
+                        cursor: 'pointer',
+                        border: filter === 'In progress' ? '2px solid #d97706' : '1px solid #e2e8f0',
+                        transform: filter === 'In progress' ? 'translateY(-2px)' : 'none',
+                        boxShadow: filter === 'In progress' ? '0 8px 16px -4px rgba(217, 119, 6, 0.2)' : '0 1px 3px rgba(0,0,0,0.05)',
+                        transition: 'all 0.2s ease',
+                    }}
+                    onClick={() => setFilter(filter === 'In progress' ? 'All tasks' : 'In progress')}
+                >
+                    <span className="stat-icon blue" style={{ background: '#fef3c7', color: '#d97706' }}>◷</span>
                     <div>
-                        <p>IN PROGRESS</p>
+                        <p style={{ color: '#b45309' }}>IN PROGRESS</p>
                         <strong>{statusCounts.inProgress}</strong>
-                        <small className="positive">Active development</small>
+                        <small className="positive" style={{ color: '#d97706' }}>Active development</small>
                     </div>
                 </div>
-                <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setFilter('Review')}>
-                    <span className="stat-icon coral">◎</span>
+
+                <div
+                    className="stat-card"
+                    style={{
+                        cursor: 'pointer',
+                        border: filter === 'Review' ? '2px solid #7c3aed' : '1px solid #e2e8f0',
+                        transform: filter === 'Review' ? 'translateY(-2px)' : 'none',
+                        boxShadow: filter === 'Review' ? '0 8px 16px -4px rgba(124, 58, 237, 0.2)' : '0 1px 3px rgba(0,0,0,0.05)',
+                        transition: 'all 0.2s ease',
+                    }}
+                    onClick={() => setFilter(filter === 'Review' ? 'All tasks' : 'Review')}
+                >
+                    <span className="stat-icon coral" style={{ background: '#ede9fe', color: '#7c3aed' }}>◎</span>
                     <div>
-                        <p>IN REVIEW</p>
+                        <p style={{ color: '#6d28d9' }}>IN REVIEW</p>
                         <strong>{statusCounts.review}</strong>
                         <small className="neutral">QA & code review</small>
                     </div>
                 </div>
-                <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setFilter('Done')}>
-                    <span className="stat-icon green">✓</span>
+
+                <div
+                    className="stat-card"
+                    style={{
+                        cursor: 'pointer',
+                        border: filter === 'Done' ? '2px solid #059669' : '1px solid #e2e8f0',
+                        transform: filter === 'Done' ? 'translateY(-2px)' : 'none',
+                        boxShadow: filter === 'Done' ? '0 8px 16px -4px rgba(5, 150, 105, 0.2)' : '0 1px 3px rgba(0,0,0,0.05)',
+                        transition: 'all 0.2s ease',
+                    }}
+                    onClick={() => setFilter(filter === 'Done' ? 'All tasks' : 'Done')}
+                >
+                    <span className="stat-icon green" style={{ background: '#d1fae5', color: '#059669' }}>✓</span>
                     <div>
-                        <p>COMPLETED</p>
+                        <p style={{ color: '#047857' }}>COMPLETED</p>
                         <strong>{statusCounts.done}</strong>
                         <small className="positive">Delivered tasks</small>
                     </div>
                 </div>
+
                 {statusCounts.pendingSuggestions > 0 && (
                     <div className="stat-card" style={{ cursor: 'pointer', background: '#fffdf5', borderColor: '#fde68a' }}>
                         <span className="stat-icon yellow">💡</span>
@@ -587,6 +705,32 @@ export default function TasksPage() {
                     </div>
                 )}
             </section>
+
+            {/* Overall Workflow Progress Bar */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 16px', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: '220px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>
+                        Sprint Completion:
+                    </span>
+                    <div style={{ flex: 1, height: '8px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
+                        <div
+                            style={{
+                                width: `${statusCounts.completionRate}%`,
+                                height: '100%',
+                                background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
+                                borderRadius: '4px',
+                                transition: 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
+                            }}
+                        />
+                    </div>
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#059669', minWidth: '36px' }}>
+                        {statusCounts.completionRate}%
+                    </span>
+                </div>
+                <div style={{ fontSize: '11px', color: '#64748b' }}>
+                    <span>{statusCounts.done} of {statusCounts.total} tasks completed</span>
+                </div>
+            </div>
 
             {/* MANAGER REVIEW QUEUE: TASK PROPOSALS SUBMITTED BY DEVELOPERS */}
             {canAssign && pendingSuggestions.length > 0 && (
@@ -777,8 +921,8 @@ export default function TasksPage() {
                 </section>
             )}
 
-            {/* Filter Tabs and Quick Selectors */}
-            <section className="task-page-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', background: '#fff', padding: '10px 18px', borderRadius: '10px', border: '1px solid #ebe9e5', marginBottom: '20px' }}>
+            {/* Filter Tabs, Search Bar and Quick Selectors */}
+            <section className="task-page-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', background: '#fff', padding: '12px 18px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                     <div className="filter-tabs">
                         {STATUSES.map((item) => (
@@ -787,24 +931,77 @@ export default function TasksPage() {
                             </button>
                         ))}
                     </div>
+
+                    {/* Modern Search Input */}
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <span style={{ position: 'absolute', left: '10px', fontSize: '13px', color: '#94a3b8', pointerEvents: 'none' }}>🔍</span>
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Filter by title, project, assignee..."
+                            style={{
+                                padding: '7px 28px 7px 30px',
+                                fontSize: '12px',
+                                borderRadius: '8px',
+                                border: '1px solid #cbd5e1',
+                                background: '#f8fafc',
+                                width: '230px',
+                                transition: 'all 0.2s ease',
+                                outline: 'none',
+                                color: '#1e293b',
+                            }}
+                            onFocus={(e) => {
+                                e.target.style.borderColor = '#2563eb'
+                                e.target.style.background = '#ffffff'
+                                e.target.style.boxShadow = '0 0 0 3px rgba(37, 99, 235, 0.1)'
+                            }}
+                            onBlur={(e) => {
+                                e.target.style.borderColor = '#cbd5e1'
+                                e.target.style.background = '#f8fafc'
+                                e.target.style.boxShadow = 'none'
+                            }}
+                        />
+                        {searchQuery && (
+                            <button
+                                type="button"
+                                onClick={() => setSearchQuery('')}
+                                style={{
+                                    position: 'absolute',
+                                    right: '8px',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#94a3b8',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                    padding: 0,
+                                }}
+                                title="Clear search"
+                            >
+                                ✕
+                            </button>
+                        )}
+                    </div>
+
                     <button
                         type="button"
                         onClick={() => setOnlyMyTasks(!onlyMyTasks)}
                         style={{
-                            padding: '6px 12px',
-                            fontSize: '11px',
-                            borderRadius: '6px',
+                            padding: '7px 13px',
+                            fontSize: '11.5px',
+                            borderRadius: '8px',
                             border: onlyMyTasks ? '1px solid #2563eb' : '1px solid #d1d5db',
                             background: onlyMyTasks ? '#eff6ff' : '#fff',
                             color: onlyMyTasks ? '#1d4ed8' : '#374151',
-                            fontWeight: onlyMyTasks ? 700 : 'normal',
+                            fontWeight: onlyMyTasks ? 700 : '500',
                             cursor: 'pointer',
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '5px',
+                            gap: '6px',
+                            transition: 'all 0.15s ease',
                         }}
                     >
-                        <span>👤</span> {onlyMyTasks ? '✓ Showing My Tasks Only' : 'Filter: My Tasks Only'}
+                        <span>👤</span> {onlyMyTasks ? '✓ My Tasks Only' : 'My Tasks Only'}
                     </button>
                 </div>
 
@@ -822,7 +1019,7 @@ export default function TasksPage() {
                                 setSearchParams({ project: val })
                             }
                         }}
-                        style={{ padding: '6px 10px', fontSize: '11px', borderRadius: '6px', border: '1px solid #ebe9e5', background: projectFilter !== 'ALL' ? '#f0f5ff' : '#fff', fontWeight: projectFilter !== 'ALL' ? '600' : 'normal', color: projectFilter !== 'ALL' ? '#2563eb' : '#1f2937' }}
+                        style={{ padding: '7px 11px', fontSize: '11.5px', borderRadius: '8px', border: '1px solid #cbd5e1', background: projectFilter !== 'ALL' ? '#eff6ff' : '#fff', fontWeight: projectFilter !== 'ALL' ? '600' : 'normal', color: projectFilter !== 'ALL' ? '#1d4ed8' : '#1f2937' }}
                     >
                         <option value="ALL">All Projects</option>
                         {projects.map((p) => (
@@ -840,14 +1037,14 @@ export default function TasksPage() {
                                 searchParams.delete('project')
                                 setSearchParams(searchParams)
                             }}
-                            style={{ background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: '6px', padding: '4px 8px', fontSize: '10px', cursor: 'pointer' }}
+                            style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '5px 10px', fontSize: '11px', cursor: 'pointer', color: '#475569' }}
                             title="Clear project filter"
                         >
                             ✕ Clear {projectFilter}
                         </button>
                     )}
 
-                    <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} style={{ padding: '6px 10px', fontSize: '11px', borderRadius: '6px', border: '1px solid #ebe9e5', background: '#fff' }}>
+                    <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} style={{ padding: '7px 11px', fontSize: '11.5px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#1f2937' }}>
                         <option value="ALL">All Assignees</option>
                         {members.map((m) => (
                             <option key={m.userId} value={m.name || m.email}>
@@ -856,7 +1053,7 @@ export default function TasksPage() {
                         ))}
                     </select>
 
-                    <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} style={{ padding: '6px 10px', fontSize: '11px', borderRadius: '6px', border: '1px solid #ebe9e5', background: '#fff' }}>
+                    <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} style={{ padding: '7px 11px', fontSize: '11.5px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#1f2937' }}>
                         <option value="ALL">All Priorities</option>
                         {PRIORITIES.map((p) => (
                             <option key={p} value={p}>{p}</option>
@@ -995,29 +1192,47 @@ export default function TasksPage() {
 
                 {/* View Mode 1: Interactive HTML5 Drag-and-Drop Kanban Board */}
                 {viewMode === 'kanban' ? (
-                    <section className="project-list-panel panel" style={{ flex: '1 1 700px', overflowX: 'auto' }}>
-                        <div className="panel-heading" style={{ marginBottom: '14px' }}>
+                    <section className="project-list-panel panel" style={{ flex: '1 1 700px', overflowX: 'auto', background: 'transparent', border: 'none', boxShadow: 'none', padding: 0 }}>
+                        <div className="panel-heading" style={{ marginBottom: '16px', background: '#fff', padding: '14px 18px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
                             <div>
-                                <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span>Interactive Signboard</span>
-                                    <span style={{ fontSize: '11px', background: '#fee2e2', color: '#ee785e', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>HTML5 Drag & Drop</span>
+                                <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
+                                    <span>Interactive Kanban Board</span>
+                                    <span style={{ fontSize: '11px', background: 'linear-gradient(135deg, #fee2e2 0%, #ffedd5 100%)', color: '#ea580c', padding: '2px 8px', borderRadius: '12px', fontWeight: 700, border: '1px solid #fed7aa' }}>
+                                        ✦ Live Sync & DnD
+                                    </span>
                                 </h2>
-                                <p>Drag and drop task cards across columns to instantly update execution status.</p>
+                                <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>
+                                    Drag & drop cards across stages or use quick-advance buttons to update lifecycle.
+                                </p>
                             </div>
-                            <strong style={{ fontSize: '13px', color: '#4b5563' }}>{visibleTasks.length} Visible Tasks</strong>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '11.5px', fontWeight: 600, color: '#475569', background: '#f8fafc', padding: '4px 12px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                                    🎯 {visibleTasks.length} Visible Tasks
+                                </span>
+                            </div>
                         </div>
 
                         {isLoading && <p className="loading-state">Loading tasks...</p>}
 
-                        <div className="kanban" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(210px, 1fr))', gap: '14px', alignItems: 'start' }}>
+                        <div className="kanban-board-container">
                             {KANBAN_COLUMNS.map((column) => {
                                 const colTasks = visibleTasks.filter((t) => t.status === column)
                                 const isDragOver = dragOverCol === column
 
+                                const themeClass =
+                                    column === 'Todo' ? 'col-theme-todo' :
+                                    column === 'In progress' ? 'col-theme-inprogress' :
+                                    column === 'Review' ? 'col-theme-review' : 'col-theme-done'
+
+                                const colIcon =
+                                    column === 'Todo' ? '📋' :
+                                    column === 'In progress' ? '⚡' :
+                                    column === 'Review' ? '👁' : '✓'
+
                                 return (
                                     <div
                                         key={column}
-                                        className={`kanban-column ${isDragOver ? 'drag-over' : ''}`}
+                                        className={`kanban-col-wrapper ${themeClass} ${isDragOver ? 'is-drag-over' : ''}`}
                                         onDragOver={(e) => {
                                             e.preventDefault()
                                             if (dragOverCol !== column) setDragOverCol(column)
@@ -1029,34 +1244,34 @@ export default function TasksPage() {
                                             e.preventDefault()
                                             handleDropOnColumn(column)
                                         }}
-                                        style={{
-                                            background: isDragOver ? 'rgba(238, 120, 94, 0.08)' : '#f9fafb',
-                                            border: isDragOver ? '2px dashed #ee785e' : '1px solid #e5e7eb',
-                                            borderRadius: '12px',
-                                            padding: '12px',
-                                            minHeight: '400px',
-                                            transition: 'all 0.2s ease',
-                                        }}
                                     >
                                         {/* Column Header */}
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid #e5e7eb' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <span style={{ fontSize: '12px' }}>
-                                                    {column === 'Todo' ? '◌' : column === 'In progress' ? '◷' : column === 'Review' ? '◎' : '✓'}
-                                                </span>
-                                                <strong style={{ fontSize: '13px', color: '#1f2937' }}>{column}</strong>
+                                        <div className="kanban-col-header">
+                                            <div className="kanban-col-title-group">
+                                                <span className="kanban-col-icon-pill">{colIcon}</span>
+                                                <h3 className="kanban-col-title">{column}</h3>
+                                                {column === 'In progress' && (
+                                                    <span className="pulsing-status-dot" title="Sprint active" />
+                                                )}
                                             </div>
-                                            <span style={{ fontSize: '11px', fontWeight: '700', background: '#e5e7eb', color: '#4b5563', padding: '1px 7px', borderRadius: '10px' }}>
+                                            <span className="kanban-col-count-badge">
                                                 {colTasks.length}
                                             </span>
                                         </div>
 
-                                        {/* Column Task Cards */}
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                        {/* Column Task Cards Stack */}
+                                        <div className="kanban-cards-stack">
                                             {colTasks.map((task) => {
                                                 const isDragging = draggedTaskId === task.id
                                                 const attachments = attachmentsMap[task.id] || []
                                                 const comments = commentsMap[task.id] || []
+                                                const priority = (task.priority || 'medium').toLowerCase()
+                                                const priorityStripeClass = `priority-stripe-${priority}`
+
+                                                const nextStatus =
+                                                    column === 'Todo' ? 'In progress' :
+                                                    column === 'In progress' ? 'Review' :
+                                                    column === 'Review' ? 'Done' : null
 
                                                 return (
                                                     <article
@@ -1067,50 +1282,67 @@ export default function TasksPage() {
                                                             setDraggedTaskId(null)
                                                             setDragOverCol(null)
                                                         }}
-                                                        onClick={() => setActiveTask(task)}
-                                                        className={`task-card ${isDragging ? 'is-dragging' : ''}`}
-                                                        style={{
-                                                            cursor: 'grab',
-                                                            opacity: isDragging ? 0.35 : 1,
-                                                            transform: isDragging ? 'scale(0.97)' : 'none',
-                                                            background: '#ffffff',
-                                                            borderRadius: '10px',
-                                                            padding: '12px',
-                                                            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-                                                            border: '1px solid #e5e7eb',
-                                                            transition: 'all 0.15s ease',
-                                                        }}
-                                                        title="Drag to change column or click to view details and attachments"
+                                                        onClick={() => openTaskModal(task)}
+                                                        className={`kanban-card ${priorityStripeClass} ${isDragging ? 'is-dragging' : ''}`}
+                                                        title="Click to view details & files, or drag to stage"
                                                     >
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                                            <span className={`priority ${(task.priority || 'medium').toLowerCase()}`} style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px' }}>
+                                                        {/* Top Bar: Priority Badge + Drag Handle */}
+                                                        <div className="kanban-card-topbar">
+                                                            <span className={`kanban-priority-pill ${priority}`}>
+                                                                {priority === 'critical' ? '🔥' : priority === 'high' ? '▲' : priority === 'medium' ? '●' : '▽'}{' '}
                                                                 {task.priority || 'Medium'}
                                                             </span>
-                                                            <span style={{ fontSize: '12px', color: '#9ca3af', cursor: 'grab' }} title="Drag handle">⠿</span>
+                                                            <span className="kanban-drag-handle" title="Drag card">⠿</span>
                                                         </div>
 
-                                                        <h3 style={{ margin: '0 0 6px', fontSize: '13px', fontWeight: '600', color: '#111827', lineHeight: '1.4' }}>
+                                                        {/* Task Title */}
+                                                        <h4 className="kanban-card-title">
                                                             {task.title}
-                                                        </h3>
+                                                        </h4>
 
-                                                        <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#6b7280' }}>
-                                                            📁 {task.project || 'General'}
-                                                        </p>
+                                                        {/* Project Capsule */}
+                                                        <div className="kanban-card-project-pill">
+                                                            <span>📁</span>
+                                                            <span>{task.project || 'General'}</span>
+                                                        </div>
 
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '8px', borderTop: '1px solid #f3f4f6', fontSize: '11px' }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                <span style={{ background: '#fef3c7', color: '#92400e', fontSize: '10px', fontWeight: '700', padding: '2px 5px', borderRadius: '4px' }}>
+                                                        {/* Card Footer: Assignee Avatar + Due Date + Counters & Quick Move */}
+                                                        <div className="kanban-card-footer">
+                                                            <div className="kanban-card-meta-left">
+                                                                <div
+                                                                    className="kanban-avatar-badge"
+                                                                    title={task.assignee ? `Assigned to: ${task.assignee}` : 'Assigned to: You'}
+                                                                >
                                                                     {task.assignee ? task.assignee.slice(0, 2).toUpperCase() : 'ME'}
+                                                                </div>
+                                                                <span className="kanban-due-date" title={`Due: ${task.due || 'Next week'}`}>
+                                                                    <span>📅</span> {task.due || 'Next week'}
                                                                 </span>
-                                                                <span style={{ color: '#9ca3af', fontSize: '10px' }}>{task.due || 'Next week'}</span>
                                                             </div>
 
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9ca3af', fontSize: '11px' }}>
+                                                            <div className="kanban-card-meta-right">
                                                                 {attachments.length > 0 && (
-                                                                    <span title={`${attachments.length} attachments`}>📎 {attachments.length}</span>
+                                                                    <span className="kanban-counter-chip" title={`${attachments.length} attachments`}>
+                                                                        📎 {attachments.length}
+                                                                    </span>
                                                                 )}
                                                                 {comments.length > 0 && (
-                                                                    <span title={`${comments.length} comments`}>💬 {comments.length}</span>
+                                                                    <span className="kanban-counter-chip" title={`${comments.length} comments`}>
+                                                                        💬 {comments.length}
+                                                                    </span>
+                                                                )}
+                                                                {nextStatus && (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="kanban-quick-move-btn"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation()
+                                                                            handleStatusChange(task.id, nextStatus)
+                                                                        }}
+                                                                        title={`Quick advance to ${nextStatus}`}
+                                                                    >
+                                                                        ➔
+                                                                    </button>
                                                                 )}
                                                             </div>
                                                         </div>
@@ -1119,8 +1351,10 @@ export default function TasksPage() {
                                             })}
 
                                             {!isLoading && colTasks.length === 0 && (
-                                                <div style={{ textAlign: 'center', padding: '36px 12px', color: '#9ca3af', border: '1px dashed #d1d5db', borderRadius: '8px', fontSize: '12px' }}>
-                                                    Drop tasks here
+                                                <div className="kanban-empty-dropzone">
+                                                    <span style={{ fontSize: '18px' }}>📥</span>
+                                                    <span>No {column.toLowerCase()} tasks</span>
+                                                    <span style={{ fontSize: '10.5px', opacity: 0.7 }}>Drop cards here</span>
                                                 </div>
                                             )}
                                         </div>
@@ -1148,7 +1382,7 @@ export default function TasksPage() {
                                 <article
                                     className="project-row"
                                     key={task.id}
-                                    onClick={() => setActiveTask(task)}
+                                    onClick={() => openTaskModal(task)}
                                     style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', padding: '14px 18px', cursor: 'pointer' }}
                                 >
                                     <div>
@@ -1167,14 +1401,28 @@ export default function TasksPage() {
                                         <select
                                             value={task.status || 'Todo'}
                                             onChange={(e) => handleStatusChange(task.id, e.target.value)}
-                                            style={{ padding: '4px 8px', fontSize: '11px', borderRadius: '6px', border: '1px solid #ebe9e5', background: '#fff' }}
+                                            style={{ padding: '5px 8px', fontSize: '11px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff' }}
                                         >
                                             <option value="Todo">TODO</option>
                                             <option value="In progress">IN PROGRESS</option>
                                             <option value="Review">IN REVIEW</option>
                                             <option value="Done">COMPLETED</option>
                                         </select>
-                                        <span style={{ fontSize: '11px', color: '#ee785e' }}>Details ➔</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => openTaskModal(task)}
+                                            style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '4px 9px', fontSize: '11px', color: '#ee785e', cursor: 'pointer', fontWeight: 600 }}
+                                        >
+                                            Details ➔
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => handleDeleteTask(task.id, e)}
+                                            style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '4px 8px', fontSize: '11px', color: '#dc2626', cursor: 'pointer' }}
+                                            title="Delete Task"
+                                        >
+                                            🗑
+                                        </button>
                                     </div>
                                 </article>
                             ))}
@@ -1188,39 +1436,124 @@ export default function TasksPage() {
                 <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setActiveTask(null)}>
                     <div className="task-form" style={{ width: 'min(100%, 640px)', maxHeight: '90vh', overflowY: 'auto' }}>
                         <div className="modal-heading" style={{ marginBottom: '14px' }}>
-                            <div>
-                                <span className={`priority ${(activeTask.priority || 'medium').toLowerCase()}`} style={{ fontSize: '9px', padding: '2px 8px', borderRadius: '4px' }}>
-                                    {activeTask.priority || 'Medium'} Priority
-                                </span>
-                                <h2 style={{ margin: '6px 0 0' }}>{activeTask.title}</h2>
-                                <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#858996' }}>
-                                    Project: <b>{activeTask.project || 'General'}</b> • Assigned to: <b>{activeTask.assignee || 'Unassigned'}</b> • Status: <b style={{ color: '#ee785e' }}>{activeTask.status || 'Todo'}</b>
-                                </p>
-                                {canAssign && (
-                                    <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ fontSize: '11px', color: '#6b7280', fontWeight: 600 }}>Reassign (Manager):</span>
+                            <div style={{ width: '100%' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span className={`priority ${(activeTask.priority || 'medium').toLowerCase()}`} style={{ fontSize: '9px', padding: '2px 8px', borderRadius: '4px' }}>
+                                            {activeTask.priority || 'Medium'} Priority
+                                        </span>
                                         <select
-                                            value={activeTask.assignee || ''}
-                                            onChange={(e) => {
-                                                const nextAssignee = e.target.value
-                                                setActiveTask((prev) => ({ ...prev, assignee: nextAssignee }))
-                                                setTasks((prev) => prev.map((t) => t.id === activeTask.id ? { ...t, assignee: nextAssignee } : t))
-                                                updateTaskDetails(activeTask.id, { assignee: nextAssignee }).catch(() => null)
-                                                setSuccessMessage(`Task reassigned to ${nextAssignee || 'Unassigned'}.`)
-                                            }}
-                                            style={{ padding: '3px 8px', fontSize: '11px', borderRadius: '5px', border: '1px solid #d1d5db', background: '#fff' }}
+                                            value={activeTask.priority || 'Medium'}
+                                            onChange={(e) => handleUpdateActiveTaskField('priority', e.target.value)}
+                                            style={{ fontSize: '10.5px', padding: '2px 6px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#f8fafc' }}
+                                            title="Change Priority"
                                         >
-                                            <option value="">-- Unassigned --</option>
-                                            {members.map((m) => (
-                                                <option key={m.userId} value={m.name || m.email}>
-                                                    {m.name || m.email} ({m.role})
-                                                </option>
+                                            {PRIORITIES.map((p) => (
+                                                <option key={p} value={p}>{p}</option>
                                             ))}
                                         </select>
                                     </div>
+                                    <button type="button" className="close-button" onClick={() => setActiveTask(null)}>×</button>
+                                </div>
+
+                                {/* Editable Task Title */}
+                                {isEditingTitle ? (
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', margin: '8px 0' }}>
+                                        <input
+                                            type="text"
+                                            value={editingTitleText}
+                                            onChange={(e) => setEditingTitleText(e.target.value)}
+                                            style={{ padding: '6px 10px', fontSize: '15px', fontWeight: 600, borderRadius: '6px', border: '1px solid #2563eb', flex: 1, outline: 'none' }}
+                                            autoFocus
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') handleSaveTitle()
+                                                if (e.key === 'Escape') setIsEditingTitle(false)
+                                            }}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={handleSaveTitle}
+                                            className="primary-button"
+                                            style={{ padding: '6px 12px', fontSize: '11.5px' }}
+                                        >
+                                            Save
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsEditingTitle(false)}
+                                            className="secondary-button"
+                                            style={{ padding: '6px 10px', fontSize: '11.5px' }}
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '6px 0 8px' }}>
+                                        <h2 style={{ margin: 0, fontSize: '17px', color: '#0f172a' }}>{activeTask.title}</h2>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setEditingTitleText(activeTask.title)
+                                                setIsEditingTitle(true)
+                                            }}
+                                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: '#64748b' }}
+                                            title="Edit Title"
+                                        >
+                                            ✏️
+                                        </button>
+                                    </div>
                                 )}
+
+                                {/* Meta Bar: Project, Assignee, Due Date */}
+                                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', fontSize: '11.5px', color: '#64748b', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '6px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span>📁 Project:</span>
+                                        <select
+                                            value={activeTask.project || 'General'}
+                                            onChange={(e) => handleUpdateActiveTaskField('project', e.target.value)}
+                                            style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#fff' }}
+                                        >
+                                            {projects.length === 0 && <option value="General">General</option>}
+                                            {projects.map((p) => (
+                                                <option key={p.id} value={p.name}>{p.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span>📅 Due:</span>
+                                        <input
+                                            type="text"
+                                            value={activeTask.due || ''}
+                                            onChange={(e) => handleUpdateActiveTaskField('due', e.target.value)}
+                                            placeholder="e.g. Nov 15"
+                                            style={{ width: '80px', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                                        />
+                                    </div>
+
+                                    {canAssign && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <span>👤 Assignee:</span>
+                                            <select
+                                                value={activeTask.assignee || ''}
+                                                onChange={(e) => {
+                                                    const nextAssignee = e.target.value
+                                                    handleUpdateActiveTaskField('assignee', nextAssignee)
+                                                    setSuccessMessage(`Task reassigned to ${nextAssignee || 'Unassigned'}.`)
+                                                }}
+                                                style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#fff' }}
+                                            >
+                                                <option value="">-- Unassigned --</option>
+                                                {members.map((m) => (
+                                                    <option key={m.userId} value={m.name || m.email}>
+                                                        {m.name || m.email} ({m.role})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                            <button type="button" className="close-button" onClick={() => setActiveTask(null)}>×</button>
                         </div>
 
                         {/* Status Advancement Quick Buttons */}
@@ -1455,7 +1788,28 @@ export default function TasksPage() {
                             </form>
                         </div>
 
-                        <div className="form-actions" style={{ marginTop: '18px' }}>
+                        <div className="form-actions" style={{ marginTop: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <button
+                                type="button"
+                                onClick={(e) => handleDeleteTask(activeTask.id, e)}
+                                style={{
+                                    padding: '7px 14px',
+                                    fontSize: '12px',
+                                    fontWeight: 600,
+                                    background: '#fef2f2',
+                                    color: '#dc2626',
+                                    border: '1px solid #fecaca',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    transition: 'all 0.15s ease',
+                                }}
+                                title="Permanently delete this task"
+                            >
+                                🗑 Delete Task
+                            </button>
                             <button type="button" className="secondary-button" onClick={() => setActiveTask(null)}>
                                 Close
                             </button>
