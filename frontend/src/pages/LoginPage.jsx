@@ -54,6 +54,17 @@ function LoginPage() {
             const isAlreadySaved = savedCreds && savedCreds.email === email.trim() && savedCreds.password === password
 
             if (isAlreadySaved) {
+                if (window.PasswordCredential && navigator.credentials?.store) {
+                    try {
+                        const cred = new window.PasswordCredential({
+                            id: email.trim(),
+                            password,
+                        })
+                        navigator.credentials.store(cred).catch(() => null)
+                    } catch {
+                        // ignore unsupported browser environments
+                    }
+                }
                 navigate(destination, { replace: true })
             } else {
                 setPendingSaveModal({
@@ -83,6 +94,19 @@ function LoginPage() {
                     savedAt: new Date().toISOString(),
                 })
             )
+
+            // Save credential to Google Password Manager / native browser credential store
+            if (window.PasswordCredential && navigator.credentials?.store) {
+                try {
+                    const cred = new window.PasswordCredential({
+                        id: pendingSaveModal.email,
+                        password: pendingSaveModal.password,
+                    })
+                    navigator.credentials.store(cred).catch(() => null)
+                } catch {
+                    // ignore unsupported browser environments
+                }
+            }
         }
         setPendingSaveModal(null)
         navigate(destination, { replace: true })
@@ -110,10 +134,11 @@ function LoginPage() {
                         Email Address
                         <input
                             id="login-email-input"
+                            name="username"
                             type="email"
                             value={email}
                             onChange={(event) => setEmail(event.target.value)}
-                            autoComplete="off"
+                            autoComplete="username"
                             placeholder="name@company.com"
                             required
                         />
@@ -139,42 +164,15 @@ function LoginPage() {
                         </div>
                         <input
                             id="login-password-input"
+                            name="password"
                             type={showPassword ? 'text' : 'password'}
                             value={password}
                             onChange={(event) => setPassword(event.target.value)}
-                            autoComplete="off"
+                            autoComplete="current-password"
                             placeholder="Enter your password"
                             required
                         />
                     </label>
-
-                    {savedCreds && !email && !password && (
-                        <div style={{ textAlign: 'right', marginTop: '-4px', marginBottom: '8px' }}>
-                            <button
-                                id="login-use-saved-creds-btn"
-                                type="button"
-                                onClick={() => {
-                                    setEmail(savedCreds.email)
-                                    setPassword(savedCreds.password)
-                                    if (savedCreds.role === 'ADMIN') {
-                                        setIsSigningInAsAdmin(true)
-                                    }
-                                }}
-                                style={{
-                                    background: 'none',
-                                    border: 'none',
-                                    color: '#4f46e5',
-                                    fontSize: '11.5px',
-                                    fontWeight: 600,
-                                    cursor: 'pointer',
-                                    padding: 0,
-                                    textDecoration: 'underline',
-                                }}
-                            >
-                                💾 Fill saved credentials
-                            </button>
-                        </div>
-                    )}
 
                     {/* Admin Privileges Toggle */}
                     <div
