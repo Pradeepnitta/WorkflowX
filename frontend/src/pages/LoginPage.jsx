@@ -166,20 +166,6 @@ function LoginPage() {
                         />
                     </label>
 
-                    {/* Remember / Save Credentials Option */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '4px 0 8px' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: 0, fontSize: '12px', color: '#4b5563' }}>
-                            <input
-                                id="login-save-creds-checkbox"
-                                type="checkbox"
-                                checked={rememberMe}
-                                onChange={(e) => setRememberMe(e.target.checked)}
-                                style={{ accentColor: '#16a34a', width: '15px', height: '15px', cursor: 'pointer' }}
-                            />
-                            <span>💾 Save email and password</span>
-                        </label>
-                    </div>
-
                     {/* Admin Privileges Toggle */}
                     <div
                         id="login-admin-toggle-card"
