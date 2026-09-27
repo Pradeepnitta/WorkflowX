@@ -9,8 +9,8 @@ function LoginPage() {
     const [isSigningInAsAdmin, setIsSigningInAsAdmin] = useState(false)
     const [adminKey, setAdminKey] = useState('')
     const [showAdminKey, setShowAdminKey] = useState(false)
-    const [rememberMe, setRememberMe] = useState(true)
     const [savedCreds, setSavedCreds] = useState(null)
+    const [pendingSaveModal, setPendingSaveModal] = useState(null)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [error, setError] = useState('')
     const [showPassword, setShowPassword] = useState(false)
@@ -65,22 +65,17 @@ function LoginPage() {
                 isAdminLogin: isSigningInAsAdmin,
             })
 
-            // Update saved credentials if rememberMe is enabled
-            if (rememberMe) {
-                localStorage.setItem(
-                    'workflowx_saved_credentials',
-                    JSON.stringify({
-                        email: email.trim(),
-                        password,
-                        adminKey: isSigningInAsAdmin && adminKey ? adminKey.trim() : '',
-                        savedAt: new Date().toISOString(),
-                    })
-                )
-            } else {
-                localStorage.removeItem('workflowx_saved_credentials')
-            }
+            const isAlreadySaved = savedCreds && savedCreds.email === email.trim() && savedCreds.password === password
 
-            navigate(destination, { replace: true })
+            if (isAlreadySaved) {
+                navigate(destination, { replace: true })
+            } else {
+                setPendingSaveModal({
+                    email: email.trim(),
+                    password,
+                    adminKey: isSigningInAsAdmin && adminKey ? adminKey.trim() : '',
+                })
+            }
         } catch (requestError) {
             setError(requestError.message)
             if (requestError.message && requestError.message.toLowerCase().includes('admin secret key')) {
@@ -89,6 +84,27 @@ function LoginPage() {
         } finally {
             setIsSubmitting(false)
         }
+    }
+
+    function handleConfirmSave() {
+        if (pendingSaveModal) {
+            localStorage.setItem(
+                'workflowx_saved_credentials',
+                JSON.stringify({
+                    email: pendingSaveModal.email,
+                    password: pendingSaveModal.password,
+                    adminKey: pendingSaveModal.adminKey || '',
+                    savedAt: new Date().toISOString(),
+                })
+            )
+        }
+        setPendingSaveModal(null)
+        navigate(destination, { replace: true })
+    }
+
+    function handleDismissSave() {
+        setPendingSaveModal(null)
+        navigate(destination, { replace: true })
     }
 
     return (
@@ -274,6 +290,123 @@ function LoginPage() {
                     </Link>
                 </p>
             </section>
+
+            {/* Save Credentials Popup Modal */}
+            {pendingSaveModal && (
+                <div
+                    id="save-credentials-popup-overlay"
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        backgroundColor: 'rgba(15, 23, 42, 0.65)',
+                        backdropFilter: 'blur(4px)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 9999,
+                        padding: '16px',
+                        animation: 'fadeIn 0.15s ease-out',
+                    }}
+                >
+                    <div
+                        id="save-credentials-popup"
+                        style={{
+                            background: '#ffffff',
+                            borderRadius: '16px',
+                            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                            maxWidth: '400px',
+                            width: '100%',
+                            padding: '24px',
+                            textAlign: 'center',
+                            border: '1px solid #e2e8f0',
+                        }}
+                    >
+                        <div
+                            style={{
+                                width: '48px',
+                                height: '48px',
+                                borderRadius: '12px',
+                                background: '#f0fdf4',
+                                border: '1px solid #bbf7d0',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '24px',
+                                margin: '0 auto 16px',
+                            }}
+                        >
+                            💾
+                        </div>
+
+                        <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>
+                            Save Credentials?
+                        </h3>
+
+                        <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#64748b', lineHeight: 1.5 }}>
+                            Would you like to save credentials for <strong>{pendingSaveModal.email}</strong> on this device for faster sign-in?
+                        </p>
+
+                        <div
+                            style={{
+                                background: '#f8fafc',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '8px',
+                                padding: '10px 14px',
+                                marginBottom: '20px',
+                                textAlign: 'left',
+                                fontSize: '12px',
+                            }}
+                        >
+                            <div style={{ color: '#64748b', marginBottom: '2px' }}>Email:</div>
+                            <div style={{ fontWeight: 600, color: '#1e293b' }}>{pendingSaveModal.email}</div>
+                            <div style={{ color: '#64748b', marginTop: '6px', marginBottom: '2px' }}>Password:</div>
+                            <div style={{ letterSpacing: '2px', color: '#475569' }}>••••••••••••</div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <button
+                                id="save-credentials-dismiss-btn"
+                                type="button"
+                                onClick={handleDismissSave}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px 16px',
+                                    borderRadius: '8px',
+                                    border: '1px solid #cbd5e1',
+                                    background: '#ffffff',
+                                    color: '#475569',
+                                    fontSize: '13px',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                }}
+                            >
+                                Not Now
+                            </button>
+                            <button
+                                id="save-credentials-confirm-btn"
+                                type="button"
+                                onClick={handleConfirmSave}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px 16px',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    background: '#16a34a',
+                                    color: '#ffffff',
+                                    fontSize: '13px',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    boxShadow: '0 2px 4px rgba(22, 163, 74, 0.25)',
+                                    transition: 'all 0.15s ease',
+                                }}
+                            >
+                                Save Credentials
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </main>
     )
 }
