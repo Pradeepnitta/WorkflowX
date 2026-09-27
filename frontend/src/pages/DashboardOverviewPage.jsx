@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createTask as createTaskRequest, getTasks, updateTaskStatus } from '../services/taskService.js'
 import { getSocket } from '../services/socketService.js'
+import { getOrganizations, getOrganizationMembers } from '../services/organizationService.js'
+import { getProjects } from '../services/projectService.js'
 import '../App.css'
 
 const columns = ['Todo', 'In progress', 'Review', 'Done']
@@ -9,6 +11,8 @@ const columns = ['Todo', 'In progress', 'Review', 'Done']
 export default function DashboardOverviewPage() {
     const navigate = useNavigate()
     const [tasks, setTasks] = useState([])
+    const [projectsCount, setProjectsCount] = useState(0)
+    const [membersCount, setMembersCount] = useState(0)
     const [filter, setFilter] = useState('All tasks')
     const [showTaskForm, setShowTaskForm] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
@@ -18,9 +22,27 @@ export default function DashboardOverviewPage() {
 
     useEffect(() => {
         getTasks()
-            .then((loadedTasks) => setTasks(loadedTasks))
+            .then((loadedTasks) => setTasks(loadedTasks || []))
             .catch(() => setError('The task service is unavailable. Start the backend and refresh.'))
             .finally(() => setIsLoading(false))
+
+        getOrganizations()
+            .then(async (orgs) => {
+                if (orgs && orgs.length > 0) {
+                    const orgId = orgs[0].id
+                    try {
+                        const [pList, mList] = await Promise.all([
+                            getProjects(orgId).catch(() => []),
+                            getOrganizationMembers(orgId).catch(() => []),
+                        ])
+                        setProjectsCount(pList?.length || 0)
+                        setMembersCount(mList?.length || 1)
+                    } catch {
+                        // fallback
+                    }
+                }
+            })
+            .catch(() => undefined)
 
         const socket = getSocket()
         if (socket) {
@@ -43,6 +65,15 @@ export default function DashboardOverviewPage() {
         if (filter === 'All tasks') return tasks
         return tasks.filter((task) => task.status === filter)
     }, [filter, tasks])
+
+    const completedTasksCount = useMemo(
+        () => tasks.filter((t) => t.status === 'Done' || t.status === 'COMPLETED').length,
+        [tasks]
+    )
+    const openTasksCount = useMemo(
+        () => tasks.filter((t) => t.status !== 'Done' && t.status !== 'COMPLETED').length,
+        [tasks]
+    )
 
     async function handleDropOnColumn(targetColumn) {
         if (!draggedTaskId || dragOverColumn !== targetColumn) return
@@ -101,32 +132,34 @@ export default function DashboardOverviewPage() {
                     <span className="stat-icon coral">▣</span>
                     <div>
                         <p>Active projects</p>
-                        <strong>12</strong>
-                        <small className="positive">↗ 8.2% <em>vs last month</em></small>
+                        <strong>{projectsCount}</strong>
+                        <small className="neutral">{projectsCount === 1 ? '1 active initiative' : `${projectsCount} active initiatives`}</small>
                     </div>
                 </div>
                 <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/tasks')}>
                     <span className="stat-icon yellow">✓</span>
                     <div>
                         <p>Tasks completed</p>
-                        <strong>98</strong>
-                        <small className="positive">↗ 12.5% <em>vs last month</em></small>
+                        <strong>{completedTasksCount}</strong>
+                        <small className={completedTasksCount > 0 ? 'positive' : 'neutral'}>
+                            {tasks.length > 0 ? `${Math.round((completedTasksCount / tasks.length) * 100)}% completed` : '0 completed'}
+                        </small>
                     </div>
                 </div>
                 <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/tasks')}>
                     <span className="stat-icon blue">◷</span>
                     <div>
                         <p>Due this week</p>
-                        <strong>27</strong>
-                        <small className="neutral">Across 8 projects</small>
+                        <strong>{openTasksCount}</strong>
+                        <small className="neutral">{openTasksCount === 1 ? '1 task in flight' : `${openTasksCount} tasks in flight`}</small>
                     </div>
                 </div>
                 <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/members')}>
                     <span className="stat-icon green">♧</span>
                     <div>
                         <p>Team members</p>
-                        <strong>24</strong>
-                        <small className="neutral">3 pending invites</small>
+                        <strong>{membersCount}</strong>
+                        <small className="neutral">{membersCount === 1 ? '1 active member' : `${membersCount} active members`}</small>
                     </div>
                 </div>
             </section>
@@ -241,22 +274,19 @@ export default function DashboardOverviewPage() {
                     </div>
 
                     <div className="activity-list">
-                        <div className="activity-item" style={{ cursor: 'pointer' }} onClick={() => navigate('/tasks')}>
-                            <span className="activity-avatar coral-bg">ML</span>
-                            <p><strong>Maria Lopez</strong> moved <b>Website audit</b> to review<small>12 minutes ago</small></p>
-                        </div>
-                        <div className="activity-item" style={{ cursor: 'pointer' }} onClick={() => navigate('/tasks')}>
-                            <span className="activity-avatar blue-bg">AK</span>
-                            <p><strong>Alex Kim</strong> commented on <b>API permissions</b><small>38 minutes ago</small></p>
-                        </div>
-                        <div className="activity-item" style={{ cursor: 'pointer' }} onClick={() => navigate('/tasks')}>
-                            <span className="activity-avatar yellow-bg">SR</span>
-                            <p><strong>Sam Rivera</strong> completed <b>Release notes</b><small>2 hours ago</small></p>
-                        </div>
-                        <div className="activity-item" style={{ cursor: 'pointer' }} onClick={() => navigate('/projects')}>
-                            <span className="activity-avatar green-bg">JD</span>
-                            <p><strong>You</strong> created <b>Mobile app v2</b><small>Yesterday</small></p>
-                        </div>
+                        {tasks.length > 0 ? (
+                            tasks.slice(0, 4).map((task) => (
+                                <div key={task.id} className="activity-item" style={{ cursor: 'pointer' }} onClick={() => navigate('/tasks')}>
+                                    <span className="activity-avatar coral-bg">{task.assignee ? task.assignee.slice(0, 2).toUpperCase() : 'TK'}</span>
+                                    <p><strong>{task.assignee || 'Member'}</strong> updated <b>{task.title}</b> to {task.status}<small>{task.due || 'Recently'}</small></p>
+                                </div>
+                            ))
+                        ) : (
+                            <div style={{ padding: '24px 16px', textAlign: 'center', color: '#6b7280' }}>
+                                <p style={{ fontSize: '13px', margin: 0, fontWeight: 600 }}>No recent activity yet</p>
+                                <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>Updates will appear here as your team creates tasks and updates workflows.</p>
+                            </div>
+                        )}
                     </div>
                     <button className="activity-footer" onClick={() => navigate('/admin')}>View activity log <span>→</span></button>
                 </aside>
