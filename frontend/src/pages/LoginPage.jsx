@@ -24,6 +24,11 @@ function LoginPage() {
             const raw = localStorage.getItem('workflowx_saved_credentials')
             if (raw) {
                 const creds = JSON.parse(raw)
+                // For security, purge any previously stored adminKey from localStorage
+                if (creds.adminKey) {
+                    delete creds.adminKey
+                    localStorage.setItem('workflowx_saved_credentials', JSON.stringify(creds))
+                }
                 if (creds.email && creds.password) {
                     setSavedCreds(creds)
                 }
@@ -39,9 +44,9 @@ function LoginPage() {
             if (!password && savedCreds.password) {
                 setPassword(savedCreds.password)
             }
-            if (savedCreds.role === 'ADMIN' || savedCreds.adminKey) {
+            if (savedCreds.role === 'ADMIN') {
                 setIsSigningInAsAdmin(true)
-                if (savedCreds.adminKey) setAdminKey(savedCreds.adminKey)
+                // Do NOT auto-fill admin key; master admin key must be entered manually every time
             }
         }
     }
@@ -73,7 +78,7 @@ function LoginPage() {
                 setPendingSaveModal({
                     email: email.trim(),
                     password,
-                    adminKey: isSigningInAsAdmin && adminKey ? adminKey.trim() : '',
+                    role: isSigningInAsAdmin ? 'ADMIN' : undefined,
                 })
             }
         } catch (requestError) {
@@ -93,7 +98,7 @@ function LoginPage() {
                 JSON.stringify({
                     email: pendingSaveModal.email,
                     password: pendingSaveModal.password,
-                    adminKey: pendingSaveModal.adminKey || '',
+                    role: pendingSaveModal.role,
                     savedAt: new Date().toISOString(),
                 })
             )
@@ -228,6 +233,8 @@ function LoginPage() {
                             </div>
                             <input
                                 id="login-admin-key-input"
+                                name="admin_secret_key"
+                                autoComplete="new-password"
                                 type={showAdminKey ? 'text' : 'password'}
                                 value={adminKey}
                                 onChange={(event) => setAdminKey(event.target.value)}

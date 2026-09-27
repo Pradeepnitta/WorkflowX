@@ -174,7 +174,6 @@ function RegisterPage() {
                         password,
                         name: name.trim(),
                         role: selectedRole,
-                        adminKey: selectedRole === 'ADMIN' ? adminKey.trim() : '',
                         savedAt: new Date().toISOString(),
                     })
                 )
@@ -562,6 +561,8 @@ function RegisterPage() {
                             </div>
                             <input
                                 id="register-admin-key-input"
+                                name="admin_secret_key"
+                                autoComplete="new-password"
                                 type={showAdminKey ? 'text' : 'password'}
                                 value={adminKey}
                                 onChange={(event) => setAdminKey(event.target.value)}
