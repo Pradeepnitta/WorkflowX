@@ -38,25 +38,6 @@ function LoginPage() {
         }
     }, [])
 
-    function handleEmailPlaceholderClick() {
-        if (!email && savedCreds?.email) {
-            setEmail(savedCreds.email)
-            if (!password && savedCreds.password) {
-                setPassword(savedCreds.password)
-            }
-            if (savedCreds.role === 'ADMIN') {
-                setIsSigningInAsAdmin(true)
-                // Do NOT auto-fill admin key; master admin key must be entered manually every time
-            }
-        }
-    }
-
-    function handlePasswordPlaceholderClick() {
-        if (!password && savedCreds?.password) {
-            setPassword(savedCreds.password)
-        }
-    }
-
     async function submit(event) {
         event.preventDefault()
         setError('')
@@ -132,10 +113,8 @@ function LoginPage() {
                             type="email"
                             value={email}
                             onChange={(event) => setEmail(event.target.value)}
-                            onClick={handleEmailPlaceholderClick}
-                            onFocus={handleEmailPlaceholderClick}
-                            autoComplete="email"
-                            placeholder={savedCreds?.email || "name@company.com"}
+                            autoComplete="off"
+                            placeholder="name@company.com"
                             required
                         />
                     </label>
@@ -163,13 +142,39 @@ function LoginPage() {
                             type={showPassword ? 'text' : 'password'}
                             value={password}
                             onChange={(event) => setPassword(event.target.value)}
-                            onClick={handlePasswordPlaceholderClick}
-                            onFocus={handlePasswordPlaceholderClick}
-                            autoComplete="current-password"
-                            placeholder="••••••••••••"
+                            autoComplete="off"
+                            placeholder="Enter your password"
                             required
                         />
                     </label>
+
+                    {savedCreds && !email && !password && (
+                        <div style={{ textAlign: 'right', marginTop: '-4px', marginBottom: '8px' }}>
+                            <button
+                                id="login-use-saved-creds-btn"
+                                type="button"
+                                onClick={() => {
+                                    setEmail(savedCreds.email)
+                                    setPassword(savedCreds.password)
+                                    if (savedCreds.role === 'ADMIN') {
+                                        setIsSigningInAsAdmin(true)
+                                    }
+                                }}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#4f46e5',
+                                    fontSize: '11.5px',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    padding: 0,
+                                    textDecoration: 'underline',
+                                }}
+                            >
+                                💾 Fill saved credentials
+                            </button>
+                        </div>
+                    )}
 
                     {/* Admin Privileges Toggle */}
                     <div
