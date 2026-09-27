@@ -21,7 +21,7 @@ const ROLES = [
         key: 'MEMBER',
         title: 'Developer / Member',
         icon: '💻',
-        desc: 'Execute assigned tasks, update Kanban statuses, review deliverables, and comment.',
+        desc: 'Execute assigned tasks, update Signboard statuses, review deliverables, and comment.',
     },
     {
         key: 'VIEWER',

@@ -340,7 +340,7 @@ function SettingsPage() {
                                         onChange={(e) => setDefaultView(e.target.value)}
                                         style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px', background: '#fff' }}
                                     >
-                                        <option value="kanban">Kanban Board</option>
+                                        <option value="kanban">Signboard</option>
                                         <option value="list">List View</option>
                                         <option value="calendar">Calendar Timeline</option>
                                     </select>

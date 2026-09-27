@@ -488,9 +488,9 @@ export default function TasksPage() {
                 <div>
                     <p className="eyebrow">Developer & Execution Workspace</p>
                     <h1>My Tasks & Workflow</h1>
-                    <p className="heading-subtitle">Interactive Kanban board with drag-and-drop, physical file attachments, and live Socket.IO collaboration.</p>
+                    <p className="heading-subtitle">Interactive Signboard with drag-and-drop, physical file attachments, and live Socket.IO collaboration.</p>
                 </div>
-                {/* View Mode Toggle: Kanban vs Table */}
+                {/* View Mode Toggle: Signboard vs Table */}
                 <div style={{ display: 'inline-flex', background: '#f3f4f6', padding: '3px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
                     <button
                         type="button"
@@ -510,7 +510,7 @@ export default function TasksPage() {
                             gap: '6px',
                         }}
                     >
-                        <span>📋</span> Kanban Board
+                        <span>📋</span> Signboard
                     </button>
                     <button
                         type="button"
@@ -999,7 +999,7 @@ export default function TasksPage() {
                         <div className="panel-heading" style={{ marginBottom: '14px' }}>
                             <div>
                                 <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span>Interactive Kanban Board</span>
+                                    <span>Interactive Signboard</span>
                                     <span style={{ fontSize: '11px', background: '#fee2e2', color: '#ee785e', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>HTML5 Drag & Drop</span>
                                 </h2>
                                 <p>Drag and drop task cards across columns to instantly update execution status.</p>

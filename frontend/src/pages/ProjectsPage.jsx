@@ -901,7 +901,7 @@ export default function ProjectsPage() {
                                             alignItems: 'center',
                                             gap: '4px',
                                         }}
-                                        title="Open Kanban Task Board for this project"
+                                        title="Open Signboard for this project"
                                     >
                                         <span>📋</span> Tasks
                                     </button>
@@ -1674,7 +1674,7 @@ export default function ProjectsPage() {
                                 }}
                                 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                             >
-                                <span>📋</span> Open in Kanban Task Board
+                                <span>📋</span> Open in Signboard
                             </button>
 
                             <div style={{ display: 'flex', gap: '8px' }}>

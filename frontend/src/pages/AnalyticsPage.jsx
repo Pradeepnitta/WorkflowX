@@ -62,7 +62,7 @@ export default function AnalyticsPage() {
                 { day: 'Day 3', x: 170, y: 45, val: 88, ideal: 85, status: 'DB schemas migrated' },
                 { day: 'Day 4', x: 230, y: 60, val: 78, ideal: 77, status: 'Auth APIs complete' },
                 { day: 'Day 5', x: 290, y: 75, val: 68, ideal: 69, status: 'Frontend layouts merged' },
-                { day: 'Day 6', x: 350, y: 90, val: 56, ideal: 62, status: 'Kanban DND added' },
+                { day: 'Day 6', x: 350, y: 90, val: 56, ideal: 62, status: 'Signboard DND added' },
                 { day: 'Day 7', x: 410, y: 110, val: 44, ideal: 54, status: 'Sockets connected' },
                 { day: 'Day 8', x: 470, y: 125, val: 38, ideal: 46, status: 'Attachment upload live' },
                 { day: 'Day 9 (Today)', x: 530, y: 145, val: 32, ideal: 38, status: 'Charts & analytics on track' },
@@ -496,7 +496,7 @@ export default function AnalyticsPage() {
 
                         <div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
-                                <span>High (e.g. Kanban & Sockets)</span>
+                                <span>High (e.g. Signboard & Sockets)</span>
                                 <b>40%</b>
                             </div>
                             <div style={{ height: '6px', background: '#ebe9e5', borderRadius: '3px', overflow: 'hidden' }}>

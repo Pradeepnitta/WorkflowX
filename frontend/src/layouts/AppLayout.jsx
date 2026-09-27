@@ -110,7 +110,7 @@ export default function AppLayout() {
     const currentPath = location.pathname
     const pathNameMap = {
         '/': 'Overview',
-        '/tasks': 'My tasks',
+        '/tasks': 'Signboard',
         '/projects': 'Projects',
         '/teams': 'Team',
         '/members': 'Members',
@@ -153,7 +153,7 @@ export default function AppLayout() {
                         <span className="nav-icon">▦</span>Overview
                     </NavLink>
                     <NavLink to="/tasks" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                        <span className="nav-icon">✓</span>My tasks
+                        <span className="nav-icon">📋</span>Signboard
                     </NavLink>
                     <NavLink to="/projects" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
                         <span className="nav-icon">▤</span>Projects
