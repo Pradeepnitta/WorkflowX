@@ -10,7 +10,7 @@ function LoginPage() {
     const [adminKey, setAdminKey] = useState('')
     const [showAdminKey, setShowAdminKey] = useState(false)
     const [rememberMe, setRememberMe] = useState(true)
-    const [hasSavedCredentials, setHasSavedCredentials] = useState(false)
+    const [savedCreds, setSavedCreds] = useState(null)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [error, setError] = useState('')
     const [showPassword, setShowPassword] = useState(false)
@@ -25,20 +25,32 @@ function LoginPage() {
             if (raw) {
                 const creds = JSON.parse(raw)
                 if (creds.email && creds.password) {
-                    setEmail(creds.email)
-                    setPassword(creds.password)
-                    if (creds.role === 'ADMIN' || creds.adminKey) {
-                        setIsSigningInAsAdmin(true)
-                        if (creds.adminKey) setAdminKey(creds.adminKey)
-                    }
-                    setHasSavedCredentials(true)
-                    setRememberMe(true)
+                    setSavedCreds(creds)
                 }
             }
         } catch {
             // ignore JSON parse error
         }
     }, [])
+
+    function handleEmailPlaceholderClick() {
+        if (!email && savedCreds?.email) {
+            setEmail(savedCreds.email)
+            if (!password && savedCreds.password) {
+                setPassword(savedCreds.password)
+            }
+            if (savedCreds.role === 'ADMIN' || savedCreds.adminKey) {
+                setIsSigningInAsAdmin(true)
+                if (savedCreds.adminKey) setAdminKey(savedCreds.adminKey)
+            }
+        }
+    }
+
+    function handlePasswordPlaceholderClick() {
+        if (!password && savedCreds?.password) {
+            setPassword(savedCreds.password)
+        }
+    }
 
     async function submit(event) {
         event.preventDefault()
@@ -91,50 +103,6 @@ function LoginPage() {
                 <h1 id="login-title">Welcome back</h1>
                 <p className="auth-copy">Sign in to your account with your dedicated role email.</p>
 
-                {hasSavedCredentials && (
-                    <div
-                        id="saved-creds-banner"
-                        style={{
-                            margin: '0 0 14px',
-                            padding: '10px 14px',
-                            background: '#f0fdf4',
-                            border: '1px solid #bbf7d0',
-                            borderRadius: '8px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            fontSize: '12px',
-                            color: '#166534',
-                        }}
-                    >
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span>💾</span>
-                            <span>Auto-filled from saved credentials</span>
-                        </span>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                localStorage.removeItem('workflowx_saved_credentials')
-                                setEmail('')
-                                setPassword('')
-                                setHasSavedCredentials(false)
-                            }}
-                            style={{
-                                background: 'none',
-                                border: 'none',
-                                color: '#dc2626',
-                                cursor: 'pointer',
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                padding: '2px 4px',
-                            }}
-                            title="Remove saved credentials from this device"
-                        >
-                            Clear
-                        </button>
-                    </div>
-                )}
-
                 <form className="auth-form" onSubmit={submit}>
                     <label>
                         Email Address
@@ -143,8 +111,10 @@ function LoginPage() {
                             type="email"
                             value={email}
                             onChange={(event) => setEmail(event.target.value)}
+                            onClick={handleEmailPlaceholderClick}
+                            onFocus={handleEmailPlaceholderClick}
                             autoComplete="email"
-                            placeholder="name@company.com"
+                            placeholder={savedCreds?.email || "name@company.com"}
                             required
                         />
                     </label>
@@ -172,6 +142,8 @@ function LoginPage() {
                             type={showPassword ? 'text' : 'password'}
                             value={password}
                             onChange={(event) => setPassword(event.target.value)}
+                            onClick={handlePasswordPlaceholderClick}
+                            onFocus={handlePasswordPlaceholderClick}
                             autoComplete="current-password"
                             placeholder="••••••••••••"
                             required
