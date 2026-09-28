@@ -24,14 +24,40 @@ export async function createUser(data) {
 
 export const create = createUser
 
-export async function updateProfile({ userId, name, avatarUrl }) {
+export async function findById(id) {
+    const res = await query(`SELECT * FROM "User" WHERE id = $1 LIMIT 1`, [id])
+    if (res.rows.length === 0) return null
+    const user = res.rows[0]
+    const memRes = await query(`SELECT * FROM "OrganizationMember" WHERE "userId" = $1`, [user.id])
+    user.memberships = memRes.rows
+    return user
+}
+
+export async function updateProfile({ userId, name, avatarUrl, passwordHash }) {
     const now = new Date()
+    const fields = ['"updatedAt" = $2']
+    const values = [userId, now]
+    let idx = 3
+
+    if (name !== undefined) {
+        fields.push(`name = $${idx++}`)
+        values.push(name)
+    }
+    if (avatarUrl !== undefined) {
+        fields.push(`"avatarUrl" = $${idx++}`)
+        values.push(avatarUrl)
+    }
+    if (passwordHash !== undefined) {
+        fields.push(`"passwordHash" = $${idx++}`)
+        values.push(passwordHash)
+    }
+
     const res = await query(
         `UPDATE "User"
-         SET name = COALESCE($2, name), "avatarUrl" = COALESCE($3, "avatarUrl"), "updatedAt" = $4
+         SET ${fields.join(', ')}
          WHERE id = $1
          RETURNING *`,
-        [userId, name, avatarUrl, now]
+        values
     )
     return res.rows[0]
 }

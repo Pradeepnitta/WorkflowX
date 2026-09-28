@@ -95,7 +95,7 @@ export function createRoutes({
     const adminController = createAdminController({ organizationService, sendJson, readBody })
     const orgController = createOrganizationController({ organizationService, invitationService, invitationAcceptanceService, sendJson, readBody })
     const teamController = createTeamController({ teamService, sendJson, readBody })
-    const projectController = createProjectController({ projectService, projectMemberService, sendJson, readBody })
+    const projectController = createProjectController({ projectService, projectMemberService, sendJson, readBody, getIO })
     const taskController = createTaskController({ projectTaskService, createTask, listTasks, updateTask, deleteTask, sendJson, readBody, getIO })
     const analyticsController = createAnalyticsController({ analyticsService, sendJson })
     const notificationController = createNotificationController({ notificationService, sendJson })

@@ -22,5 +22,24 @@ export function createNotificationService(notificationRepository) {
             await notificationRepository.markRead({ notificationId, userId })
             return { id: notificationId, isRead: true }
         },
+
+        async markAllRead(userId) {
+            if (!userId) throw serviceError('Authentication required', 401)
+            await notificationRepository.markAllRead(userId)
+            return { success: true }
+        },
+
+        async remove(notificationId, userId) {
+            if (!notificationId) throw serviceError('Notification is required', 400)
+            if (!userId) throw serviceError('Authentication required', 401)
+            await notificationRepository.removeNotification({ notificationId, userId })
+            return { id: notificationId, deleted: true }
+        },
+
+        async clearAll(userId) {
+            if (!userId) throw serviceError('Authentication required', 401)
+            await notificationRepository.clearAllForUser(userId)
+            return { cleared: true }
+        },
     }
 }

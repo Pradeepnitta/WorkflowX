@@ -134,6 +134,18 @@ export function createAuthService(userRepository, refreshTokenRepository, otpSer
                 if (input.avatarUrl !== null && typeof input.avatarUrl !== 'string') throw serviceError('Avatar URL must be a string or null', 400)
                 changes.avatarUrl = input.avatarUrl
             }
+            if (input.newPassword !== undefined && input.newPassword.trim()) {
+                if (typeof input.newPassword !== 'string' || input.newPassword.length < 8) {
+                    throw serviceError('New password must be at least 8 characters', 400)
+                }
+                const existingUser = await userRepository.findById(userId)
+                if (!existingUser) throw serviceError('User not found', 404)
+                if (existingUser.passwordHash && input.currentPassword) {
+                    const matches = await verifyPassword(input.currentPassword, existingUser.passwordHash)
+                    if (!matches) throw serviceError('Current password is incorrect', 400)
+                }
+                changes.passwordHash = await hashPassword(input.newPassword)
+            }
             if (Object.keys(changes).length === 0) throw serviceError('At least one profile field is required', 400)
 
             const user = await userRepository.updateProfile({ userId, ...changes })

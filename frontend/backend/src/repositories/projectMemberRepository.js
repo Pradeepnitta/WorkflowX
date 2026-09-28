@@ -84,7 +84,13 @@ export async function findForMember({ projectId, userId }) {
         `SELECT * FROM "ProjectMember" WHERE "projectId" = $1 AND "userId" = $2`,
         [projectId, userId]
     )
-    if (memRes.rows.length === 0) throw permissionError()
+    if (memRes.rows.length === 0) {
+        const orgMemRes = await query(
+            `SELECT * FROM "OrganizationMember" WHERE "organizationId" = $1 AND "userId" = $2`,
+            [project.organizationId, userId]
+        )
+        if (orgMemRes.rows.length === 0) throw permissionError()
+    }
 
     const membersRes = await query(
         `SELECT pm."projectId", pm."userId", pm."joinedAt",

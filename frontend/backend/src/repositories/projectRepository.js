@@ -95,6 +95,7 @@ export async function deleteForManager({ projectId, userId }) {
         const membership = await organizationMembership(client, project.organizationId, userId)
         if (!membership || !['ADMIN', 'MANAGER'].includes(membership.role)) throw permissionError()
 
+        await client.query(`DELETE FROM "ProjectMember" WHERE "projectId" = $1`, [projectId])
         await client.query(`DELETE FROM "Project" WHERE id = $1`, [projectId])
         return project
     })

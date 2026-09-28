@@ -11,6 +11,64 @@
     --green: #72b79a;
 }
 
+[data-theme="dark"] {
+    --ink: #f1f5f9;
+    --muted: #94a3b8;
+    --line: #334155;
+    --canvas: #0f172a;
+}
+
+[data-theme="dark"] .sidebar {
+    background: #1e293b;
+    border-right-color: #334155;
+}
+
+[data-theme="dark"] .panel,
+[data-theme="dark"] .feature-page .panel,
+[data-theme="dark"] .card {
+    background: #1e293b !important;
+    border-color: #334155 !important;
+    color: #f1f5f9 !important;
+}
+
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea {
+    background: #0f172a !important;
+    border-color: #334155 !important;
+    color: #f1f5f9 !important;
+}
+
+[data-theme="dark"] .nav-link {
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .nav-link:hover {
+    background: #334155;
+    color: #f1f5f9;
+}
+
+[data-theme="dark"] .nav-link.active {
+    background: #334155;
+    color: #ee785e;
+}
+
+[data-theme="dark"] .top-bar {
+    background: #1e293b;
+    border-bottom-color: #334155;
+}
+
+/* Card Density Selectors */
+[data-density="compact"] .task-card {
+    padding: 8px !important;
+    margin-bottom: 6px !important;
+}
+
+[data-density="spacious"] .task-card {
+    padding: 20px !important;
+    margin-bottom: 16px !important;
+}
+
 * {
     box-sizing: border-box;
 }

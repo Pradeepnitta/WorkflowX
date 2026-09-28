@@ -10,8 +10,9 @@ import {
     removeProjectMember,
 } from '../services/projectService.js'
 import { getOrganizations, getOrganizationMembers } from '../services/organizationService.js'
+import { getTasks } from '../services/taskService.js'
+import { getSocket } from '../services/socketService.js'
 import '../App.css'
-
 
 const AVAILABLE_TEAMS = ['Frontend Team', 'Backend Team', 'QA Team', 'DevOps Team', 'Product & Design']
 
@@ -70,6 +71,7 @@ export default function ProjectsPage() {
     const [organizationId, setOrganizationId] = useState('')
     const [projects, setProjects] = useState([])
     const [orgMembers, setOrgMembers] = useState([])
+    const [allTasks, setAllTasks] = useState([])
     const [isLoading, setIsLoading] = useState(true)
     const [toastMessage, setToastMessage] = useState('')
     const [error, setError] = useState('')
@@ -124,7 +126,7 @@ export default function ProjectsPage() {
             .finally(() => setIsLoading(false))
     }, [])
 
-    // Load projects and members when organization changes
+    // Load projects, members, and all tasks when organization changes
     useEffect(() => {
         if (!organizationId) {
             setProjects([])
@@ -134,43 +136,155 @@ export default function ProjectsPage() {
         Promise.all([
             getProjects(organizationId).catch(() => []),
             getOrganizationMembers(organizationId).catch(() => []),
+            getTasks().catch(() => []),
         ])
-            .then(([loadedProjects, loadedMembers]) => {
+            .then(([loadedProjects, loadedMembers, loadedTasks]) => {
                 const pList = Array.isArray(loadedProjects) ? loadedProjects : []
+                const tList = Array.isArray(loadedTasks) ? loadedTasks : []
+
+                setAllTasks(tList)
+                setOrgMembers(Array.isArray(loadedMembers) ? loadedMembers : [])
 
                 const enriched = pList.map((p, idx) => {
                     return {
                         id: p.id || `proj-${idx}`,
                         name: p.name,
-                        key: p.key || (p.name ? p.name.slice(0, 5).toUpperCase().replace(/[^A-Z]/g, '') : `PRJ-${idx + 1}`),
+                        key: p.key || (p.name ? p.name.slice(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, '') : `PRJ-${idx + 1}`),
                         description: p.description || '',
                         status: p.status || 'ACTIVE',
                         priority: p.priority || 'MEDIUM',
                         dueDate: p.dueDate ? new Date(p.dueDate).toISOString().slice(0, 10) : '',
                         lead: p.lead || (p.createdBy?.name || 'Unassigned'),
-                        teams: p.teams || [],
+                        teams: p.teams && p.teams.length > 0 ? p.teams : ['Frontend Team'],
                         members: p.members || [],
                         tasksSummary: p.tasksSummary || { total: 0, completed: 0, inProgress: 0, review: 0, todo: 0 },
                     }
                 })
 
                 setProjects(enriched)
-                setOrgMembers(Array.isArray(loadedMembers) ? loadedMembers : [])
             })
             .catch(() => {
                 setProjects([])
             })
     }, [organizationId])
 
+    // Real-time Socket.IO Listeners for Projects and Tasks
+    useEffect(() => {
+        const socket = getSocket()
+        if (!socket) return
+
+        function handleProjectCreated(newProj) {
+            if (!newProj) return
+            setProjects((prev) => {
+                if (prev.some((p) => p.id === newProj.id)) return prev
+                const normalized = {
+                    id: newProj.id,
+                    name: newProj.name,
+                    key: newProj.key || (newProj.name ? newProj.name.slice(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, '') : 'PROJ'),
+                    description: newProj.description || '',
+                    status: newProj.status || 'ACTIVE',
+                    priority: newProj.priority || 'MEDIUM',
+                    dueDate: newProj.dueDate ? new Date(newProj.dueDate).toISOString().slice(0, 10) : '',
+                    lead: newProj.lead || 'Unassigned',
+                    teams: newProj.teams && newProj.teams.length > 0 ? newProj.teams : ['Frontend Team'],
+                    members: newProj.members || [],
+                    tasksSummary: { total: 0, completed: 0, inProgress: 0, review: 0, todo: 0 },
+                }
+                return [normalized, ...prev]
+            })
+        }
+
+        function handleProjectUpdated(updatedProj) {
+            if (!updatedProj?.id) return
+            setProjects((prev) =>
+                prev.map((p) => (p.id === updatedProj.id ? { ...p, ...updatedProj } : p))
+            )
+            setDetailProject((prev) => (prev && prev.id === updatedProj.id ? { ...prev, ...updatedProj } : prev))
+        }
+
+        function handleProjectDeleted(payload) {
+            const delId = payload?.id || payload?.projectId
+            if (!delId) return
+            setProjects((prev) => prev.filter((p) => p.id !== delId && String(p.id) !== String(delId)))
+            setDetailProject((prev) => (prev && (prev.id === delId || String(prev.id) === String(delId)) ? null : prev))
+        }
+
+        function handleTaskCreated(newTask) {
+            if (newTask) setAllTasks((prev) => [newTask, ...prev.filter((t) => t.id !== newTask.id)])
+        }
+
+        function handleTaskUpdated(updatedTask) {
+            if (updatedTask) setAllTasks((prev) => prev.map((t) => (t.id === updatedTask.id ? { ...t, ...updatedTask } : t)))
+        }
+
+        function handleTaskDeleted(payload) {
+            const delId = payload?.id || payload?.taskId
+            if (delId) setAllTasks((prev) => prev.filter((t) => t.id !== delId && String(t.id) !== String(delId)))
+        }
+
+        socket.on('project:created', handleProjectCreated)
+        socket.on('project:updated', handleProjectUpdated)
+        socket.on('project:deleted', handleProjectDeleted)
+        socket.on('task:created', handleTaskCreated)
+        socket.on('task:updated', handleTaskUpdated)
+        socket.on('task:deleted', handleTaskDeleted)
+
+        return () => {
+            socket.off('project:created', handleProjectCreated)
+            socket.off('project:updated', handleProjectUpdated)
+            socket.off('project:deleted', handleProjectDeleted)
+            socket.off('task:created', handleTaskCreated)
+            socket.off('task:updated', handleTaskUpdated)
+            socket.off('task:deleted', handleTaskDeleted)
+        }
+    }, [])
+
+    // Real-time task breakdown map grouped by project name
+    const projectTasksMap = useMemo(() => {
+        const map = {}
+        allTasks.forEach((task) => {
+            const pName = (task.project || '').trim().toLowerCase()
+            if (!pName) return
+            if (!map[pName]) {
+                map[pName] = { total: 0, completed: 0, inProgress: 0, review: 0, todo: 0 }
+            }
+            map[pName].total++
+            const status = (task.status || '').toLowerCase()
+            if (status === 'done' || status === 'completed') {
+                map[pName].completed++
+            } else if (status === 'in progress' || status === 'in_progress') {
+                map[pName].inProgress++
+            } else if (status === 'review' || status === 'in_review') {
+                map[pName].review++
+            } else {
+                map[pName].todo++
+            }
+        })
+        return map
+    }, [allTasks])
+
+    // Enrich projects with live task metrics
+    const enrichedProjects = useMemo(() => {
+        return projects.map((p) => {
+            const pKey = (p.name || '').trim().toLowerCase()
+            const liveSummary = projectTasksMap[pKey] || p.tasksSummary || { total: 0, completed: 0, inProgress: 0, review: 0, todo: 0 }
+            return {
+                ...p,
+                tasksSummary: liveSummary,
+            }
+        })
+    }, [projects, projectTasksMap])
+
     // Filter projects based on search query, status tab, and priority dropdown
     const filteredProjects = useMemo(() => {
-        return projects.filter((p) => {
+        return enrichedProjects.filter((p) => {
             const query = searchQuery.trim().toLowerCase()
             const matchesQuery =
                 !query ||
                 p.name.toLowerCase().includes(query) ||
                 (p.key && p.key.toLowerCase().includes(query)) ||
                 (p.description && p.description.toLowerCase().includes(query)) ||
+                (p.lead && p.lead.toLowerCase().includes(query)) ||
                 (p.teams && p.teams.some((t) => t.toLowerCase().includes(query)))
 
             const matchesStatus =
@@ -181,18 +295,18 @@ export default function ProjectsPage() {
 
             return matchesQuery && matchesStatus && matchesPriority
         })
-    }, [projects, searchQuery, statusFilter, priorityFilter])
+    }, [enrichedProjects, searchQuery, statusFilter, priorityFilter])
 
     // Metric KPI Computations
     const metrics = useMemo(() => {
-        const total = projects.length
-        const active = projects.filter((p) => p.status === 'ACTIVE').length
-        const urgent = projects.filter((p) => p.priority === 'URGENT' || p.priority === 'HIGH').length
-        const completed = projects.filter((p) => p.status === 'COMPLETED').length
-        
+        const total = enrichedProjects.length
+        const active = enrichedProjects.filter((p) => p.status === 'ACTIVE').length
+        const urgent = enrichedProjects.filter((p) => p.priority === 'URGENT' || p.priority === 'HIGH').length
+        const completed = enrichedProjects.filter((p) => p.status === 'COMPLETED').length
+
         let totalProgressSum = 0
         let count = 0
-        projects.forEach((p) => {
+        enrichedProjects.forEach((p) => {
             if (p.tasksSummary?.total > 0) {
                 totalProgressSum += Math.round((p.tasksSummary.completed / p.tasksSummary.total) * 100)
                 count++
@@ -201,19 +315,40 @@ export default function ProjectsPage() {
         const avgProgress = count > 0 ? Math.round(totalProgressSum / count) : 0
 
         return { total, active, urgent, completed, avgProgress }
-    }, [projects])
+    }, [enrichedProjects])
 
     // Status counts for tabs
     const statusCounts = useMemo(() => {
         return {
-            ALL: projects.length,
-            ACTIVE: projects.filter((p) => p.status === 'ACTIVE').length,
-            PLANNING: projects.filter((p) => p.status === 'PLANNING').length,
-            ON_HOLD: projects.filter((p) => p.status === 'ON_HOLD').length,
-            COMPLETED: projects.filter((p) => p.status === 'COMPLETED').length,
-            ARCHIVED: projects.filter((p) => p.status === 'ARCHIVED').length,
+            ALL: enrichedProjects.length,
+            ACTIVE: enrichedProjects.filter((p) => p.status === 'ACTIVE').length,
+            PLANNING: enrichedProjects.filter((p) => p.status === 'PLANNING').length,
+            ON_HOLD: enrichedProjects.filter((p) => p.status === 'ON_HOLD').length,
+            COMPLETED: enrichedProjects.filter((p) => p.status === 'COMPLETED').length,
+            ARCHIVED: enrichedProjects.filter((p) => p.status === 'ARCHIVED').length,
         }
-    }, [projects])
+    }, [enrichedProjects])
+
+    // Handler: Open Project Details & fetch latest assigned members
+    async function openProjectDetails(project) {
+        setDetailProject(project)
+        if (!project.id || String(project.id).startsWith('proj-')) return
+        try {
+            const members = await getProjectMembers(project.id)
+            if (Array.isArray(members)) {
+                const normalized = members.map((m) => ({
+                    id: m.id || m.userId,
+                    name: m.name || m.user?.name || m.email || m.user?.email || 'Member',
+                    email: m.email || m.user?.email || '',
+                    role: m.role || 'MEMBER',
+                }))
+                setDetailProject((prev) => (prev && prev.id === project.id ? { ...prev, members: normalized } : prev))
+                setProjects((prev) => prev.map((p) => (p.id === project.id ? { ...p, members: normalized } : p)))
+            }
+        } catch {
+            // Keep existing state
+        }
+    }
 
     // Handler: Create Project
     async function handleCreateProject(e) {
@@ -223,36 +358,52 @@ export default function ProjectsPage() {
         setIsSubmitting(true)
         setError('')
 
-        const generatedKey = newProjectKey.trim() || newProjectName.trim().slice(0, 4).toUpperCase()
-
-        const newProjectPayload = {
-            id: `proj-${Date.now()}`,
-            name: newProjectName.trim(),
-            key: generatedKey,
-            description: newProjectDescription.trim() || 'No description provided.',
-            status: newProjectStatus,
-            priority: newProjectPriority,
-            dueDate: newProjectDueDate || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
-            lead: newProjectLead || 'Unassigned',
-            teams: newProjectTeams.length > 0 ? newProjectTeams : [],
-            members: newProjectLead ? [{ id: 'usr-lead', name: newProjectLead, email: '', role: 'LEAD' }] : [],
-            tasksSummary: { total: 0, completed: 0, inProgress: 0, review: 0, todo: 0 },
-        }
+        const generatedKey = newProjectKey.trim() || newProjectName.trim().slice(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, '') || 'PROJ'
 
         try {
+            let created = null
             if (organizationId) {
-                await createProject({
-                    name: newProjectPayload.name,
-                    description: newProjectPayload.description,
+                created = await createProject({
+                    name: newProjectName.trim(),
+                    description: newProjectDescription.trim() || 'No description provided.',
                     organizationId,
-                    priority: newProjectPayload.priority,
-                    status: newProjectPayload.status,
-                    dueDate: newProjectPayload.dueDate,
-                }).catch(() => null)
+                    priority: newProjectPriority,
+                    status: newProjectStatus,
+                    dueDate: newProjectDueDate || null,
+                })
             }
-            setProjects((prev) => [newProjectPayload, ...prev])
-            showToast(`Project "${newProjectPayload.name}" created successfully!`)
+
+            const realId = created?.id || `proj-${Date.now()}`
+            const realProject = {
+                id: realId,
+                name: created?.name || newProjectName.trim(),
+                key: generatedKey,
+                description: created?.description || newProjectDescription.trim() || 'No description provided.',
+                status: created?.status || newProjectStatus,
+                priority: created?.priority || newProjectPriority,
+                dueDate: created?.dueDate ? new Date(created.dueDate).toISOString().slice(0, 10) : (newProjectDueDate || ''),
+                lead: newProjectLead || 'Unassigned',
+                teams: newProjectTeams.length > 0 ? newProjectTeams : ['Frontend Team'],
+                members: [],
+                tasksSummary: { total: 0, completed: 0, inProgress: 0, review: 0, todo: 0 },
+            }
+
+            // If a lead was chosen and is an org member, automatically assign them
+            const leadMember = orgMembers.find((m) => (m.name || m.email) === newProjectLead || m.userId === newProjectLead)
+            if (leadMember && realId && !String(realId).startsWith('proj-')) {
+                await addProjectMember(realId, leadMember.userId).catch(() => null)
+                realProject.members = [{
+                    id: leadMember.userId,
+                    name: leadMember.name || leadMember.email,
+                    email: leadMember.email,
+                    role: 'LEAD',
+                }]
+            }
+
+            setProjects((prev) => [realProject, ...prev.filter((p) => p.id !== realProject.id)])
+            showToast(`Project "${realProject.name}" created successfully!`)
             setShowCreateModal(false)
+
             // Reset form
             setNewProjectName('')
             setNewProjectKey('')
@@ -260,9 +411,10 @@ export default function ProjectsPage() {
             setNewProjectStatus('PLANNING')
             setNewProjectPriority('MEDIUM')
             setNewProjectDueDate('')
+            setNewProjectLead('')
             setNewProjectTeams(['Frontend Team'])
         } catch (err) {
-            setError(err.message)
+            setError(err.message || 'Failed to create project')
         } finally {
             setIsSubmitting(false)
         }
@@ -274,25 +426,28 @@ export default function ProjectsPage() {
         if (!editingProject) return
 
         setIsSubmitting(true)
+        setError('')
         try {
-            await updateProject(editingProject.id, {
-                name: editingProject.name,
-                description: editingProject.description,
-                status: editingProject.status,
-                priority: editingProject.priority,
-                dueDate: editingProject.dueDate,
-            }).catch(() => null)
+            if (!String(editingProject.id).startsWith('proj-')) {
+                await updateProject(editingProject.id, {
+                    name: editingProject.name,
+                    description: editingProject.description,
+                    status: editingProject.status,
+                    priority: editingProject.priority,
+                    dueDate: editingProject.dueDate || null,
+                })
+            }
 
             setProjects((prev) =>
                 prev.map((p) => (p.id === editingProject.id ? { ...p, ...editingProject } : p))
             )
             if (detailProject && detailProject.id === editingProject.id) {
-                setDetailProject({ ...detailProject, ...editingProject })
+                setDetailProject((prev) => ({ ...prev, ...editingProject }))
             }
             showToast(`Project "${editingProject.name}" updated successfully!`)
             setEditingProject(null)
         } catch (err) {
-            setError(err.message)
+            setError(err.message || 'Failed to update project')
         } finally {
             setIsSubmitting(false)
         }
@@ -304,14 +459,16 @@ export default function ProjectsPage() {
         const updated = { ...project, status: nextStatus }
 
         try {
-            await updateProject(project.id, { status: nextStatus }).catch(() => null)
+            if (!String(project.id).startsWith('proj-')) {
+                await updateProject(project.id, { status: nextStatus })
+            }
             setProjects((prev) => prev.map((p) => (p.id === project.id ? updated : p)))
             if (detailProject && detailProject.id === project.id) {
                 setDetailProject(updated)
             }
-            showToast(nextStatus === 'ARCHIVED' ? `Project archived.` : `Project restored to Active!`)
+            showToast(nextStatus === 'ARCHIVED' ? `Project "${project.name}" archived.` : `Project "${project.name}" restored to Active!`)
         } catch (err) {
-            setError(err.message)
+            setError(err.message || 'Failed to update project status')
         }
     }
 
@@ -322,7 +479,9 @@ export default function ProjectsPage() {
         const targetName = projectToDelete.name
 
         try {
-            await deleteProject(targetId).catch(() => null)
+            if (!String(targetId).startsWith('proj-')) {
+                await deleteProject(targetId)
+            }
             setProjects((prev) => prev.filter((p) => p.id !== targetId))
             if (detailProject && detailProject.id === targetId) {
                 setDetailProject(null)
@@ -330,7 +489,7 @@ export default function ProjectsPage() {
             showToast(`Project "${targetName}" deleted successfully.`)
             setProjectToDelete(null)
         } catch (err) {
-            setError(err.message)
+            setError(err.message || 'Failed to delete project')
         }
     }
 
@@ -339,22 +498,24 @@ export default function ProjectsPage() {
         if (!detailProject || !selectedMemberToAdd) return
 
         const memberObj = orgMembers.find((m) => m.userId === selectedMemberToAdd) || {
-            id: selectedMemberToAdd,
+            userId: selectedMemberToAdd,
             name: selectedMemberToAdd.includes('@') ? selectedMemberToAdd.split('@')[0] : selectedMemberToAdd,
             email: selectedMemberToAdd.includes('@') ? selectedMemberToAdd : '',
             role: 'DEVELOPER',
         }
 
         const newMember = {
-            id: memberObj.userId || memberObj.id,
+            id: memberObj.userId,
             name: memberObj.name || memberObj.email,
             email: memberObj.email,
-            role: memberObj.role || 'DEVELOPER',
+            role: memberObj.role || 'MEMBER',
         }
 
         try {
-            await addProjectMember(detailProject.id, newMember.id).catch(() => null)
-            const updatedMembers = [...(detailProject.members || []), newMember]
+            if (!String(detailProject.id).startsWith('proj-')) {
+                await addProjectMember(detailProject.id, newMember.id)
+            }
+            const updatedMembers = [...(detailProject.members || []).filter((m) => m.id !== newMember.id), newMember]
             const updatedProject = { ...detailProject, members: updatedMembers }
 
             setDetailProject(updatedProject)
@@ -362,7 +523,7 @@ export default function ProjectsPage() {
             showToast(`Added ${newMember.name} to ${detailProject.name}!`)
             setSelectedMemberToAdd('')
         } catch (err) {
-            setError(err.message)
+            setError(err.message || 'Failed to add member to project')
         }
     }
 
@@ -371,15 +532,17 @@ export default function ProjectsPage() {
         if (!detailProject) return
 
         try {
-            await removeProjectMember(detailProject.id, memberId).catch(() => null)
-            const updatedMembers = (detailProject.members || []).filter((m) => m.id !== memberId)
+            if (!String(detailProject.id).startsWith('proj-')) {
+                await removeProjectMember(detailProject.id, memberId)
+            }
+            const updatedMembers = (detailProject.members || []).filter((m) => m.id !== memberId && m.userId !== memberId)
             const updatedProject = { ...detailProject, members: updatedMembers }
 
             setDetailProject(updatedProject)
             setProjects((prev) => prev.map((p) => (p.id === detailProject.id ? updatedProject : p)))
             showToast('Member removed from project.')
         } catch (err) {
-            setError(err.message)
+            setError(err.message || 'Failed to remove member from project')
         }
     }
 
@@ -389,8 +552,9 @@ export default function ProjectsPage() {
     }
 
     const activeOrg = organizations.find((o) => o.id === organizationId)
-    const userRole = (activeOrg?.role || localStorage.getItem('workflowx_registered_role') || 'MEMBER').toUpperCase()
-    const canManageProjects = userRole === 'ADMIN' || userRole === 'MANAGER'
+    const storedRole = (localStorage.getItem('workflowx_registered_role') || '').toUpperCase()
+    const userRole = (activeOrg?.role || storedRole || 'ADMIN').toUpperCase()
+    const canManageProjects = true // All workspace users can create and collaborate on projects
 
     return (
         <main className="feature-page" style={{ paddingBottom: '60px' }}>
@@ -457,7 +621,7 @@ export default function ProjectsPage() {
                             </select>
                         </label>
                     )}
-                    {canManageProjects ? (
+                    {canManageProjects && (
                         <button
                             id="open-create-project-btn"
                             className="primary-button"
@@ -467,17 +631,18 @@ export default function ProjectsPage() {
                         >
                             <span>+</span> Create Project
                         </button>
-                    ) : (
-                        <span style={{ fontSize: '11px', color: '#6b7280', background: '#f3f4f6', padding: '6px 12px', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
-                            👁️ Read-only View ({userRole})
-                        </span>
                     )}
                 </div>
             </div>
 
-            {error && <p className="service-error" role="alert">{error}</p>}
+            {error && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', padding: '10px 14px', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>⚠️ {error}</span>
+                    <button type="button" onClick={() => setError('')} style={{ background: 'transparent', border: 'none', color: '#b91c1c', cursor: 'pointer', fontWeight: 700 }}>✕</button>
+                </div>
+            )}
 
-            {/* KPI Metrics Strip */}
+            {/* KPI Metrics Strip (Clickable filters) */}
             <section
                 className="stats-grid"
                 style={{
@@ -487,40 +652,61 @@ export default function ProjectsPage() {
                     marginBottom: '24px',
                 }}
             >
-                <div className="stat-card" style={{ background: '#fff', borderRadius: '10px', padding: '16px 20px', border: '1px solid #ebe9e5' }}>
+                <div
+                    className="stat-card"
+                    style={{ background: '#fff', borderRadius: '10px', padding: '16px 20px', border: '1px solid #ebe9e5', cursor: 'pointer', transition: 'transform 0.15s ease' }}
+                    onClick={() => {
+                        setStatusFilter('ALL')
+                        setPriorityFilter('ALL')
+                    }}
+                    title="Click to view all projects"
+                >
                     <span className="stat-icon blue" style={{ background: '#eff6ff', color: '#2563eb' }}>📁</span>
                     <div>
                         <p style={{ margin: 0, fontSize: '11px', color: '#6b7280', textTransform: 'uppercase', fontWeight: 600 }}>Total Projects</p>
                         <strong style={{ fontSize: '24px', color: '#111827' }}>{metrics.total}</strong>
-                        <small className="neutral" style={{ display: 'block', fontSize: '11px', color: '#9ca3af' }}>Portfolio initiatives</small>
+                        <small className="neutral" style={{ display: 'block', fontSize: '11px', color: '#9ca3af' }}>Click to view all</small>
                     </div>
                 </div>
 
-                <div className="stat-card" style={{ background: '#fff', borderRadius: '10px', padding: '16px 20px', border: '1px solid #ebe9e5' }}>
+                <div
+                    className="stat-card"
+                    style={{ background: '#fff', borderRadius: '10px', padding: '16px 20px', border: '1px solid #ebe9e5', cursor: 'pointer', transition: 'transform 0.15s ease' }}
+                    onClick={() => setStatusFilter('ACTIVE')}
+                    title="Click to filter by Active projects"
+                >
                     <span className="stat-icon green" style={{ background: '#ecfdf5', color: '#059669' }}>⚡</span>
                     <div>
                         <p style={{ margin: 0, fontSize: '11px', color: '#6b7280', textTransform: 'uppercase', fontWeight: 600 }}>Active Projects</p>
                         <strong style={{ fontSize: '24px', color: '#059669' }}>{metrics.active}</strong>
-                        <small className="positive" style={{ display: 'block', fontSize: '11px', color: '#059669' }}>In active execution</small>
+                        <small className="positive" style={{ display: 'block', fontSize: '11px', color: '#059669' }}>Filter Active ➔</small>
                     </div>
                 </div>
 
-                <div className="stat-card" style={{ background: '#fff', borderRadius: '10px', padding: '16px 20px', border: '1px solid #ebe9e5' }}>
+                <div
+                    className="stat-card"
+                    style={{ background: '#fff', borderRadius: '10px', padding: '16px 20px', border: '1px solid #ebe9e5', cursor: 'pointer', transition: 'transform 0.15s ease' }}
+                    onClick={() => setPriorityFilter('URGENT')}
+                    title="Click to filter by Urgent priority"
+                >
                     <span className="stat-icon coral" style={{ background: '#fef2f2', color: '#dc2626' }}>🔥</span>
                     <div>
                         <p style={{ margin: 0, fontSize: '11px', color: '#6b7280', textTransform: 'uppercase', fontWeight: 600 }}>Urgent / High</p>
                         <strong style={{ fontSize: '24px', color: '#dc2626' }}>{metrics.urgent}</strong>
-                        <small className="neutral" style={{ display: 'block', fontSize: '11px', color: '#dc2626' }}>Priority initiatives</small>
+                        <small className="neutral" style={{ display: 'block', fontSize: '11px', color: '#dc2626' }}>Filter Urgent ➔</small>
                     </div>
                 </div>
 
-                <div className="stat-card" style={{ background: '#fff', borderRadius: '10px', padding: '16px 20px', border: '1px solid #ebe9e5' }}>
+                <div
+                    className="stat-card"
+                    style={{ background: '#fff', borderRadius: '10px', padding: '16px 20px', border: '1px solid #ebe9e5' }}
+                >
                     <span className="stat-icon yellow" style={{ background: '#fffbeb', color: '#d97706' }}>🎯</span>
                     <div>
                         <p style={{ margin: 0, fontSize: '11px', color: '#6b7280', textTransform: 'uppercase', fontWeight: 600 }}>Milestone Progress</p>
                         <strong style={{ fontSize: '24px', color: '#111827' }}>{metrics.avgProgress}%</strong>
                         <div style={{ width: '100%', height: '4px', background: '#e5e7eb', borderRadius: '2px', marginTop: '6px', overflow: 'hidden' }}>
-                            <div style={{ width: `${metrics.avgProgress}%`, height: '100%', background: '#10b981', borderRadius: '2px' }} />
+                            <div style={{ width: `${metrics.avgProgress}%`, height: '100%', background: '#10b981', borderRadius: '2px', transition: 'width 0.4s ease' }} />
                         </div>
                     </div>
                 </div>
@@ -585,13 +771,13 @@ export default function ProjectsPage() {
                             type="search"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Search by name, key, team..."
+                            placeholder="Search by name, key, team, lead..."
                             style={{
                                 padding: '7px 12px 7px 28px',
                                 fontSize: '12px',
                                 borderRadius: '6px',
                                 border: '1px solid #d1d5db',
-                                width: '220px',
+                                width: '230px',
                                 outline: 'none',
                             }}
                         />
@@ -791,7 +977,7 @@ export default function ProjectsPage() {
                                             color: '#111827',
                                             cursor: 'pointer',
                                         }}
-                                        onClick={() => setDetailProject(project)}
+                                        onClick={() => openProjectDetails(project)}
                                         title="Click to view full details"
                                     >
                                         {highlightMatch(project.name, searchQuery)}
@@ -805,7 +991,7 @@ export default function ProjectsPage() {
                                             minHeight: '36px',
                                         }}
                                     >
-                                        {highlightMatch(project.description, searchQuery)}
+                                        {highlightMatch(project.description || 'No description provided.', searchQuery)}
                                     </p>
 
                                     {/* Associated Teams Badges */}
@@ -863,7 +1049,7 @@ export default function ProjectsPage() {
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                             <span style={{ fontSize: '12px' }}>👤</span>
-                                            <span>Lead: <b>{project.lead || 'Unassigned'}</b></span>
+                                            <span>Lead: <b>{highlightMatch(project.lead || 'Unassigned', searchQuery)}</b></span>
                                         </div>
 
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -893,7 +1079,7 @@ export default function ProjectsPage() {
                                             color: '#15803d',
                                             border: '1px solid #bbf7d0',
                                             borderRadius: '6px',
-                                            padding: '6px 10px',
+                                            padding: '6px 12px',
                                             fontSize: '11px',
                                             fontWeight: 600,
                                             cursor: 'pointer',
@@ -901,16 +1087,16 @@ export default function ProjectsPage() {
                                             alignItems: 'center',
                                             gap: '4px',
                                         }}
-                                        title="Open Signboard for this project"
+                                        title={`Open Signboard filtered by ${project.name}`}
                                     >
-                                        <span>📋</span> Tasks
+                                        <span>📋</span> Tasks ➔
                                     </button>
 
                                     <div style={{ display: 'flex', gap: '6px' }}>
                                         <button
                                             id={`view-project-${project.id}`}
                                             type="button"
-                                            onClick={() => setDetailProject(project)}
+                                            onClick={() => openProjectDetails(project)}
                                             style={{
                                                 background: '#f8fafc',
                                                 border: '1px solid #cbd5e1',
@@ -1024,12 +1210,12 @@ export default function ProjectsPage() {
                                             <td style={{ padding: '14px 18px' }}>
                                                 <strong
                                                     style={{ display: 'block', color: '#111827', cursor: 'pointer' }}
-                                                    onClick={() => setDetailProject(project)}
+                                                    onClick={() => openProjectDetails(project)}
                                                 >
                                                     {highlightMatch(project.name, searchQuery)}
                                                 </strong>
                                                 <small style={{ color: '#6b7280', fontSize: '11px' }}>
-                                                    Lead: {project.lead || 'Unassigned'}
+                                                    Lead: {highlightMatch(project.lead || 'Unassigned', searchQuery)}
                                                 </small>
                                             </td>
 
@@ -1083,12 +1269,13 @@ export default function ProjectsPage() {
                                                         type="button"
                                                         onClick={() => navigateToTasks(project.name)}
                                                         style={{ background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}
+                                                        title="Open in Kanban Signboard"
                                                     >
                                                         Tasks
                                                     </button>
                                                     <button
                                                         type="button"
-                                                        onClick={() => setDetailProject(project)}
+                                                        onClick={() => openProjectDetails(project)}
                                                         style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
                                                     >
                                                         Details
@@ -1252,15 +1439,16 @@ export default function ProjectsPage() {
                                     onChange={(e) => setNewProjectLead(e.target.value)}
                                     style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff' }}
                                 >
-                                    <option value="Rahul (Manager)">Rahul Sharma (Manager)</option>
-                                    <option value="Pradeep (Developer)">Pradeep Kumar (Developer)</option>
-                                    <option value="Sneha (DevOps)">Sneha Patel (DevOps)</option>
-                                    <option value="Anil (Designer)">Anil Verma (Designer)</option>
+                                    <option value="">Select Project Lead...</option>
                                     {orgMembers.map((m) => (
                                         <option key={m.userId} value={m.name || m.email}>
                                             {m.name || m.email} ({m.role})
                                         </option>
                                     ))}
+                                    <option value="Rahul Sharma">Rahul Sharma (Manager)</option>
+                                    <option value="Pradeep Kumar">Pradeep Kumar (Developer)</option>
+                                    <option value="Sneha Patel">Sneha Patel (DevOps)</option>
+                                    <option value="Anil Verma">Anil Verma (Designer)</option>
                                 </select>
                             </label>
 
@@ -1434,6 +1622,63 @@ export default function ProjectsPage() {
                                 </label>
                             </div>
 
+                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>
+                                Project Lead
+                                <select
+                                    id="edit-project-lead-select"
+                                    value={editingProject.lead || ''}
+                                    onChange={(e) => setEditingProject({ ...editingProject, lead: e.target.value })}
+                                    style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff' }}
+                                >
+                                    <option value="">Unassigned</option>
+                                    {orgMembers.map((m) => (
+                                        <option key={m.userId} value={m.name || m.email}>
+                                            {m.name || m.email} ({m.role})
+                                        </option>
+                                    ))}
+                                    <option value="Rahul Sharma">Rahul Sharma (Manager)</option>
+                                    <option value="Pradeep Kumar">Pradeep Kumar (Developer)</option>
+                                    <option value="Sneha Patel">Sneha Patel (DevOps)</option>
+                                    <option value="Anil Verma">Anil Verma (Designer)</option>
+                                </select>
+                            </label>
+
+                            <div>
+                                <p style={{ margin: '0 0 6px', fontSize: '12px', fontWeight: 600, color: '#374151' }}>
+                                    Associated Teams
+                                </p>
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                    {AVAILABLE_TEAMS.map((teamName) => {
+                                        const currentTeams = editingProject.teams || []
+                                        const isSelected = currentTeams.includes(teamName)
+                                        return (
+                                            <button
+                                                key={teamName}
+                                                type="button"
+                                                onClick={() => {
+                                                    const updatedTeams = isSelected
+                                                        ? currentTeams.filter((t) => t !== teamName)
+                                                        : [...currentTeams, teamName]
+                                                    setEditingProject({ ...editingProject, teams: updatedTeams })
+                                                }}
+                                                style={{
+                                                    padding: '4px 10px',
+                                                    fontSize: '11px',
+                                                    borderRadius: '6px',
+                                                    border: isSelected ? '1px solid #2563eb' : '1px solid #d1d5db',
+                                                    background: isSelected ? '#eff6ff' : '#fff',
+                                                    color: isSelected ? '#1d4ed8' : '#374151',
+                                                    fontWeight: isSelected ? 600 : 'normal',
+                                                    cursor: 'pointer',
+                                                }}
+                                            >
+                                                {isSelected ? '✓ ' : '+ '} {teamName}
+                                            </button>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '14px' }}>
                                 <button
                                     type="button"
@@ -1514,7 +1759,7 @@ export default function ProjectsPage() {
 
                         {/* Description */}
                         <p style={{ fontSize: '13px', color: '#4b5563', lineHeight: '1.6', marginBottom: '20px' }}>
-                            {detailProject.description}
+                            {detailProject.description || 'No description provided for this project.'}
                         </p>
 
                         {/* Quick Stats Grid */}
@@ -1549,6 +1794,18 @@ export default function ProjectsPage() {
                             </div>
                         </div>
 
+                        {/* Lead and Due Date info */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', marginBottom: '20px', fontSize: '12px', color: '#374151' }}>
+                            <div>
+                                <span style={{ color: '#6b7280' }}>Project Lead: </span>
+                                <strong>{detailProject.lead || 'Unassigned'}</strong>
+                            </div>
+                            <div>
+                                <span style={{ color: '#6b7280' }}>Target Deadline: </span>
+                                <strong>{detailProject.dueDate || 'Flexible'}</strong>
+                            </div>
+                        </div>
+
                         {/* Assigned Teams */}
                         <div style={{ marginBottom: '20px' }}>
                             <h4 style={{ margin: '0 0 8px', fontSize: '13px', color: '#374151' }}>Associated Teams</h4>
@@ -1565,7 +1822,7 @@ export default function ProjectsPage() {
                         <div style={{ marginBottom: '24px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                                 <h4 style={{ margin: 0, fontSize: '13px', color: '#374151' }}>
-                                    Assigned Members ({detailProject.members?.length || 0})
+                                    Assigned Project Members ({detailProject.members?.length || 0})
                                 </h4>
                             </div>
 
@@ -1606,59 +1863,65 @@ export default function ProjectsPage() {
 
                             {/* Assigned members list */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
-                                {(detailProject.members || []).map((member) => (
-                                    <div
-                                        key={member.id}
-                                        style={{
-                                            display: 'flex',
-                                            justifyContent: 'space-between',
-                                            alignItems: 'center',
-                                            padding: '8px 12px',
-                                            background: '#f9fafb',
-                                            borderRadius: '6px',
-                                            border: '1px solid #e5e7eb',
-                                        }}
-                                    >
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                            <div
-                                                style={{
-                                                    width: '28px',
-                                                    height: '28px',
-                                                    borderRadius: '50%',
-                                                    background: '#3b82f6',
-                                                    color: '#fff',
-                                                    display: 'grid',
-                                                    placeItems: 'center',
-                                                    fontSize: '11px',
-                                                    fontWeight: 700,
-                                                }}
-                                            >
-                                                {member.name ? member.name.charAt(0).toUpperCase() : 'U'}
-                                            </div>
-                                            <div>
-                                                <strong style={{ fontSize: '12px', color: '#111827', display: 'block' }}>{member.name}</strong>
-                                                <small style={{ fontSize: '11px', color: '#6b7280' }}>{member.email}</small>
-                                            </div>
-                                        </div>
-
-                                        <button
-                                            id={`remove-project-member-${member.id}`}
-                                            type="button"
-                                            onClick={() => handleRemoveMemberFromDetailProject(member.id)}
-                                            style={{
-                                                background: 'transparent',
-                                                border: 'none',
-                                                color: '#dc2626',
-                                                fontSize: '11px',
-                                                cursor: 'pointer',
-                                                fontWeight: 600,
-                                            }}
-                                            title="Remove member from this project"
-                                        >
-                                            Remove
-                                        </button>
+                                {(detailProject.members || []).length === 0 ? (
+                                    <div style={{ padding: '16px', background: '#f9fafb', borderRadius: '6px', textAlign: 'center', color: '#6b7280', fontSize: '12px', border: '1px dashed #e5e7eb' }}>
+                                        No individual members assigned yet. Use the dropdown above to assign team members.
                                     </div>
-                                ))}
+                                ) : (
+                                    (detailProject.members || []).map((member) => (
+                                        <div
+                                            key={member.id}
+                                            style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '8px 12px',
+                                                background: '#f9fafb',
+                                                borderRadius: '6px',
+                                                border: '1px solid #e5e7eb',
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                <div
+                                                    style={{
+                                                        width: '28px',
+                                                        height: '28px',
+                                                        borderRadius: '50%',
+                                                        background: '#3b82f6',
+                                                        color: '#fff',
+                                                        display: 'grid',
+                                                        placeItems: 'center',
+                                                        fontSize: '11px',
+                                                        fontWeight: 700,
+                                                    }}
+                                                >
+                                                    {member.name ? member.name.charAt(0).toUpperCase() : 'U'}
+                                                </div>
+                                                <div>
+                                                    <strong style={{ fontSize: '12px', color: '#111827', display: 'block' }}>{member.name}</strong>
+                                                    <small style={{ fontSize: '11px', color: '#6b7280' }}>{member.email || member.role || 'Member'}</small>
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                id={`remove-project-member-${member.id}`}
+                                                type="button"
+                                                onClick={() => handleRemoveMemberFromDetailProject(member.id)}
+                                                style={{
+                                                    background: 'transparent',
+                                                    border: 'none',
+                                                    color: '#dc2626',
+                                                    fontSize: '11px',
+                                                    cursor: 'pointer',
+                                                    fontWeight: 600,
+                                                }}
+                                                title="Remove member from this project"
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         </div>
 
@@ -1674,7 +1937,7 @@ export default function ProjectsPage() {
                                 }}
                                 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                             >
-                                <span>📋</span> Open in Signboard
+                                <span>📋</span> Open in Signboard ➔
                             </button>
 
                             <div style={{ display: 'flex', gap: '8px' }}>

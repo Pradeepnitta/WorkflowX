@@ -14,6 +14,7 @@ const PRIORITIES = ['Critical', 'High', 'Medium', 'Low']
 export default function TasksPage() {
     const [searchParams, setSearchParams] = useSearchParams()
     const projectQuery = searchParams.get('project')
+    const statusQuery = searchParams.get('status')
 
     const [tasks, setTasks] = useState([])
     const [organizations, setOrganizations] = useState([])
@@ -30,7 +31,7 @@ export default function TasksPage() {
     const [dragOverCol, setDragOverCol] = useState(null)
 
     // Filter & search
-    const [filter, setFilter] = useState('All tasks')
+    const [filter, setFilter] = useState(statusQuery || 'All tasks')
     const [assigneeFilter, setAssigneeFilter] = useState('ALL')
     const [priorityFilter, setPriorityFilter] = useState('ALL')
     const [projectFilter, setProjectFilter] = useState(projectQuery || 'ALL')
@@ -164,7 +165,10 @@ export default function TasksPage() {
             setProjectFilter(projectQuery)
             setSelectedProject(projectQuery)
         }
-    }, [projectQuery])
+        if (statusQuery) {
+            setFilter(statusQuery)
+        }
+    }, [projectQuery, statusQuery])
 
     const pendingSuggestions = useMemo(() => {
         return tasks.filter((t) => t.isSuggestion && t.approvalStatus === 'PENDING')
