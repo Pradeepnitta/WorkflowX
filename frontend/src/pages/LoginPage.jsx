@@ -17,7 +17,10 @@ function LoginPage() {
     const navigate = useNavigate()
     const location = useLocation()
 
-    const destination = location.state?.from?.pathname || '/'
+    // Normalize destination: never redirect back to public auth pages
+    const fromPath = location.state?.from?.pathname || '/'
+    const publicPaths = ['/login', '/register']
+    const destination = publicPaths.includes(fromPath) ? '/' : fromPath
 
     useEffect(() => {
         try {
