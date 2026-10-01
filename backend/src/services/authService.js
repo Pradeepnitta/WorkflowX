@@ -103,8 +103,11 @@ export function createAuthService(userRepository, refreshTokenRepository, otpSer
             const isAdminLogin = Boolean(input.isAdminLogin || input.role === 'ADMIN')
 
             const user = await userRepository.findByEmail(email)
-            if (!user || !(await verifyPassword(password, user.passwordHash))) {
-                throw serviceError('Invalid email or password', 401)
+            if (!user) {
+                throw serviceError('this email is not Existed', 401)
+            }
+            if (!(await verifyPassword(password, user.passwordHash))) {
+                throw serviceError('Invalid password', 401)
             }
 
             const hasAdminMembership = user.memberships?.some((m) => m.role === 'ADMIN')

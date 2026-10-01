@@ -74,7 +74,15 @@ function LoginPage() {
                 })
             }
         } catch (requestError) {
-            setError(requestError.message)
+            let msg = requestError.message || 'Login failed'
+            if (
+                msg === 'Invalid email or password' ||
+                msg.toLowerCase().includes('not existed') ||
+                msg.toLowerCase().includes('not exist')
+            ) {
+                msg = 'this email is not Existed'
+            }
+            setError(msg)
             if (requestError.message && requestError.message.toLowerCase().includes('admin secret key')) {
                 setIsSigningInAsAdmin(true)
             }

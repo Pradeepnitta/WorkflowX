@@ -48,7 +48,11 @@ test('auth service rejects duplicates and invalid login credentials', async () =
     )
     await assert.rejects(
         auth.login({ email: 'jordan@example.com', password: 'wrong password' }),
-        (error) => error.statusCode === 401,
+        (error) => error.statusCode === 401 && error.message === 'Invalid password',
+    )
+    await assert.rejects(
+        auth.login({ email: 'unknown@example.com', password: 'password123' }),
+        (error) => error.statusCode === 401 && error.message === 'this email is not Existed',
     )
 })
 
