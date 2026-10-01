@@ -1,6 +1,7 @@
 {
   "name": "workflowx",
   "version": "1.0.0",
+  "homepage": "https://workflowx-beta.vercel.app/",
   "private": true,
   "type": "module",
   "scripts": {

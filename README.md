@@ -1,8 +1,14 @@
 # WorkFlowX
 
-WorkFlowX is a project and task collaboration workspace.
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-workflowx--beta.vercel.app-blue?style=for-the-badge&logo=vercel)](https://workflowx-beta.vercel.app/)
 
-## Current state
+**Live Deployment URL:** [https://workflowx-beta.vercel.app/](https://workflowx-beta.vercel.app/)
+
+WorkFlowX is a modern, high-performance team workspace for project and task collaboration.
+
+## Live Deployment
+- **Web Application:** [https://workflowx-beta.vercel.app/](https://workflowx-beta.vercel.app/)
+
 
 The repository currently contains a working React/Vite dashboard and a small Node.js API. Tasks are persisted in `backend/src/data/tasks.json` while the PostgreSQL/Prisma foundation is being introduced.
 
