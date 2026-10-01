@@ -1,3 +1,6 @@
+import { createNotification } from '../repositories/notificationRepository.js'
+import { query } from '../config/db.js'
+
 export function createTaskController({ projectTaskService, createTask, listTasks, updateTask, deleteTask, sendJson, readBody, getIO }) {
     return {
         async listProjectTasks(request, response, user, projectId) {
@@ -31,6 +34,25 @@ export function createTaskController({ projectTaskService, createTask, listTasks
             const data = await createTask(input)
             const io = getIO ? getIO() : null
             if (io) io.emit('task:created', data)
+
+            // Persist in-app notifications for workspace members
+            try {
+                const userRows = (await query(`SELECT DISTINCT u.id, om.role FROM "User" u LEFT JOIN "OrganizationMember" om ON u.id = om."userId"`)).rows
+                for (const u of userRows) {
+                    const msg = data.isSuggestion
+                        ? `New Task Proposal: "${data.title}" submitted for manager review`
+                        : `New Task: "${data.title}" added to ${data.project || 'workspace'}`
+                    const notif = await createNotification({
+                        userId: u.id,
+                        type: 'TASK_ASSIGNED',
+                        message: msg,
+                    })
+                    if (io) io.emit('notification:new', notif)
+                }
+            } catch {
+                // Silently handle if notification dispatch fails
+            }
+
             sendJson(response, 201, { data })
         },
 
@@ -39,6 +61,22 @@ export function createTaskController({ projectTaskService, createTask, listTasks
             const data = await updateTask(taskId, input)
             const io = getIO ? getIO() : null
             if (io) io.emit('task:updated', data)
+
+            // Persist in-app notifications for task status or details update
+            try {
+                const userRows = (await query(`SELECT DISTINCT u.id FROM "User" u`)).rows
+                for (const u of userRows) {
+                    const notif = await createNotification({
+                        userId: u.id,
+                        type: 'TASK_UPDATED',
+                        message: `Task updated: "${data.title || 'Task'}" status is now ${data.status || 'updated'}`,
+                    })
+                    if (io) io.emit('notification:new', notif)
+                }
+            } catch {
+                // Silently handle if notification dispatch fails
+            }
+
             sendJson(response, 200, { data })
         },
 

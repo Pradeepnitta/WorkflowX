@@ -9,7 +9,7 @@ import ProjectsPage from './pages/ProjectsPage.jsx'
 import TeamsPage from './pages/TeamsPage.jsx'
 import OrganizationMembersPage from './pages/OrganizationMembersPage.jsx'
 import AnalyticsPage from './pages/AnalyticsPage.jsx'
-import NotificationsPage from './pages/NotificationsPage.jsx'
+import InboxPage from './pages/InboxPage.jsx'
 import SearchPage from './pages/SearchPage.jsx'
 import ProfilePage from './pages/ProfilePage.jsx'
 import SettingsPage from './pages/SettingsPage.jsx'
@@ -48,7 +48,7 @@ function App() {
                         <Route path="/members" element={<OrganizationMembersPage />} />
                         <Route path="/admin" element={<AdminPage />} />
                         <Route path="/analytics" element={<AnalyticsPage />} />
-                        <Route path="/notifications" element={<NotificationsPage />} />
+                        <Route path="/notifications" element={<InboxPage />} />
                         <Route path="/search" element={<SearchPage />} />
                         <Route path="/profile" element={<ProfilePage />} />
                         <Route path="/settings" element={<SettingsPage />} />

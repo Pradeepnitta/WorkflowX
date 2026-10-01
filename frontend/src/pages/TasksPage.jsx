@@ -193,10 +193,12 @@ export default function TasksPage() {
             const matchesProject = projectFilter === 'ALL' || (task.project || '').toLowerCase().includes(projectFilter.toLowerCase())
             const matchesSearch = !searchQuery.trim() || (task.title || '').toLowerCase().includes(searchQuery.toLowerCase().trim())
 
+            const myName = (currentUser?.name || '').trim().toLowerCase()
+            const myEmail = (currentUser?.email || '').trim().toLowerCase()
             const matchesOnlyMy = !onlyMyTasks || (
                 task.assignee && (
-                    task.assignee.toLowerCase().includes((currentUser?.name || '').toLowerCase()) ||
-                    task.assignee.toLowerCase().includes((currentUser?.email || '').toLowerCase()) ||
+                    (myName && task.assignee.toLowerCase().includes(myName)) ||
+                    (myEmail && task.assignee.toLowerCase().includes(myEmail)) ||
                     task.assignee === 'You'
                 )
             )
@@ -234,7 +236,8 @@ export default function TasksPage() {
 
     const canAssign = useMemo(() => {
         if (!currentUser) return false
-        const role = (currentMembership?.role || currentUser.role || '').toUpperCase()
+        const storedRole = (localStorage.getItem('workflowx_registered_role') || '').toUpperCase()
+        const role = (currentMembership?.role || currentUser.role || storedRole || '').toUpperCase()
         return role === 'ADMIN' || role === 'MANAGER'
     }, [currentUser, currentMembership])
 
@@ -420,7 +423,7 @@ export default function TasksPage() {
         if (!newComment.trim() || !activeTask) return
         const commentObj = {
             id: Date.now(),
-            author: 'Developer (You)',
+            author: currentUser?.name || 'Developer',
             text: newComment.trim(),
             time: 'Just now',
         }
@@ -1148,6 +1151,7 @@ export default function TasksPage() {
                                 id="new-task-due-date-input"
                                 type="date"
                                 value={dueDate}
+                                min={new Date().toISOString().split('T')[0]}
                                 onChange={(e) => setDueDate(e.target.value)}
                             />
                         </div>
@@ -1419,14 +1423,16 @@ export default function TasksPage() {
                                         >
                                             Details ➔
                                         </button>
-                                        <button
-                                            type="button"
-                                            onClick={(e) => handleDeleteTask(task.id, e)}
-                                            style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '4px 8px', fontSize: '11px', color: '#dc2626', cursor: 'pointer' }}
-                                            title="Delete Task"
-                                        >
-                                            🗑
-                                        </button>
+                                        {canAssign && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => handleDeleteTask(task.id, e)}
+                                                style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '4px 8px', fontSize: '11px', color: '#dc2626', cursor: 'pointer' }}
+                                                title="Delete Task"
+                                            >
+                                                🗑
+                                            </button>
+                                        )}
                                     </div>
                                 </article>
                             ))}
@@ -1535,7 +1541,7 @@ export default function TasksPage() {
                                         />
                                     </div>
 
-                                    {canAssign && (
+                                    {canAssign ? (
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                             <span>👤 Assignee:</span>
                                             <select
@@ -1554,6 +1560,11 @@ export default function TasksPage() {
                                                     </option>
                                                 ))}
                                             </select>
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748b' }}>
+                                            <span>👤 Assignee:</span>
+                                            <strong style={{ color: '#0f172a' }}>{activeTask.assignee || 'Unassigned'}</strong>
                                         </div>
                                     )}
                                 </div>
@@ -1793,27 +1804,29 @@ export default function TasksPage() {
                         </div>
 
                         <div className="form-actions" style={{ marginTop: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <button
-                                type="button"
-                                onClick={(e) => handleDeleteTask(activeTask.id, e)}
-                                style={{
-                                    padding: '7px 14px',
-                                    fontSize: '12px',
-                                    fontWeight: 600,
-                                    background: '#fef2f2',
-                                    color: '#dc2626',
-                                    border: '1px solid #fecaca',
-                                    borderRadius: '8px',
-                                    cursor: 'pointer',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    transition: 'all 0.15s ease',
-                                }}
-                                title="Permanently delete this task"
-                            >
-                                🗑 Delete Task
-                            </button>
+                            {canAssign ? (
+                                <button
+                                    type="button"
+                                    onClick={(e) => handleDeleteTask(activeTask.id, e)}
+                                    style={{
+                                        padding: '7px 14px',
+                                        fontSize: '12px',
+                                        fontWeight: 600,
+                                        background: '#fef2f2',
+                                        color: '#dc2626',
+                                        border: '1px solid #fecaca',
+                                        borderRadius: '8px',
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        transition: 'all 0.15s ease',
+                                    }}
+                                    title="Permanently delete this task"
+                                >
+                                    🗑 Delete Task
+                                </button>
+                            ) : <div />}
                             <button type="button" className="secondary-button" onClick={() => setActiveTask(null)}>
                                 Close
                             </button>

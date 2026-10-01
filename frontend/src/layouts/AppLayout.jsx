@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { getAccessToken, getCurrentUser, logout } from '../services/authService.js'
 import { getOrganizations } from '../services/organizationService.js'
 import { connectSocket, disconnectSocket } from '../services/socketService.js'
+import { getNotifications } from '../services/notificationService.js'
 import '../App.css'
 
 export default function AppLayout() {
@@ -11,7 +12,7 @@ export default function AppLayout() {
     const [user, setUser] = useState(null)
     const [organization, setOrganization] = useState(null)
     const [authVersion, setAuthVersion] = useState(0)
-    const [unreadCount, setUnreadCount] = useState(4)
+    const [unreadCount, setUnreadCount] = useState(0)
     const [toasts, setToasts] = useState([])
 
     function addToast(toast) {
@@ -27,9 +28,22 @@ export default function AppLayout() {
         }
         window.addEventListener('auth-change', onAuthChange)
         window.addEventListener('storage', onAuthChange)
+
+        // Listen for notification read events from InboxPage
+        function onNotifRead() {
+            getNotifications()
+                .then(d => {
+                    const list = Array.isArray(d) ? d : (d?.data || [])
+                    setUnreadCount(list.filter(n => !n.isRead).length)
+                })
+                .catch(() => null)
+        }
+        window.addEventListener('notification:read', onNotifRead)
+
         return () => {
             window.removeEventListener('auth-change', onAuthChange)
             window.removeEventListener('storage', onAuthChange)
+            window.removeEventListener('notification:read', onNotifRead)
         }
     }, [])
 
@@ -95,6 +109,13 @@ export default function AppLayout() {
                 else setOrganization(null)
             })
             .catch(() => setOrganization(null))
+        // Fetch real unread count
+        getNotifications()
+            .then(d => {
+                const list = Array.isArray(d) ? d : (d?.data || [])
+                setUnreadCount(list.filter(n => !n.isRead).length)
+            })
+            .catch(() => null)
     }, [authVersion, location.pathname])
 
     async function handleSignOut() {
@@ -105,7 +126,10 @@ export default function AppLayout() {
     }
 
     const currentRole = (organization?.role || localStorage.getItem('workflowx_registered_role') || 'MEMBER').toUpperCase()
-    const isAdmin = currentRole === 'ADMIN'
+    const isAdmin   = currentRole === 'ADMIN'
+    const isManager = currentRole === 'MANAGER' || isAdmin
+    const isDeveloper = currentRole === 'MEMBER'
+    const isViewer  = currentRole === 'VIEWER'
 
     const currentPath = location.pathname
     const pathNameMap = {
@@ -161,9 +185,11 @@ export default function AppLayout() {
                     <NavLink to="/teams" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
                         <span className="nav-icon">♧</span>Team
                     </NavLink>
-                    <NavLink to="/members" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                        <span className="nav-icon">👤</span>Members
-                    </NavLink>
+                    {isManager && (
+                        <NavLink to="/members" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                            <span className="nav-icon">👤</span>Members
+                        </NavLink>
+                    )}
 
                     <p className="nav-label nav-label-spaced">Manage</p>
                     {isAdmin && (
@@ -175,9 +201,11 @@ export default function AppLayout() {
                         <span className="nav-icon">◌</span>Inbox
                         {unreadCount > 0 && <span className="nav-count">{unreadCount}</span>}
                     </NavLink>
-                    <NavLink to="/analytics" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                        <span className="nav-icon">📊</span>Analytics
-                    </NavLink>
+                    {isManager && (
+                        <NavLink to="/analytics" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                            <span className="nav-icon">📊</span>Analytics
+                        </NavLink>
+                    )}
                     <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
                         <span className="nav-icon">⚙</span>Settings
                     </NavLink>
@@ -274,45 +302,25 @@ export default function AppLayout() {
                     {currentPath === '/admin' && !isAdmin ? (
                         <div
                             id="admin-access-restricted-card"
-                            style={{
-                                maxWidth: '580px',
-                                margin: '60px auto',
-                                background: '#fff',
-                                border: '1px solid #fee2e2',
-                                borderRadius: '12px',
-                                padding: '36px',
-                                textAlign: 'center',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
-                            }}
+                            style={{ maxWidth: '580px', margin: '60px auto', background: '#fff', border: '1px solid #fee2e2', borderRadius: '12px', padding: '36px', textAlign: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.06)' }}
                         >
-                            <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: '#fee2e2', color: '#dc2626', display: 'grid', placeItems: 'center', fontSize: '26px', margin: '0 auto 16px' }}>
-                                🚫
-                            </div>
-                            <h2 style={{ margin: '0 0 8px', color: '#111827', fontSize: '20px' }}>
-                                Admin Console Restricted
-                            </h2>
-                            <p style={{ color: '#4b5563', fontSize: '13px', lineHeight: '1.6', marginBottom: '16px' }}>
-                                You are signed in as <b>{user?.name || user?.email || 'User'}</b> with the role <span style={{ fontWeight: 700, color: '#dc2626' }}>{currentRole}</span>.
-                            </p>
-                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', fontSize: '12px', color: '#334155', lineHeight: '1.5', marginBottom: '24px', textAlign: 'left' }}>
-                                📌 <b>WorkFlowX Security Policy:</b>
-                                <br />
-                                The same email address cannot have access to different roles. If you want to use the <b>ADMIN</b> role, you must log out of this account and sign in or sign up with an Administrator email.
-                            </div>
+                            <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: '#fee2e2', color: '#dc2626', display: 'grid', placeItems: 'center', fontSize: '26px', margin: '0 auto 16px' }}>🚫</div>
+                            <h2 style={{ margin: '0 0 8px', color: '#111827', fontSize: '20px' }}>Admin Console Restricted</h2>
+                            <p style={{ color: '#4b5563', fontSize: '13px', lineHeight: '1.6', marginBottom: '16px' }}>You are signed in as <b>{user?.name || user?.email || 'User'}</b> with the role <span style={{ fontWeight: 700, color: '#dc2626' }}>{currentRole}</span>.</p>
+                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', fontSize: '12px', color: '#334155', lineHeight: '1.5', marginBottom: '24px', textAlign: 'left' }}>📌 <b>WorkFlowX Security Policy:</b><br />The same email address cannot have access to different roles. If you want to use the <b>ADMIN</b> role, you must log out of this account and sign in or sign up with an Administrator email.</div>
                             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-                                <button type="button" className="secondary-button" onClick={() => navigate('/')}>
-                                    Go to Overview
-                                </button>
-                                <button
-                                    id="restricted-logout-btn"
-                                    type="button"
-                                    className="primary-button"
-                                    onClick={handleSignOut}
-                                    style={{ background: '#dc2626' }}
-                                >
-                                    Log Out & Switch Role
-                                </button>
+                                <button type="button" className="secondary-button" onClick={() => navigate('/')}>Go to Overview</button>
+                                <button id="restricted-logout-btn" type="button" className="primary-button" onClick={handleSignOut} style={{ background: '#dc2626' }}>Log Out &amp; Switch Role</button>
                             </div>
+                        </div>
+                    ) : (currentPath === '/analytics' || currentPath === '/members') && !isManager ? (
+                        <div
+                            style={{ maxWidth: '540px', margin: '60px auto', background: '#fff', border: '1px solid #fef3c7', borderRadius: '12px', padding: '36px', textAlign: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.06)' }}
+                        >
+                            <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: '#fef3c7', color: '#d97706', display: 'grid', placeItems: 'center', fontSize: '26px', margin: '0 auto 16px' }}>🔒</div>
+                            <h2 style={{ margin: '0 0 8px', color: '#111827', fontSize: '20px' }}>Access Restricted</h2>
+                            <p style={{ color: '#4b5563', fontSize: '13px', lineHeight: '1.6', marginBottom: '24px' }}>This section is available to <b>Managers</b> and <b>Administrators</b> only. Your current role is <span style={{ fontWeight: 700, color: '#d97706' }}>{currentRole}</span>.</p>
+                            <button type="button" className="primary-button" onClick={() => navigate('/')}>Go to My Dashboard</button>
                         </div>
                     ) : (
                         <Outlet />

@@ -55,18 +55,6 @@ export async function login(input) {
         body: JSON.stringify(input),
     })
     saveSession(session)
-    // After login, fetch org membership to persist the correct role for sidebar/settings
-    try {
-        const orgs = await request('/api/organizations', {
-            headers: { Authorization: `Bearer ${session.accessToken}` },
-        })
-        const firstOrg = Array.isArray(orgs) ? orgs[0] : orgs?.data?.[0]
-        if (firstOrg?.role) {
-            window.localStorage.setItem('workflowx_registered_role', firstOrg.role.toUpperCase())
-        }
-    } catch {
-        // Non-critical — role will still show from org fetch in AppLayout
-    }
     return session
 }
 
@@ -164,11 +152,12 @@ function saveSession(session) {
         }
         if (session.user) {
             window.localStorage.setItem('workflowx_user', JSON.stringify(session.user))
-            // Persist role from server response so sidebar badge stays correct
-            if (session.user.role) {
-                window.localStorage.setItem('workflowx_registered_role', session.user.role)
-            }
         }
+        // Purge any stale role keys from previous sessions
+        window.localStorage.removeItem('workflowx_registered_role')
+        window.sessionStorage.removeItem('workflowx_registered_role')
+        window.localStorage.removeItem('workflowx_active_role')
+        window.sessionStorage.removeItem('workflowx_active_role')
         window.dispatchEvent(new Event('auth-change'))
     } catch {
         // storage fallback

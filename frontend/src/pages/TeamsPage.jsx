@@ -99,15 +99,37 @@ export default function TeamsPage() {
             .then(([loadedTeams, members, loadedProjects]) => {
                 const teamList = Array.isArray(loadedTeams) ? loadedTeams : []
 
-                // Enrich teams with defaults if fields are minimal
+function inferDepartment(name, dept) {
+    if (dept && dept !== 'General' && DEPARTMENTS.includes(dept)) return dept
+    const n = (name || '').toLowerCase()
+    if (n.includes('qa') || n.includes('quality') || n.includes('test')) return 'Quality Assurance'
+    if (n.includes('devops') || n.includes('sre') || n.includes('infra') || n.includes('cloud')) return 'DevOps & SRE'
+    if (n.includes('product') || n.includes('design') || n.includes('ux') || n.includes('ui')) return 'Product & Design'
+    return 'Engineering'
+}
+
+                // Enrich teams with defaults and active projects
+                const orgProjects = Array.isArray(loadedProjects) && loadedProjects.length > 0
+                    ? loadedProjects.map((p) => p.name)
+                    : ['WorkFlowX Web Platform']
+
                 const enriched = teamList.map((t, idx) => {
+                    const managerMember = (t.members || []).find((m) => m.user?.role === 'MANAGER' || m.user?.role === 'ADMIN')
+                    const detectedLead = t.lead && t.lead !== 'Unassigned'
+                        ? t.lead
+                        : (managerMember?.user?.name ? `${managerMember.user.name} (${managerMember.user.role})` : (t.members?.[0]?.user?.name || 'Rahul Sharma (Manager)'))
+
+                    const squadProjects = t.projects && t.projects.length > 0
+                        ? t.projects
+                        : orgProjects
+
                     return {
                         id: t.id || `team-${idx}`,
                         name: t.name,
-                        department: t.department || 'General',
-                        description: t.description || '',
-                        lead: t.lead || 'Unassigned',
-                        projects: t.projects || [],
+                        department: inferDepartment(t.name, t.department),
+                        description: t.description || 'Cross-functional engineering and delivery squad.',
+                        lead: detectedLead,
+                        projects: squadProjects,
                         members: Array.isArray(t.members) ? t.members : [],
                     }
                 })
@@ -158,10 +180,10 @@ export default function TeamsPage() {
         return {
             totalTeams: total,
             totalMembers: memberCount,
-            totalProjectsLinked: projectSet.size || 5,
+            totalProjectsLinked: projectSet.size || (projects.length || 1),
             activeSquads: teams.filter((t) => (t.members?.length || 0) > 0).length,
         }
-    }, [teams])
+    }, [teams, projects])
 
     // Candidate members for lead & squad member dropdown selection
     const availableCandidateMembers = useMemo(() => {
@@ -726,19 +748,27 @@ export default function TeamsPage() {
                                             Active Projects
                                         </span>
                                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                            {(team.projects || ['E-Commerce Website']).map((proj, pIdx) => (
+                                            {(team.projects || []).map((proj, pIdx) => (
                                                 <span
                                                     key={pIdx}
+                                                    onClick={() => navigate(`/tasks?project=${encodeURIComponent(proj)}`)}
                                                     style={{
                                                         fontSize: '11px',
-                                                        background: '#f8fafc',
-                                                        color: '#334155',
-                                                        border: '1px solid #e2e8f0',
+                                                        background: '#eff6ff',
+                                                        color: '#1d4ed8',
+                                                        border: '1px solid #bfdbfe',
                                                         padding: '2px 8px',
                                                         borderRadius: '6px',
+                                                        cursor: 'pointer',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        fontWeight: 500,
+                                                        transition: 'all 0.15s ease',
                                                     }}
+                                                    title={`Open ${proj} on Signboard ➔`}
                                                 >
-                                                    📁 {highlightMatch(proj, searchQuery)}
+                                                    📁 {highlightMatch(proj, searchQuery)} ➔
                                                 </span>
                                             ))}
                                         </div>
@@ -816,9 +846,31 @@ export default function TeamsPage() {
 
                                     <div style={{ display: 'flex', gap: '6px' }}>
                                         <button
+                                            id={`view-team-tasks-${team.id}`}
+                                            type="button"
+                                            onClick={() => navigate(`/tasks?project=${encodeURIComponent(team.projects?.[0] || 'WorkFlowX Web Platform')}`)}
+                                            style={{
+                                                background: '#f0fdf4',
+                                                border: '1px solid #bbf7d0',
+                                                borderRadius: '6px',
+                                                padding: '6px 10px',
+                                                fontSize: '11px',
+                                                color: '#15803d',
+                                                cursor: 'pointer',
+                                                fontWeight: 600,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                            }}
+                                            title="View tasks on Signboard"
+                                        >
+                                            <span>📋</span> Signboard
+                                        </button>
+
+                                        <button
                                             id={`view-team-projects-${team.id}`}
                                             type="button"
-                                            onClick={() => navigate('/projects')}
+                                            onClick={() => navigate(`/projects?team=${encodeURIComponent(team.name)}`)}
                                             style={{
                                                 background: '#f8fafc',
                                                 border: '1px solid #cbd5e1',
@@ -828,7 +880,7 @@ export default function TeamsPage() {
                                                 color: '#334155',
                                                 cursor: 'pointer',
                                             }}
-                                            title="View projects owned by this squad"
+                                            title="View initiatives associated with this squad"
                                         >
                                             Projects
                                         </button>
@@ -940,7 +992,15 @@ export default function TeamsPage() {
                                                     </button>
                                                     <button
                                                         type="button"
-                                                        onClick={() => navigate('/projects')}
+                                                        onClick={() => navigate(`/tasks?project=${encodeURIComponent(team.projects?.[0] || 'WorkFlowX Web Platform')}`)}
+                                                        style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}
+                                                        title="Open in Kanban Signboard"
+                                                    >
+                                                        Signboard
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => navigate(`/projects?team=${encodeURIComponent(team.name)}`)}
                                                         style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
                                                     >
                                                         Projects
@@ -1330,9 +1390,26 @@ export default function TeamsPage() {
                         <div style={{ marginBottom: '20px' }}>
                             <h4 style={{ margin: '0 0 8px', fontSize: '13px', color: '#374151' }}>Associated Projects</h4>
                             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                {(detailTeam.projects || ['E-Commerce Website']).map((proj, pIdx) => (
-                                    <span key={pIdx} style={{ background: '#f8fafc', color: '#334155', border: '1px solid #e2e8f0', padding: '3px 10px', borderRadius: '6px', fontSize: '12px' }}>
-                                        📁 {proj}
+                                {(detailTeam.projects || []).map((proj, pIdx) => (
+                                    <span
+                                        key={pIdx}
+                                        onClick={() => {
+                                            setDetailTeam(null)
+                                            navigate(`/tasks?project=${encodeURIComponent(proj)}`)
+                                        }}
+                                        style={{
+                                            background: '#eff6ff',
+                                            color: '#1d4ed8',
+                                            border: '1px solid #bfdbfe',
+                                            padding: '4px 12px',
+                                            borderRadius: '6px',
+                                            fontSize: '12px',
+                                            cursor: 'pointer',
+                                            fontWeight: 500,
+                                        }}
+                                        title={`Open ${proj} on Signboard ➔`}
+                                    >
+                                        📁 {proj} ➔
                                     </span>
                                 ))}
                             </div>
@@ -1454,21 +1531,38 @@ export default function TeamsPage() {
 
                         {/* Modal Footer Actions */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e5e7eb', paddingTop: '16px' }}>
-                            <button
-                                type="button"
-                                onClick={() => navigate('/projects')}
-                                style={{
-                                    background: '#f8fafc',
-                                    border: '1px solid #cbd5e1',
-                                    borderRadius: '6px',
-                                    padding: '8px 14px',
-                                    fontSize: '12px',
-                                    color: '#334155',
-                                    cursor: 'pointer',
-                                }}
-                            >
-                                View Projects
-                            </button>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const p = detailTeam.projects?.[0] || 'WorkFlowX Web Platform'
+                                        setDetailTeam(null)
+                                        navigate(`/tasks?project=${encodeURIComponent(p)}`)
+                                    }}
+                                    className="primary-button"
+                                    style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                >
+                                    <span>📋</span> Open Signboard ➔
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setDetailTeam(null)
+                                        navigate(`/projects?team=${encodeURIComponent(detailTeam.name)}`)
+                                    }}
+                                    style={{
+                                        background: '#f8fafc',
+                                        border: '1px solid #cbd5e1',
+                                        borderRadius: '6px',
+                                        padding: '8px 14px',
+                                        fontSize: '12px',
+                                        color: '#334155',
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    View Projects
+                                </button>
+                            </div>
 
                             <button
                                 type="button"

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
     getProjects,
     createProject,
@@ -67,6 +67,8 @@ function getPriorityBadgeStyle(priority) {
 
 export default function ProjectsPage() {
     const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
+    const initialQuery = searchParams.get('search') || searchParams.get('team') || ''
     const [organizations, setOrganizations] = useState([])
     const [organizationId, setOrganizationId] = useState('')
     const [projects, setProjects] = useState([])
@@ -77,7 +79,14 @@ export default function ProjectsPage() {
     const [error, setError] = useState('')
 
     // Filters and View Mode
-    const [searchQuery, setSearchQuery] = useState('')
+    const [searchQuery, setSearchQuery] = useState(initialQuery)
+
+    useEffect(() => {
+        const q = searchParams.get('search') || searchParams.get('team')
+        if (q !== null && q !== undefined) {
+            setSearchQuery(q)
+        }
+    }, [searchParams])
     const [statusFilter, setStatusFilter] = useState('ALL')
     const [priorityFilter, setPriorityFilter] = useState('ALL')
     const [viewMode, setViewMode] = useState('grid') // 'grid' | 'table'
@@ -553,8 +562,8 @@ export default function ProjectsPage() {
 
     const activeOrg = organizations.find((o) => o.id === organizationId)
     const storedRole = (localStorage.getItem('workflowx_registered_role') || '').toUpperCase()
-    const userRole = (activeOrg?.role || storedRole || 'ADMIN').toUpperCase()
-    const canManageProjects = true // All workspace users can create and collaborate on projects
+    const userRole = (activeOrg?.role || storedRole || 'MEMBER').toUpperCase()
+    const canManageProjects = userRole === 'ADMIN' || userRole === 'MANAGER'
 
     return (
         <main className="feature-page" style={{ paddingBottom: '60px' }}>
@@ -1112,61 +1121,65 @@ export default function ProjectsPage() {
                                             Details
                                         </button>
 
-                                        <button
-                                            id={`edit-project-${project.id}`}
-                                            type="button"
-                                            onClick={() => setEditingProject(project)}
-                                            style={{
-                                                background: '#f8fafc',
-                                                border: '1px solid #cbd5e1',
-                                                borderRadius: '6px',
-                                                padding: '6px 9px',
-                                                fontSize: '11px',
-                                                color: '#334155',
-                                                cursor: 'pointer',
-                                                fontWeight: 500,
-                                            }}
-                                            title="Edit Project Details"
-                                        >
-                                            Edit
-                                        </button>
+                                        {canManageProjects && (
+                                            <>
+                                                <button
+                                                    id={`edit-project-${project.id}`}
+                                                    type="button"
+                                                    onClick={() => setEditingProject(project)}
+                                                    style={{
+                                                        background: '#f8fafc',
+                                                        border: '1px solid #cbd5e1',
+                                                        borderRadius: '6px',
+                                                        padding: '6px 9px',
+                                                        fontSize: '11px',
+                                                        color: '#334155',
+                                                        cursor: 'pointer',
+                                                        fontWeight: 500,
+                                                    }}
+                                                    title="Edit Project Details"
+                                                >
+                                                    Edit
+                                                </button>
 
-                                        <button
-                                            id={`archive-project-${project.id}`}
-                                            type="button"
-                                            onClick={() => handleToggleArchive(project)}
-                                            style={{
-                                                background: '#f8fafc',
-                                                border: '1px solid #cbd5e1',
-                                                borderRadius: '6px',
-                                                padding: '6px 9px',
-                                                fontSize: '11px',
-                                                color: '#64748b',
-                                                cursor: 'pointer',
-                                            }}
-                                            title={project.status === 'ARCHIVED' ? 'Restore Project' : 'Archive Project'}
-                                        >
-                                            {project.status === 'ARCHIVED' ? 'Restore' : 'Archive'}
-                                        </button>
+                                                <button
+                                                    id={`archive-project-${project.id}`}
+                                                    type="button"
+                                                    onClick={() => handleToggleArchive(project)}
+                                                    style={{
+                                                        background: '#f8fafc',
+                                                        border: '1px solid #cbd5e1',
+                                                        borderRadius: '6px',
+                                                        padding: '6px 9px',
+                                                        fontSize: '11px',
+                                                        color: '#64748b',
+                                                        cursor: 'pointer',
+                                                    }}
+                                                    title={project.status === 'ARCHIVED' ? 'Restore Project' : 'Archive Project'}
+                                                >
+                                                    {project.status === 'ARCHIVED' ? 'Restore' : 'Archive'}
+                                                </button>
 
-                                        <button
-                                            id={`delete-project-${project.id}`}
-                                            type="button"
-                                            onClick={() => setProjectToDelete(project)}
-                                            style={{
-                                                background: '#fef2f2',
-                                                border: '1px solid #fecaca',
-                                                borderRadius: '6px',
-                                                padding: '6px 9px',
-                                                fontSize: '11px',
-                                                color: '#dc2626',
-                                                cursor: 'pointer',
-                                                fontWeight: 600,
-                                            }}
-                                            title="Delete Project"
-                                        >
-                                            ✕
-                                        </button>
+                                                <button
+                                                    id={`delete-project-${project.id}`}
+                                                    type="button"
+                                                    onClick={() => setProjectToDelete(project)}
+                                                    style={{
+                                                        background: '#fef2f2',
+                                                        border: '1px solid #fecaca',
+                                                        borderRadius: '6px',
+                                                        padding: '6px 9px',
+                                                        fontSize: '11px',
+                                                        color: '#dc2626',
+                                                        cursor: 'pointer',
+                                                        fontWeight: 600,
+                                                    }}
+                                                    title="Delete Project"
+                                                >
+                                                    ✕
+                                                </button>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             </article>
@@ -1280,20 +1293,24 @@ export default function ProjectsPage() {
                                                     >
                                                         Details
                                                     </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setEditingProject(project)}
-                                                        style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
-                                                    >
-                                                        Edit
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setProjectToDelete(project)}
-                                                        style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', color: '#dc2626', cursor: 'pointer' }}
-                                                    >
-                                                        ✕
-                                                    </button>
+                                                    {canManageProjects && (
+                                                        <>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setEditingProject(project)}
+                                                                style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
+                                                            >
+                                                                Edit
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setProjectToDelete(project)}
+                                                                style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', color: '#dc2626', cursor: 'pointer' }}
+                                                            >
+                                                                ✕
+                                                            </button>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
@@ -1425,6 +1442,7 @@ export default function ProjectsPage() {
                                         id="new-project-duedate-input"
                                         type="date"
                                         value={newProjectDueDate}
+                                        min={new Date().toISOString().split('T')[0]}
                                         onChange={(e) => setNewProjectDueDate(e.target.value)}
                                         style={{ width: '100%', padding: '7px 8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #d1d5db' }}
                                     />
@@ -1616,6 +1634,7 @@ export default function ProjectsPage() {
                                         id="edit-project-duedate-input"
                                         type="date"
                                         value={editingProject.dueDate || ''}
+                                        min={new Date().toISOString().split('T')[0]}
                                         onChange={(e) => setEditingProject({ ...editingProject, dueDate: e.target.value })}
                                         style={{ width: '100%', padding: '7px 8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #d1d5db' }}
                                     />
@@ -1827,39 +1846,41 @@ export default function ProjectsPage() {
                             </div>
 
                             {/* Member addition inline form */}
-                            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                                <select
-                                    id="add-member-to-project-select"
-                                    value={selectedMemberToAdd}
-                                    onChange={(e) => setSelectedMemberToAdd(e.target.value)}
-                                    style={{ flex: 1, padding: '7px 10px', fontSize: '12px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff' }}
-                                >
-                                    <option value="">Select organization member to assign...</option>
-                                    {orgMembers.map((m) => (
-                                        <option key={m.userId} value={m.userId}>
-                                            {m.name || m.email} ({m.role})
-                                        </option>
-                                    ))}
-                                </select>
-                                <button
-                                    id="add-project-member-btn"
-                                    type="button"
-                                    onClick={handleAddMemberToDetailProject}
-                                    disabled={!selectedMemberToAdd}
-                                    style={{
-                                        background: selectedMemberToAdd ? '#2563eb' : '#9ca3af',
-                                        color: '#fff',
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        padding: '7px 14px',
-                                        fontSize: '12px',
-                                        fontWeight: 600,
-                                        cursor: selectedMemberToAdd ? 'pointer' : 'not-allowed',
-                                    }}
-                                >
-                                    + Add to Project
-                                </button>
-                            </div>
+                            {canManageProjects && (
+                                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                                    <select
+                                        id="add-member-to-project-select"
+                                        value={selectedMemberToAdd}
+                                        onChange={(e) => setSelectedMemberToAdd(e.target.value)}
+                                        style={{ flex: 1, padding: '7px 10px', fontSize: '12px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff' }}
+                                    >
+                                        <option value="">Select organization member to assign...</option>
+                                        {orgMembers.map((m) => (
+                                            <option key={m.userId} value={m.userId}>
+                                                {m.name || m.email} ({m.role})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <button
+                                        id="add-project-member-btn"
+                                        type="button"
+                                        onClick={handleAddMemberToDetailProject}
+                                        disabled={!selectedMemberToAdd}
+                                        style={{
+                                            background: selectedMemberToAdd ? '#2563eb' : '#9ca3af',
+                                            color: '#fff',
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            padding: '7px 14px',
+                                            fontSize: '12px',
+                                            fontWeight: 600,
+                                            cursor: selectedMemberToAdd ? 'pointer' : 'not-allowed',
+                                        }}
+                                    >
+                                        + Add to Project
+                                    </button>
+                                </div>
+                            )}
 
                             {/* Assigned members list */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
@@ -1903,22 +1924,24 @@ export default function ProjectsPage() {
                                                 </div>
                                             </div>
 
-                                            <button
-                                                id={`remove-project-member-${member.id}`}
-                                                type="button"
-                                                onClick={() => handleRemoveMemberFromDetailProject(member.id)}
-                                                style={{
-                                                    background: 'transparent',
-                                                    border: 'none',
-                                                    color: '#dc2626',
-                                                    fontSize: '11px',
-                                                    cursor: 'pointer',
-                                                    fontWeight: 600,
-                                                }}
-                                                title="Remove member from this project"
-                                            >
-                                                Remove
-                                            </button>
+                                            {canManageProjects && (
+                                                <button
+                                                    id={`remove-project-member-${member.id}`}
+                                                    type="button"
+                                                    onClick={() => handleRemoveMemberFromDetailProject(member.id)}
+                                                    style={{
+                                                        background: 'transparent',
+                                                        border: 'none',
+                                                        color: '#dc2626',
+                                                        fontSize: '11px',
+                                                        cursor: 'pointer',
+                                                        fontWeight: 600,
+                                                    }}
+                                                    title="Remove member from this project"
+                                                >
+                                                    Remove
+                                                </button>
+                                            )}
                                         </div>
                                     ))
                                 )}
@@ -1941,16 +1964,18 @@ export default function ProjectsPage() {
                             </button>
 
                             <div style={{ display: 'flex', gap: '8px' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setEditingProject(detailProject)
-                                        setDetailProject(null)
-                                    }}
-                                    style={{ padding: '8px 14px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: '12px' }}
-                                >
-                                    Edit Details
-                                </button>
+                                {canManageProjects && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setEditingProject(detailProject)
+                                            setDetailProject(null)
+                                        }}
+                                        style={{ padding: '8px 14px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: '12px' }}
+                                    >
+                                        Edit Details
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     onClick={() => setDetailProject(null)}

@@ -1,44 +1,47 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { getOverview } from '../services/analyticsService.js'
-import { getOrganizations } from '../services/organizationService.js'
+import { getOrganizations, getOrganizationMembers } from '../services/organizationService.js'
+import { getTasks } from '../services/taskService.js'
+import { getProjects } from '../services/projectService.js'
 import '../App.css'
 
 export default function AnalyticsPage() {
     const [organizations, setOrganizations] = useState([])
     const [organizationId, setOrganizationId] = useState('')
     const [overview, setOverview] = useState(null)
+    const [tasks, setTasks] = useState([])
+    const [projects, setProjects] = useState([])
+    const [members, setMembers] = useState([])
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState('')
-
-    // Interactive Burndown Chart State
-    const [selectedSprint, setSelectedSprint] = useState('sprint-14')
-    const [burndownMetric, setBurndownMetric] = useState('points') // 'points' | 'tasks'
-    const [hoveredPoint, setHoveredPoint] = useState(null)
-
-    // Interactive Velocity Graph State
-    const [hoveredVelocitySprint, setHoveredVelocitySprint] = useState(null)
+    const [hoveredStatus, setHoveredStatus] = useState(null)
+    const [hoveredProject, setHoveredProject] = useState(null)
 
     useEffect(() => {
         getOrganizations()
             .then((loadedOrganizations) => {
                 const orgs = Array.isArray(loadedOrganizations) ? loadedOrganizations : []
                 setOrganizations(orgs)
-                if (orgs.length > 0) {
-                    setOrganizationId(orgs[0].id)
-                }
+                if (orgs.length > 0) setOrganizationId(orgs[0].id)
             })
             .catch((requestError) => setError(requestError.message))
-            .finally(() => setIsLoading(false))
     }, [])
 
     useEffect(() => {
-        if (!organizationId) {
-            setOverview(null)
-            return
-        }
+        if (!organizationId) { setOverview(null); return }
         setIsLoading(true)
-        getOverview(organizationId)
-            .then(setOverview)
+        Promise.all([
+            getOverview(organizationId).catch(() => null),
+            getTasks().catch(() => []),
+            getProjects().catch(() => []),
+            getOrganizationMembers(organizationId).catch(() => []),
+        ])
+            .then(([ov, loadedTasks, loadedProjects, loadedMembers]) => {
+                setOverview(ov)
+                setTasks(Array.isArray(loadedTasks) ? loadedTasks : [])
+                setProjects(Array.isArray(loadedProjects) ? loadedProjects : [])
+                setMembers(Array.isArray(loadedMembers) ? loadedMembers : [])
+            })
             .catch((requestError) => setError(requestError.message))
             .finally(() => setIsLoading(false))
     }, [organizationId])
@@ -50,66 +53,80 @@ export default function AnalyticsPage() {
     const total = completed + inProgress + todo
     const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0
 
-    // Burndown data configurations
-    const burndownData = {
-        'sprint-14': {
-            name: 'Sprint 14 (Active)',
-            totalPoints: 100,
-            remainingPoints: 32,
-            points: [
-                { day: 'Day 1', x: 50, y: 30, val: 100, ideal: 100, status: 'Sprint Kickoff' },
-                { day: 'Day 2', x: 110, y: 40, val: 92, ideal: 92, status: 'Architecture approved' },
-                { day: 'Day 3', x: 170, y: 45, val: 88, ideal: 85, status: 'DB schemas migrated' },
-                { day: 'Day 4', x: 230, y: 60, val: 78, ideal: 77, status: 'Auth APIs complete' },
-                { day: 'Day 5', x: 290, y: 75, val: 68, ideal: 69, status: 'Frontend layouts merged' },
-                { day: 'Day 6', x: 350, y: 90, val: 56, ideal: 62, status: 'Signboard DND added' },
-                { day: 'Day 7', x: 410, y: 110, val: 44, ideal: 54, status: 'Sockets connected' },
-                { day: 'Day 8', x: 470, y: 125, val: 38, ideal: 46, status: 'Attachment upload live' },
-                { day: 'Day 9 (Today)', x: 530, y: 145, val: 32, ideal: 38, status: 'Charts & analytics on track' },
-            ]
-        },
-        'sprint-13': {
-            name: 'Sprint 13 (Completed)',
-            totalPoints: 95,
-            remainingPoints: 0,
-            points: [
-                { day: 'Day 1', x: 50, y: 30, val: 95, ideal: 95, status: 'Sprint Start' },
-                { day: 'Day 3', x: 170, y: 55, val: 80, ideal: 81, status: 'Core modules' },
-                { day: 'Day 6', x: 350, y: 105, val: 50, ideal: 60, status: 'Mid sprint review' },
-                { day: 'Day 9', x: 530, y: 155, val: 26, ideal: 40, status: 'Testing phase' },
-                { day: 'Day 12', x: 710, y: 195, val: 8, ideal: 15, status: 'Final bugfixes' },
-                { day: 'Day 14', x: 770, y: 210, val: 0, ideal: 0, status: 'Sprint Delivered' },
-            ]
-        }
+    const priorityCounts = useMemo(() => {
+        const counts = { Critical: 0, High: 0, Medium: 0, Low: 0 }
+        tasks.forEach(t => {
+            const p = t.priority || 'Medium'
+            if (counts[p] !== undefined) counts[p]++
+            else counts.Medium++
+        })
+        return counts
+    }, [tasks])
+    const totalPriority = tasks.length || 1
+
+    const memberStats = useMemo(() => {
+        return members.slice(0, 6).map(m => {
+            const name = m.name || m.email || 'Member'
+            const mTasks = tasks.filter(t => t.assignee === name || t.assignee === m.email || t.assignedTo === m.userId)
+            return {
+                name, role: m.role || 'MEMBER',
+                total: mTasks.length,
+                done: mTasks.filter(t => t.status === 'Done').length,
+                inProgress: mTasks.filter(t => t.status === 'In progress').length,
+                review: mTasks.filter(t => t.status === 'Review').length,
+                initials: name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
+            }
+        })
+    }, [members, tasks])
+
+    const projectStats = useMemo(() => {
+        return projects.slice(0, 6).map(p => {
+            const pt = tasks.filter(t => t.project === p.name || t.projectId === p.id)
+            const done = pt.filter(t => t.status === 'Done').length
+            const ptTotal = pt.length
+            return { ...p, taskCount: ptTotal, doneCount: done, completion: ptTotal > 0 ? Math.round((done / ptTotal) * 100) : 0 }
+        })
+    }, [projects, tasks])
+
+    const statusData = [
+        { label: 'Completed', value: completed, color: '#10b981', bg: '#d1fae5' },
+        { label: 'In Progress', value: inProgress, color: '#f59e0b', bg: '#fef3c7' },
+        { label: 'Todo', value: todo, color: '#3b82f6', bg: '#dbeafe' },
+        { label: 'Overdue', value: overdue, color: '#ef4444', bg: '#fee2e2' },
+    ].filter(d => d.value > 0)
+
+    const DONUT_R = 70, DONUT_CX = 100, DONUT_CY = 100, STROKE_W = 26
+    const circumference = 2 * Math.PI * DONUT_R
+    let cumPct = 0
+    const arcs = statusData.map(d => {
+        const pct = total > 0 ? d.value / total : 0
+        const strokeDasharray = `${pct * circumference} ${circumference}`
+        const rotate = cumPct * 360 - 90
+        cumPct += pct
+        return { ...d, strokeDasharray, rotate }
+    })
+
+    const PRIORITY_COLORS = {
+        Critical: { color: '#ef4444', bg: '#fee2e2', icon: 'ðŸ”¥' },
+        High:     { color: '#f59e0b', bg: '#fef3c7', icon: 'âš¡' },
+        Medium:   { color: '#3b82f6', bg: '#dbeafe', icon: 'â—' },
+        Low:      { color: '#10b981', bg: '#d1fae5', icon: 'â—‹' },
     }
-
-    const activeBurndown = burndownData[selectedSprint] || burndownData['sprint-14']
-
-    // Historical Velocity Data
-    const velocityData = [
-        { sprint: 'Sprint 10', planned: 40, completed: 38, rate: '95%' },
-        { sprint: 'Sprint 11', planned: 44, completed: 42, rate: '95.5%' },
-        { sprint: 'Sprint 12', planned: 48, completed: 47, rate: '97.9%' },
-        { sprint: 'Sprint 13', planned: 50, completed: 48, rate: '96.0%' },
-        { sprint: 'Sprint 14', planned: 52, completed: 50, rate: '96.2%' },
-    ]
 
     return (
         <main className="feature-page">
             <div className="feature-heading">
                 <div>
-                    <p className="eyebrow">Manager & Project Analytics</p>
-                    <h1>Project Progress & Analytics</h1>
-                    <p className="heading-subtitle">Interactive burndown trajectories, historical team velocity graphs, and delivery predictability.</p>
+                    <p className="eyebrow">Manager &amp; Project Analytics</p>
+                    <h1>Project Progress &amp; Analytics</h1>
+                    <p className="heading-subtitle">Real-time task metrics, project completion, priority distribution, and team performance â€” all from live data.</p>
                 </div>
                 {(organizations?.length || 0) > 0 && (
                     <label className="organization-select">
                         Organization
                         <select value={organizationId} onChange={(event) => setOrganizationId(event.target.value)}>
                             {organizations.map((org) => (
-                                <option key={org.id} value={org.id}>
-                                    {org.name}
-                                </option>
+                                <option key={org.id} value={org.id}>{org.name}</option>
                             ))}
                         </select>
                     </label>
@@ -117,438 +134,197 @@ export default function AnalyticsPage() {
             </div>
 
             {error && <p className="service-error" role="alert">{error}</p>}
-            {isLoading && <p className="loading-state">Loading analytics...</p>}
+            {isLoading && <p className="loading-state">Loading analyticsâ€¦</p>}
 
-            {/* Manager Progress Bar Card */}
+            {/* Overall Progress Bar */}
             <section className="panel" style={{ padding: '24px', marginBottom: '24px', background: '#fff', border: '1px solid #ebe9e5', borderRadius: '10px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                     <div>
                         <h2 style={{ margin: 0, font: "700 18px 'Space Grotesk'" }}>Overall Project Delivery Progress</h2>
-                        <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#858996' }}>Comprehensive completion status across all active roadmap milestones.</p>
+                        <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#858996' }}>Completion across {total} tracked tasks in this workspace.</p>
                     </div>
                     <strong style={{ fontSize: '28px', font: "700 28px 'Space Grotesk'", color: '#ee785e' }}>{progressPercent}%</strong>
                 </div>
-
                 <div style={{ width: '100%', height: '10px', background: '#ebe9e5', borderRadius: '5px', overflow: 'hidden' }}>
-                    <div style={{ width: `${progressPercent}%`, height: '100%', background: 'linear-gradient(90deg, #ee785e, #72b79a)', borderRadius: '5px' }} />
+                    <div style={{ width: `${progressPercent}%`, height: '100%', background: 'linear-gradient(90deg, #ee785e, #72b79a)', borderRadius: '5px', transition: 'width 0.6s ease' }} />
+                </div>
+                <div style={{ display: 'flex', gap: '12px', marginTop: '12px', flexWrap: 'wrap' }}>
+                    {statusData.map(d => (
+                        <span key={d.label} style={{ fontSize: '12px', color: d.color, fontWeight: 600, background: d.bg, padding: '3px 10px', borderRadius: '20px' }}>
+                            {d.label}: {d.value}
+                        </span>
+                    ))}
                 </div>
             </section>
 
-            {/* Task Breakdown for Manager Decision-Making */}
+            {/* Stat Cards */}
             <section className="stats-grid" aria-label="Task Status Breakdown" style={{ marginBottom: '24px' }}>
                 <div className="stat-card">
-                    <span className="stat-icon green">✓</span>
-                    <div>
-                        <p>Completed Tasks</p>
-                        <strong>{completed}</strong>
-                        <small className="positive">↗ Successfully delivered</small>
-                    </div>
+                    <span className="stat-icon green">âœ“</span>
+                    <div><p>Completed Tasks</p><strong>{completed}</strong><small className="positive">â†— Successfully delivered</small></div>
                 </div>
-
                 <div className="stat-card">
-                    <span className="stat-icon blue">◷</span>
-                    <div>
-                        <p>In Progress</p>
-                        <strong>{inProgress}</strong>
-                        <small className="neutral">Active development</small>
-                    </div>
+                    <span className="stat-icon blue">â—·</span>
+                    <div><p>In Progress</p><strong>{inProgress}</strong><small className="neutral">Active development</small></div>
                 </div>
-
                 <div className="stat-card">
-                    <span className="stat-icon yellow">◌</span>
-                    <div>
-                        <p>Todo / Backlog</p>
-                        <strong>{todo}</strong>
-                        <small className="neutral">Ready to pick up</small>
-                    </div>
+                    <span className="stat-icon yellow">â—Œ</span>
+                    <div><p>Todo / Backlog</p><strong>{todo}</strong><small className="neutral">Ready to pick up</small></div>
                 </div>
-
                 <div className="stat-card">
-                    <span className="stat-icon coral">⚠</span>
-                    <div>
-                        <p>Overdue</p>
-                        <strong style={{ color: '#e96f59' }}>{overdue}</strong>
-                        <small style={{ color: '#e96f59' }}>Needs follow-up</small>
-                    </div>
+                    <span className="stat-icon coral">âš </span>
+                    <div><p>Overdue</p><strong style={{ color: '#e96f59' }}>{overdue}</strong><small style={{ color: '#e96f59' }}>{overdue > 0 ? 'Needs follow-up' : 'None overdue âœ“'}</small></div>
                 </div>
             </section>
 
-            {/* 1. Interactive Sprint Burndown Chart */}
-            <section className="panel" style={{ marginBottom: '24px', padding: '24px', background: '#fff', border: '1px solid #ebe9e5', borderRadius: '10px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '14px' }}>
-                    <div>
-                        <p className="eyebrow" style={{ color: '#ee785e' }}>Sprint Execution & Burndown</p>
-                        <h2 style={{ margin: 0, font: "700 18px 'Space Grotesk'" }}>Interactive Sprint Burndown Chart</h2>
-                        <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#858996' }}>Hover over any milestone point to inspect ideal vs actual remaining points.</p>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-                        {/* Sprint Switcher */}
-                        <div style={{ display: 'flex', background: '#f3f4f6', padding: '3px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-                            <button
-                                type="button"
-                                onClick={() => setSelectedSprint('sprint-14')}
-                                style={{
-                                    padding: '5px 12px',
-                                    fontSize: '11px',
-                                    fontWeight: selectedSprint === 'sprint-14' ? '700' : '500',
-                                    background: selectedSprint === 'sprint-14' ? '#ffffff' : 'transparent',
-                                    color: selectedSprint === 'sprint-14' ? '#ee785e' : '#4b5563',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    cursor: 'pointer',
-                                }}
-                            >
-                                Sprint 14 (Active)
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setSelectedSprint('sprint-13')}
-                                style={{
-                                    padding: '5px 12px',
-                                    fontSize: '11px',
-                                    fontWeight: selectedSprint === 'sprint-13' ? '700' : '500',
-                                    background: selectedSprint === 'sprint-13' ? '#ffffff' : 'transparent',
-                                    color: selectedSprint === 'sprint-13' ? '#ee785e' : '#4b5563',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    cursor: 'pointer',
-                                }}
-                            >
-                                Sprint 13 (Completed)
-                            </button>
-                        </div>
-
-                        {/* Legend */}
-                        <div style={{ display: 'flex', gap: '14px', fontSize: '12px', alignItems: 'center' }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ width: '12px', height: '3px', background: '#94a3b8', display: 'inline-block' }} /> Ideal Line
-                            </span>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600', color: '#ee785e' }}>
-                                <span style={{ width: '12px', height: '3px', background: '#ee785e', display: 'inline-block' }} /> Actual Remaining ({activeBurndown.remainingPoints} pts)
-                            </span>
-                        </div>
+            {/* Donut Chart + Priority Distribution */}
+            <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+                <div className="panel" style={{ padding: '24px', background: '#fff', border: '1px solid #ebe9e5', borderRadius: '10px' }}>
+                    <h2 style={{ margin: '0 0 4px', font: "700 16px 'Space Grotesk'" }}>Task Status Distribution</h2>
+                    <p style={{ margin: '0 0 20px', fontSize: '13px', color: '#858996' }}>Live breakdown across all {total} tasks.</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                        {total === 0 ? (
+                            <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                                <div style={{ fontSize: 40, marginBottom: 8 }}>ðŸ“Š</div>
+                                No tasks yet â€” create tasks to see analytics.
+                            </div>
+                        ) : (
+                            <>
+                                <svg viewBox="0 0 200 200" style={{ width: 160, height: 160, flexShrink: 0 }}>
+                                    {arcs.map((arc) => (
+                                        <circle key={arc.label} cx={DONUT_CX} cy={DONUT_CY} r={DONUT_R} fill="none"
+                                            stroke={arc.color} strokeWidth={STROKE_W}
+                                            strokeDasharray={arc.strokeDasharray} strokeDashoffset={0}
+                                            transform={`rotate(${arc.rotate} ${DONUT_CX} ${DONUT_CY})`}
+                                            opacity={hoveredStatus === null || hoveredStatus === arc.label ? 1 : 0.3}
+                                            style={{ cursor: 'pointer', transition: 'opacity 0.2s ease' }}
+                                            onMouseEnter={() => setHoveredStatus(arc.label)}
+                                            onMouseLeave={() => setHoveredStatus(null)}
+                                        />
+                                    ))}
+                                    <text x={DONUT_CX} y={DONUT_CY - 8} textAnchor="middle" fontSize="22" fontWeight="700" fill="#1e293b">{progressPercent}%</text>
+                                    <text x={DONUT_CX} y={DONUT_CY + 14} textAnchor="middle" fontSize="10" fill="#94a3b8">complete</text>
+                                </svg>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {statusData.map(d => (
+                                        <div key={d.label} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', opacity: hoveredStatus === null || hoveredStatus === d.label ? 1 : 0.4, transition: 'opacity 0.2s' }}
+                                            onMouseEnter={() => setHoveredStatus(d.label)} onMouseLeave={() => setHoveredStatus(null)}>
+                                            <span style={{ width: 12, height: 12, background: d.color, borderRadius: '50%', flexShrink: 0 }} />
+                                            <span style={{ fontSize: '13px', color: '#334155' }}>{d.label}</span>
+                                            <strong style={{ fontSize: '13px', color: d.color, marginLeft: 'auto' }}>{d.value}</strong>
+                                        </div>
+                                    ))}
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
 
-                {/* SVG Responsive Burndown Chart */}
-                <div style={{ width: '100%', overflowX: 'auto', position: 'relative' }}>
-                    <svg viewBox="0 0 800 240" style={{ width: '100%', minWidth: '650px', height: 'auto', display: 'block' }}>
-                        {/* Grid lines */}
-                        <line x1="50" y1="30" x2="770" y2="30" stroke="#f3f4f6" strokeWidth="1" />
-                        <line x1="50" y1="75" x2="770" y2="75" stroke="#f3f4f6" strokeWidth="1" />
-                        <line x1="50" y1="120" x2="770" y2="120" stroke="#f3f4f6" strokeWidth="1" />
-                        <line x1="50" y1="165" x2="770" y2="165" stroke="#f3f4f6" strokeWidth="1" />
-                        <line x1="50" y1="210" x2="770" y2="210" stroke="#e5e7eb" strokeWidth="1.5" />
-
-                        {/* Y-axis labels */}
-                        <text x="25" y="34" fontSize="10" fill="#9ca3af" textAnchor="middle">100pt</text>
-                        <text x="25" y="79" fontSize="10" fill="#9ca3af" textAnchor="middle">75pt</text>
-                        <text x="25" y="124" fontSize="10" fill="#9ca3af" textAnchor="middle">50pt</text>
-                        <text x="25" y="169" fontSize="10" fill="#9ca3af" textAnchor="middle">25pt</text>
-                        <text x="25" y="213" fontSize="10" fill="#9ca3af" textAnchor="middle">0pt</text>
-
-                        {/* Ideal trajectory line */}
-                        <line x1="50" y1="30" x2="770" y2="210" stroke="#cbd5e1" strokeWidth="2" strokeDasharray="5,5" />
-
-                        {/* Actual remaining area gradient */}
-                        <defs>
-                            <linearGradient id="burndownGrad" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#ee785e" stopOpacity="0.25" />
-                                <stop offset="100%" stopColor="#ee785e" stopOpacity="0.0" />
-                            </linearGradient>
-                        </defs>
-
-                        {/* Area Polygon */}
-                        <polygon
-                            points={`50,30 ${activeBurndown.points.map((p) => `${p.x},${p.y}`).join(' ')} ${activeBurndown.points[activeBurndown.points.length - 1].x},210 50,210`}
-                            fill="url(#burndownGrad)"
-                        />
-
-                        {/* Actual remaining polyline */}
-                        <polyline
-                            points={activeBurndown.points.map((p) => `${p.x},${p.y}`).join(' ')}
-                            fill="none"
-                            stroke="#ee785e"
-                            strokeWidth="3.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                        />
-
-                        {/* Interactive Milestone Circles */}
-                        {activeBurndown.points.map((pt, i) => {
-                            const isHovered = hoveredPoint?.day === pt.day
-                            return (
-                                <g
-                                    key={i}
-                                    style={{ cursor: 'pointer' }}
-                                    onMouseEnter={() => setHoveredPoint(pt)}
-                                    onMouseLeave={() => setHoveredPoint(null)}
-                                >
-                                    {isHovered && (
-                                        <circle cx={pt.x} cy={pt.y} r="10" fill="#ee785e" fillOpacity="0.2" />
-                                    )}
-                                    <circle
-                                        cx={pt.x}
-                                        cy={pt.y}
-                                        r={isHovered ? 6.5 : 4.5}
-                                        fill="#ffffff"
-                                        stroke="#ee785e"
-                                        strokeWidth={isHovered ? 3.5 : 2.5}
-                                        style={{ transition: 'all 0.15s ease' }}
-                                    />
-                                </g>
-                            )
-                        })}
-
-                        {/* X-axis days */}
-                        {['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5', 'Day 6', 'Day 7', 'Day 8', 'Day 9 (Today)', 'Day 10', 'Day 11', 'Day 12', 'Day 14'].map((day, i) => {
-                            const x = 50 + (i * 60)
-                            return (
-                                <text key={i} x={x} y="230" fontSize="9.5" fill={i === 8 ? '#ee785e' : '#9ca3af'} fontWeight={i === 8 ? '700' : 'normal'} textAnchor="middle">
-                                    {day}
-                                </text>
-                            )
-                        })}
-                    </svg>
-
-                    {/* Interactive Tooltip Callout */}
-                    {hoveredPoint && (
-                        <div
-                            style={{
-                                position: 'absolute',
-                                left: `${Math.min(hoveredPoint.x, 620)}px`,
-                                top: `${Math.max(hoveredPoint.y - 65, 10)}px`,
-                                background: '#1e293b',
-                                color: '#ffffff',
-                                padding: '8px 12px',
-                                borderRadius: '8px',
-                                fontSize: '11px',
-                                pointerEvents: 'none',
-                                boxShadow: '0 8px 16px rgba(0,0,0,0.2)',
-                                zIndex: 10,
-                                transform: 'translateX(-50%)',
-                                whiteSpace: 'nowrap',
-                            }}
-                        >
-                            <div style={{ fontWeight: '700', color: '#fca5a5', marginBottom: '2px' }}>{hoveredPoint.day}</div>
-                            <div>Remaining: <b>{hoveredPoint.val} pts</b> (Ideal: {hoveredPoint.ideal} pts)</div>
-                            <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px' }}>{hoveredPoint.status}</div>
+                <div className="panel" style={{ padding: '24px', background: '#fff', border: '1px solid #ebe9e5', borderRadius: '10px' }}>
+                    <h2 style={{ margin: '0 0 4px', font: "700 16px 'Space Grotesk'" }}>Priority Distribution</h2>
+                    <p style={{ margin: '0 0 20px', fontSize: '13px', color: '#858996' }}>Priority allocation across {tasks.length} live tasks.</p>
+                    {tasks.length === 0 ? (
+                        <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                            <div style={{ fontSize: 40, marginBottom: 8 }}>ðŸ“‹</div>No tasks yet.
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            {Object.entries(priorityCounts).map(([priority, count]) => {
+                                const meta = PRIORITY_COLORS[priority] || PRIORITY_COLORS.Medium
+                                const pct = Math.round((count / totalPriority) * 100)
+                                return (
+                                    <div key={priority}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '5px', alignItems: 'center' }}>
+                                            <span style={{ background: meta.bg, color: meta.color, padding: '1px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 600 }}>{meta.icon} {priority}</span>
+                                            <span style={{ fontWeight: 700, color: meta.color }}>{count} <span style={{ color: '#94a3b8', fontWeight: 400 }}>({pct}%)</span></span>
+                                        </div>
+                                        <div style={{ height: '8px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
+                                            <div style={{ width: `${pct}%`, height: '100%', background: meta.color, borderRadius: '4px', transition: 'width 0.6s ease' }} />
+                                        </div>
+                                    </div>
+                                )
+                            })}
                         </div>
                     )}
                 </div>
             </section>
 
-            {/* 2. Interactive Team Velocity Graph (Historical & Predictability) */}
+            {/* Project Completion Tracker */}
             <section className="panel" style={{ marginBottom: '24px', padding: '24px', background: '#fff', border: '1px solid #ebe9e5', borderRadius: '10px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '14px' }}>
-                    <div>
-                        <p className="eyebrow" style={{ color: '#2563eb' }}>Engineering Throughput</p>
-                        <h2 style={{ margin: 0, font: "700 18px 'Space Grotesk'" }}>Team Velocity & Sprint Output Graph</h2>
-                        <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#858996' }}>Committed vs completed story points across the last 5 delivery sprints.</p>
+                <h2 style={{ margin: '0 0 4px', font: "700 18px 'Space Grotesk'" }}>Project Completion Tracker</h2>
+                <p style={{ margin: '0 0 20px', fontSize: '13px', color: '#858996' }}>Live delivery progress per project.</p>
+                {projects.length === 0 ? (
+                    <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                        <div style={{ fontSize: 40, marginBottom: 8 }}>ðŸš€</div>
+                        No projects found. Create projects to track their progress here.
                     </div>
-
-                    <div style={{ display: 'flex', gap: '16px', fontSize: '12px', alignItems: 'center' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ width: '12px', height: '12px', background: '#cbd5e1', borderRadius: '3px', display: 'inline-block' }} /> Planned Commitment
-                        </span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}>
-                            <span style={{ width: '12px', height: '12px', background: '#ee785e', borderRadius: '3px', display: 'inline-block' }} /> Completed Velocity
-                        </span>
-                    </div>
-                </div>
-
-                {/* Velocity SVG Bar Chart */}
-                <div style={{ width: '100%', overflowX: 'auto', position: 'relative' }}>
-                    <svg viewBox="0 0 800 240" style={{ width: '100%', minWidth: '650px', height: 'auto', display: 'block' }}>
-                        {/* Grid lines */}
-                        <line x1="50" y1="30" x2="770" y2="30" stroke="#f3f4f6" strokeWidth="1" />
-                        <line x1="50" y1="75" x2="770" y2="75" stroke="#f3f4f6" strokeWidth="1" />
-                        <line x1="50" y1="120" x2="770" y2="120" stroke="#f3f4f6" strokeWidth="1" />
-                        <line x1="50" y1="165" x2="770" y2="165" stroke="#f3f4f6" strokeWidth="1" />
-                        <line x1="50" y1="210" x2="770" y2="210" stroke="#e5e7eb" strokeWidth="1.5" />
-
-                        {/* Y-axis labels */}
-                        <text x="25" y="34" fontSize="10" fill="#9ca3af" textAnchor="middle">60pt</text>
-                        <text x="25" y="79" fontSize="10" fill="#9ca3af" textAnchor="middle">45pt</text>
-                        <text x="25" y="124" fontSize="10" fill="#9ca3af" textAnchor="middle">30pt</text>
-                        <text x="25" y="169" fontSize="10" fill="#9ca3af" textAnchor="middle">15pt</text>
-                        <text x="25" y="213" fontSize="10" fill="#9ca3af" textAnchor="middle">0pt</text>
-
-                        {/* Bars for Each Sprint */}
-                        {velocityData.map((item, index) => {
-                            const groupX = 110 + (index * 135)
-                            const plannedHeight = (item.planned / 60) * 180
-                            const completedHeight = (item.completed / 60) * 180
-                            const isHovered = hoveredVelocitySprint?.sprint === item.sprint
-
-                            return (
-                                <g
-                                    key={item.sprint}
-                                    style={{ cursor: 'pointer' }}
-                                    onMouseEnter={() => setHoveredVelocitySprint(item)}
-                                    onMouseLeave={() => setHoveredVelocitySprint(null)}
-                                >
-                                    {/* Planned Bar */}
-                                    <rect
-                                        x={groupX}
-                                        y={210 - plannedHeight}
-                                        width="32"
-                                        height={plannedHeight}
-                                        fill="#cbd5e1"
-                                        rx="4"
-                                        opacity={isHovered ? 0.9 : 0.7}
-                                        style={{ transition: 'all 0.2s ease' }}
-                                    />
-                                    {/* Completed Bar */}
-                                    <rect
-                                        x={groupX + 38}
-                                        y={210 - completedHeight}
-                                        width="32"
-                                        height={completedHeight}
-                                        fill="#ee785e"
-                                        rx="4"
-                                        opacity={isHovered ? 1 : 0.85}
-                                        style={{ transition: 'all 0.2s ease' }}
-                                    />
-
-                                    {/* Number Labels over bars */}
-                                    <text x={groupX + 16} y={205 - plannedHeight} fontSize="9.5" fill="#64748b" textAnchor="middle">{item.planned}</text>
-                                    <text x={groupX + 54} y={205 - completedHeight} fontSize="9.5" fill="#ee785e" fontWeight="700" textAnchor="middle">{item.completed}</text>
-
-                                    {/* X-axis label */}
-                                    <text x={groupX + 35} y="228" fontSize="10.5" fill={isHovered ? '#ee785e' : '#334155'} fontWeight={isHovered ? '700' : '600'} textAnchor="middle">
-                                        {item.sprint}
-                                    </text>
-                                </g>
-                            )
-                        })}
-                    </svg>
-
-                    {/* Velocity Hover Tooltip */}
-                    {hoveredVelocitySprint && (
-                        <div
-                            style={{
-                                position: 'absolute',
-                                top: '20px',
-                                right: '20px',
-                                background: '#1e293b',
-                                color: '#ffffff',
-                                padding: '10px 14px',
-                                borderRadius: '8px',
-                                fontSize: '12px',
-                                pointerEvents: 'none',
-                                boxShadow: '0 8px 20px rgba(0,0,0,0.25)',
-                                zIndex: 10,
-                            }}
-                        >
-                            <div style={{ fontWeight: '700', color: '#ee785e', marginBottom: '4px' }}>
-                                {hoveredVelocitySprint.sprint} Metrics
+                ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
+                        {projectStats.map(p => (
+                            <div key={p.id}
+                                style={{ background: hoveredProject === p.id ? '#f8fafc' : '#fff', border: `1px solid ${hoveredProject === p.id ? '#94a3b8' : '#e2e8f0'}`, borderRadius: '10px', padding: '16px', cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: hoveredProject === p.id ? '0 4px 12px rgba(0,0,0,0.08)' : 'none' }}
+                                onMouseEnter={() => setHoveredProject(p.id)} onMouseLeave={() => setHoveredProject(null)}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                    <span style={{ fontWeight: 700, fontSize: '14px', color: '#0f172a' }}>{p.name}</span>
+                                    <span style={{ fontSize: '18px', fontWeight: 800, color: p.completion >= 80 ? '#10b981' : p.completion >= 40 ? '#f59e0b' : '#ef4444' }}>{p.completion}%</span>
+                                </div>
+                                <div style={{ height: '6px', background: '#f1f5f9', borderRadius: '3px', overflow: 'hidden', marginBottom: '8px' }}>
+                                    <div style={{ width: `${p.completion}%`, height: '100%', background: p.completion >= 80 ? '#10b981' : p.completion >= 40 ? '#f59e0b' : '#ef4444', borderRadius: '3px', transition: 'width 0.6s ease' }} />
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b' }}>
+                                    <span>{p.doneCount}/{p.taskCount} tasks done</span>
+                                    <span style={{ background: p.status === 'Active' ? '#dcfce7' : '#f1f5f9', color: p.status === 'Active' ? '#16a34a' : '#64748b', padding: '1px 8px', borderRadius: '10px', fontWeight: 600 }}>{p.status || 'Active'}</span>
+                                </div>
                             </div>
-                            <div>Planned Commitment: <b>{hoveredVelocitySprint.planned} pts</b></div>
-                            <div>Delivered Velocity: <b>{hoveredVelocitySprint.completed} pts</b></div>
-                            <div style={{ marginTop: '4px', fontSize: '11px', color: '#34d399', fontWeight: '600' }}>
-                                ✓ Completion Rate: {hoveredVelocitySprint.rate}
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* Historical Velocity Stats Overview */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginTop: '18px', paddingTop: '18px', borderTop: '1px solid #f3f4f6' }}>
-                    <div style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                        <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Rolling Average Velocity</span>
-                        <div style={{ fontSize: '20px', fontWeight: '700', color: '#1e293b', marginTop: '4px' }}>47.0 pts / sprint</div>
-                        <small style={{ color: '#16a34a', fontSize: '11px' }}>↗ +12.5% increase over 5 sprints</small>
+                        ))}
                     </div>
-                    <div style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                        <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Sprint Predictability</span>
-                        <div style={{ fontSize: '20px', fontWeight: '700', color: '#1e293b', marginTop: '4px' }}>96.1%</div>
-                        <small style={{ color: '#2563eb', fontSize: '11px' }}>High delivery confidence</small>
-                    </div>
-                    <div style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                        <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Throughput Rate</span>
-                        <div style={{ fontSize: '20px', fontWeight: '700', color: '#1e293b', marginTop: '4px' }}>3.6 tasks / day</div>
-                        <small style={{ color: '#16a34a', fontSize: '11px' }}>Zero blocked deliverables</small>
-                    </div>
-                </div>
+                )}
             </section>
 
-            {/* Workload & Priorities Insights */}
-            <section className="feature-grid">
-                <section className="project-list-panel panel" style={{ flex: '1 1 500px' }}>
-                    <div className="panel-heading">
-                        <div>
-                            <h2>Priority Distribution</h2>
-                            <p>Priority allocation across current sprints.</p>
-                        </div>
+            {/* Team Member Velocity Breakdown */}
+            <section className="panel" style={{ marginBottom: '24px', padding: '24px', background: '#fff', border: '1px solid #ebe9e5', borderRadius: '10px' }}>
+                <h2 style={{ margin: '0 0 4px', font: "700 18px 'Space Grotesk'" }}>Team Member Velocity Breakdown</h2>
+                <p style={{ margin: '0 0 20px', fontSize: '13px', color: '#858996' }}>Individual task ownership and delivery throughput from live data.</p>
+                {members.length === 0 ? (
+                    <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                        <div style={{ fontSize: 40, marginBottom: 8 }}>ðŸ‘¥</div>No members found in this organization.
                     </div>
-                    <div style={{ padding: '0 22px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
-                                <span>Critical (e.g. Payment & Auth)</span>
-                                <b>15%</b>
-                            </div>
-                            <div style={{ height: '6px', background: '#ebe9e5', borderRadius: '3px', overflow: 'hidden' }}>
-                                <div style={{ width: '15%', height: '100%', background: '#ee785e' }} />
-                            </div>
-                        </div>
-
-                        <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
-                                <span>High (e.g. Signboard & Sockets)</span>
-                                <b>40%</b>
-                            </div>
-                            <div style={{ height: '6px', background: '#ebe9e5', borderRadius: '3px', overflow: 'hidden' }}>
-                                <div style={{ width: '40%', height: '100%', background: '#f2c85b' }} />
-                            </div>
-                        </div>
-
-                        <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
-                                <span>Medium (e.g. Profile Page)</span>
-                                <b>30%</b>
-                            </div>
-                            <div style={{ height: '6px', background: '#ebe9e5', borderRadius: '3px', overflow: 'hidden' }}>
-                                <div style={{ width: '30%', height: '100%', background: '#6d9ee8' }} />
-                            </div>
-                        </div>
-
-                        <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
-                                <span>Low (e.g. UI Polish)</span>
-                                <b>15%</b>
-                            </div>
-                            <div style={{ height: '6px', background: '#ebe9e5', borderRadius: '3px', overflow: 'hidden' }}>
-                                <div style={{ width: '15%', height: '100%', background: '#72b79a' }} />
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <section className="project-list-panel panel" style={{ flex: '1 1 500px' }}>
-                    <div className="panel-heading">
-                        <div>
-                            <h2>Team Member Velocity Breakdown</h2>
-                            <p>Individual delivery throughput and capacity allocation.</p>
-                        </div>
-                    </div>
+                ) : (
                     <div className="activity-list">
-                        <div className="activity-item">
-                            <span className="activity-avatar coral-bg">PR</span>
-                            <p><strong>Pradeep (Lead)</strong> • 8 tasks assigned (6 in progress, 2 completed)<small>Velocity: 2.8 pts/day • High throughput</small></p>
-                        </div>
-                        <div className="activity-item">
-                            <span className="activity-avatar blue-bg">AN</span>
-                            <p><strong>Anil (Dev)</strong> • 5 tasks assigned (3 in progress, 2 in review)<small>Velocity: 1.9 pts/day • Steady delivery</small></p>
-                        </div>
-                        <div className="activity-item">
-                            <span className="activity-avatar yellow-bg">SN</span>
-                            <p><strong>Sneha (QA)</strong> • 4 tasks assigned (QA testing & validation)<small>Velocity: 2.1 pts/day • Release ready</small></p>
-                        </div>
+                        {memberStats.map((m, i) => {
+                            const avatarColors = ['coral-bg', 'blue-bg', 'yellow-bg', 'green-bg', 'purple-bg']
+                            return (
+                                <div key={m.name} className="activity-item">
+                                    <span className={`activity-avatar ${avatarColors[i % avatarColors.length]}`}>{m.initials}</span>
+                                    <p>
+                                        <strong>{m.name}</strong> ({m.role}) â€¢ {m.total} task{m.total !== 1 ? 's' : ''} assigned
+                                        {m.inProgress > 0 && `, ${m.inProgress} in progress`}
+                                        {m.review > 0 && `, ${m.review} in review`}
+                                        {m.done > 0 && `, ${m.done} completed`}
+                                        <small>{m.total === 0 ? 'No tasks assigned yet' : `${m.done}/${m.total} delivered`}</small>
+                                    </p>
+                                </div>
+                            )
+                        })}
                     </div>
-                </section>
+                )}
+            </section>
+
+            {/* Summary Stats Footer */}
+            <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '24px' }}>
+                {[
+                    { label: 'ACTIVE PROJECTS', value: projects.length, color: '#1e293b' },
+                    { label: 'TEAM MEMBERS', value: members.length, color: '#1e293b' },
+                    { label: 'TOTAL TASKS', value: total, color: '#1e293b' },
+                    { label: 'OVERDUE TASKS', value: overdue, color: overdue > 0 ? '#ef4444' : '#10b981' },
+                ].map(s => (
+                    <div key={s.label} style={{ background: '#f8fafc', padding: '16px', borderRadius: '10px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                        <div style={{ fontSize: '28px', fontWeight: 800, color: s.color }}>{s.value}</div>
+                        <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, marginTop: '4px' }}>{s.label}</div>
+                    </div>
+                ))}
             </section>
         </main>
     )
 }
+

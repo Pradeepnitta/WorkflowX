@@ -243,6 +243,10 @@ export default function DashboardOverviewPage() {
     }
 
     const greetingName = currentUser?.name || currentUser?.email?.split('@')[0] || 'Team'
+    const activeOrg = organizations.find((o) => o.id === organizationId)
+    const storedRole = (localStorage.getItem('workflowx_registered_role') || '').toUpperCase()
+    const userRole = (activeOrg?.role || currentUser?.role || storedRole || 'MEMBER').toUpperCase()
+    const canCreateDirectTask = userRole === 'ADMIN' || userRole === 'MANAGER'
 
     return (
         <main className="feature-page">
@@ -251,11 +255,9 @@ export default function DashboardOverviewPage() {
                 <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                         <p className="eyebrow" style={{ margin: 0 }}>Command Center</p>
-                        {currentUser?.role && (
-                            <span style={{ fontSize: '10px', background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
-                                {currentUser.role}
-                            </span>
-                        )}
+                        <span style={{ fontSize: '10px', background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
+                            {userRole}
+                        </span>
                     </div>
                     <h1 style={{ fontSize: '28px', fontWeight: 800, margin: '0 0 6px', color: '#0f172a' }}>
                         Good day, {greetingName} <span className="wave">✦</span>
@@ -272,13 +274,23 @@ export default function DashboardOverviewPage() {
                     >
                         <span>📋</span> My Tasks
                     </button>
-                    <button
-                        className="primary-button"
-                        onClick={() => setShowTaskForm(true)}
-                        style={{ padding: '9px 18px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                    >
-                        <span>+</span> New Task
-                    </button>
+                    {canCreateDirectTask ? (
+                        <button
+                            className="primary-button"
+                            onClick={() => setShowTaskForm(true)}
+                            style={{ padding: '9px 18px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                        >
+                            <span>+</span> New Task
+                        </button>
+                    ) : (
+                        <button
+                            className="primary-button"
+                            onClick={() => navigate('/tasks')}
+                            style={{ padding: '9px 18px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', background: '#2563eb' }}
+                        >
+                            <span>💡</span> Propose Task
+                        </button>
+                    )}
                 </div>
             </section>
 
@@ -350,9 +362,9 @@ export default function DashboardOverviewPage() {
                     <span className="stat-icon green">👥</span>
                     <div>
                         <p>Team members</p>
-                        <strong>{members.length || membersCount}</strong>
+                        <strong>{members.length}</strong>
                         <small className="neutral">
-                            {members.length === 1 ? '1 active member ➔' : `${members.length || membersCount} active members ➔`}
+                            {members.length === 1 ? '1 active member ➔' : `${members.length} active members ➔`}
                         </small>
                     </div>
                 </div>
@@ -749,13 +761,15 @@ export default function DashboardOverviewPage() {
                         </div>
 
                         <div className="form-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <button
-                                type="button"
-                                onClick={(e) => handleDeleteTask(activeTask.id, e)}
-                                style={{ padding: '6px 12px', fontSize: '11.5px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
-                            >
-                                🗑 Delete Task
-                            </button>
+                            {canCreateDirectTask ? (
+                                <button
+                                    type="button"
+                                    onClick={(e) => handleDeleteTask(activeTask.id, e)}
+                                    style={{ padding: '6px 12px', fontSize: '11.5px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+                                >
+                                    🗑 Delete Task
+                                </button>
+                            ) : <div />}
                             <div style={{ display: 'flex', gap: '8px' }}>
                                 <button
                                     type="button"
@@ -861,6 +875,7 @@ export default function DashboardOverviewPage() {
                                 <input
                                     type="date"
                                     value={newDueDate}
+                                    min={new Date().toISOString().split('T')[0]}
                                     onChange={(e) => setNewDueDate(e.target.value)}
                                     style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
                                 />

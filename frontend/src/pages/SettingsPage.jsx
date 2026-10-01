@@ -797,22 +797,40 @@ export default function SettingsPage() {
                                     {userRole === 'MANAGER' && (
                                         <span> As a <b>Manager</b>, you have administrative command over projects, member task allocations, and sprint metrics.</span>
                                     )}
+                                    {userRole === 'MEMBER' && (
+                                        <span> As a <b>Developer</b>, your workspace access is focused on engineering execution, task updates, file uploads, and collaboration.</span>
+                                    )}
+                                    {userRole === 'ADMIN' && (
+                                        <span> As an <b>Administrator</b>, you have full organizational control over security, memberships, and global settings.</span>
+                                    )}
                                 </div>
 
-                                {/* Manager / Role Capabilities Checklist */}
+                                {/* Role Capabilities Checklist */}
                                 <div>
                                     <h4 style={{ fontSize: '13px', color: '#475569', margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                        Active Capabilities in Workspace:
+                                        {userRole === 'MEMBER' ? 'Developer Capabilities & Permissions:' : 'Active Capabilities in Workspace:'}
                                     </h4>
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
-                                        {[
-                                            'Create & edit project initiatives',
-                                            'Assign and re-route signboard tasks',
-                                            'Invite teammates to organization',
-                                            'View team velocity & analytics reports',
-                                            'Broadcast organization notifications',
-                                            'Manage status columns and sprint stages',
-                                        ].map((cap, i) => (
+                                        {(userRole === 'MEMBER'
+                                            ? [
+                                                'View assigned projects & teams',
+                                                'View assigned signboard tasks',
+                                                'Work on tasks & update status',
+                                                'Add comments and replies',
+                                                'Upload task files & assets',
+                                                'Propose tasks for manager review',
+                                                'Report blockers & communicate',
+                                                'Receive real-time notifications',
+                                            ]
+                                            : [
+                                                'Create & edit project initiatives',
+                                                'Assign and re-route signboard tasks',
+                                                'Invite teammates to organization',
+                                                'View team velocity & analytics reports',
+                                                'Broadcast organization notifications',
+                                                'Manage status columns and sprint stages',
+                                            ]
+                                        ).map((cap, i) => (
                                             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#1f2937' }}>
                                                 <span style={{ color: '#10b981', fontWeight: 700 }}>✓</span>
                                                 {cap}
@@ -821,14 +839,14 @@ export default function SettingsPage() {
                                     </div>
                                 </div>
 
-                                <div style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
+                                <div style={{ marginTop: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                                     <button
                                         type="button"
                                         className="primary-button"
-                                        onClick={() => navigate('/members')}
+                                        onClick={() => navigate('/tasks')}
                                         style={{ fontSize: '13px' }}
                                     >
-                                        Manage Team Members ➔
+                                        Go to Signboard ➔
                                     </button>
                                     <button
                                         type="button"
@@ -837,13 +855,24 @@ export default function SettingsPage() {
                                     >
                                         View Projects Directory
                                     </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => navigate('/analytics')}
-                                        style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff', fontSize: '13px', cursor: 'pointer' }}
-                                    >
-                                        View Analytics
-                                    </button>
+                                    {(userRole === 'ADMIN' || userRole === 'MANAGER') && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => navigate('/members')}
+                                                style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff', fontSize: '13px', cursor: 'pointer' }}
+                                            >
+                                                Manage Team Members
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => navigate('/analytics')}
+                                                style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff', fontSize: '13px', cursor: 'pointer' }}
+                                            >
+                                                View Analytics
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             </section>
 
