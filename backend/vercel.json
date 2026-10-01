@@ -1,0 +1,5 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "runtime": "node",
+  "entrypoint": "api/index.js"
+}
