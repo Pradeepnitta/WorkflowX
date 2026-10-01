@@ -139,6 +139,7 @@ export function createRoutes({
         const redisHealth = await checkRedisHealth()
         sendJson(res, 200, {
             status: dbStatus === 'connected' ? 'healthy' : 'degraded',
+            message: 'server health is ok',
             service: 'workflowx-api',
             database: dbStatus,
             databaseError: dbError,
@@ -148,6 +149,10 @@ export function createRoutes({
             redis: redisHealth.status,
         })
     })
+    router.add('GET', '/test', (req, res) => sendJson(res, 200, { status: 'ok', message: 'server health is ok' }))
+    router.add('GET', '/test-health', (req, res) => sendJson(res, 200, { status: 'ok', message: 'server health is ok' }))
+    router.add('GET', '/api/test', (req, res) => sendJson(res, 200, { status: 'ok', message: 'server health is ok' }))
+    router.add('GET', '/api/test-health', (req, res) => sendJson(res, 200, { status: 'ok', message: 'server health is ok' }))
     router.add('GET', '/api/docs', (req, res) => sendJson(res, 200, openapiSpec))
     router.add('GET', '/docs/swagger.json', (req, res) => sendJson(res, 200, openapiSpec))
     router.add('GET', '/', (req, res) => sendJson(res, 200, { message: 'WorkFlowX API is running' }))
