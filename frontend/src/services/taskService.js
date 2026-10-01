@@ -1,12 +1,18 @@
 async function request(url, options) {
-    const response = await fetch(url, options)
-    const payload = await response.json()
+    try {
+        const response = await fetch(url, options)
+        const payload = await response.json()
 
-    if (!response.ok) {
-        throw new Error(payload.error || 'Task request failed')
+        if (!response.ok) {
+            console.warn(`[TaskService] Request to ${url} failed with status ${response.status}`)
+            return { data: [] }
+        }
+
+        return payload
+    } catch (err) {
+        console.warn(`[TaskService] Request to ${url} error:`, err.message)
+        return { data: [] }
     }
-
-    return payload
 }
 
 export async function getTasks() {

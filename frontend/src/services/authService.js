@@ -177,6 +177,10 @@ function clearSession() {
         window.localStorage.removeItem('workflowx_user')
         window.sessionStorage.removeItem('workflowx_user')
         window.dispatchEvent(new Event('auth-change'))
+
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
+            window.location.replace('/login')
+        }
     } catch {
         // storage fallback
     }
