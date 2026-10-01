@@ -20,7 +20,7 @@
       "destination": "/api/index.js"
     },
     {
-      "source": "/((?!api/).*)",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ]
