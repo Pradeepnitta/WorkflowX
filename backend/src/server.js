@@ -50,3 +50,5 @@ server.listen(port, async () => {
     console.log('📡 Socket.IO server initialized')
     await checkDatabase()
 })
+
+export default server
