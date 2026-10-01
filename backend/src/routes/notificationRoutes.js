@@ -1,28 +1,28 @@
 import { authenticateRequest } from '../middleware/authenticate.js'
 
 export function registerNotificationRoutes({ router, notificationController }) {
-    router.add('GET', '/api/notifications', (req, res) => {
+    router.get('/api/notifications', async (req, res) => {
         const user = authenticateRequest(req)
-        return notificationController.list(req, res, user)
+        await notificationController.list(req, res, user)
     })
 
-    router.add('PATCH', '/api/notifications/read-all', (req, res) => {
+    router.patch('/api/notifications/read-all', async (req, res) => {
         const user = authenticateRequest(req)
-        return notificationController.markAllRead(req, res, user)
+        await notificationController.markAllRead(req, res, user)
     })
 
-    router.addRegex('PATCH', /^\/api\/notifications\/([^/]+)\/read$/, (req, res, matches) => {
+    router.patch('/api/notifications/:notificationId/read', async (req, res) => {
         const user = authenticateRequest(req)
-        return notificationController.markRead(req, res, user, matches[1])
+        await notificationController.markRead(req, res, user, req.params.notificationId)
     })
 
-    router.add('DELETE', '/api/notifications', (req, res) => {
+    router.delete('/api/notifications', async (req, res) => {
         const user = authenticateRequest(req)
-        return notificationController.clearAll(req, res, user)
+        await notificationController.clearAll(req, res, user)
     })
 
-    router.addRegex('DELETE', /^\/api\/notifications\/([^/]+)$/, (req, res, matches) => {
+    router.delete('/api/notifications/:notificationId', async (req, res) => {
         const user = authenticateRequest(req)
-        return notificationController.remove(req, res, user, matches[1])
+        await notificationController.remove(req, res, user, req.params.notificationId)
     })
 }

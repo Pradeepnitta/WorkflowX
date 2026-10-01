@@ -1,8 +1,8 @@
 import { authenticateRequest } from '../middleware/authenticate.js'
 
 export function registerAnalyticsRoutes({ router, analyticsController }) {
-    router.add('GET', '/api/analytics/overview', (req, res, _matches, url) => {
+    router.get('/api/analytics/overview', async (req, res) => {
         const user = authenticateRequest(req)
-        return analyticsController.overview(req, res, user, url.searchParams.get('organizationId'))
+        await analyticsController.overview(req, res, user, req.query.organizationId)
     })
 }

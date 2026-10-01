@@ -2,41 +2,41 @@ import { authenticateRequest } from '../middleware/authenticate.js'
 
 export function registerAttachmentRoutes({ router, attachmentController, commentController }) {
     if (attachmentController) {
-        router.addRegex('POST', /^\/api\/projects\/tasks\/([^/]+)\/attachments$/, (req, res, matches) => {
+        router.post('/api/projects/tasks/:taskId/attachments', async (req, res) => {
             const user = authenticateRequest(req)
-            return attachmentController.uploadAttachment(req, res, user, matches[1])
+            await attachmentController.uploadAttachment(req, res, user, req.params.taskId)
         })
 
-        router.addRegex('GET', /^\/api\/projects\/tasks\/([^/]+)\/attachments$/, (req, res, matches) => {
+        router.get('/api/projects/tasks/:taskId/attachments', async (req, res) => {
             authenticateRequest(req)
-            return attachmentController.listAttachments(req, res, matches[1])
+            await attachmentController.listAttachments(req, res, req.params.taskId)
         })
 
-        router.addRegex('DELETE', /^\/api\/attachments\/([^/]+)$/, (req, res, matches) => {
+        router.delete('/api/attachments/:attachmentId', async (req, res) => {
             authenticateRequest(req)
-            return attachmentController.removeAttachment(req, res, matches[1])
+            await attachmentController.removeAttachment(req, res, req.params.attachmentId)
         })
     }
 
     if (commentController) {
-        router.addRegex('POST', /^\/api\/projects\/tasks\/([^/]+)\/comments$/, (req, res, matches) => {
+        router.post('/api/projects/tasks/:taskId/comments', async (req, res) => {
             const user = authenticateRequest(req)
-            return commentController.createComment(req, res, user, matches[1])
+            await commentController.createComment(req, res, user, req.params.taskId)
         })
 
-        router.addRegex('GET', /^\/api\/projects\/tasks\/([^/]+)\/comments$/, (req, res, matches) => {
+        router.get('/api/projects/tasks/:taskId/comments', async (req, res) => {
             const user = authenticateRequest(req)
-            return commentController.listComments(req, res, user, matches[1])
+            await commentController.listComments(req, res, user, req.params.taskId)
         })
 
-        router.addRegex('PATCH', /^\/api\/comments\/([^/]+)$/, (req, res, matches) => {
+        router.patch('/api/comments/:commentId', async (req, res) => {
             const user = authenticateRequest(req)
-            return commentController.updateComment(req, res, user, matches[1])
+            await commentController.updateComment(req, res, user, req.params.commentId)
         })
 
-        router.addRegex('DELETE', /^\/api\/comments\/([^/]+)$/, (req, res, matches) => {
+        router.delete('/api/comments/:commentId', async (req, res) => {
             const user = authenticateRequest(req)
-            return commentController.removeComment(req, res, user, matches[1])
+            await commentController.removeComment(req, res, user, req.params.commentId)
         })
     }
 }

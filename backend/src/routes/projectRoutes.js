@@ -1,38 +1,38 @@
 import { authenticateRequest } from '../middleware/authenticate.js'
 
 export function registerProjectRoutes({ router, projectController }) {
-    router.add('POST', '/api/projects', (req, res) => {
+    router.post('/api/projects', async (req, res) => {
         const user = authenticateRequest(req)
-        return projectController.create(req, res, user)
+        await projectController.create(req, res, user)
     })
 
-    router.add('GET', '/api/projects', (req, res, _matches, url) => {
+    router.get('/api/projects', async (req, res) => {
         const user = authenticateRequest(req)
-        return projectController.list(req, res, user, url.searchParams.get('organizationId'))
+        await projectController.list(req, res, user, req.query.organizationId)
     })
 
-    router.addRegex('PATCH', /^\/api\/projects\/([^/]+)$/, (req, res, matches) => {
+    router.patch('/api/projects/:projectId', async (req, res) => {
         const user = authenticateRequest(req)
-        return projectController.update(req, res, user, matches[1])
+        await projectController.update(req, res, user, req.params.projectId)
     })
 
-    router.addRegex('DELETE', /^\/api\/projects\/([^/]+)$/, (req, res, matches) => {
+    router.delete('/api/projects/:projectId', async (req, res) => {
         const user = authenticateRequest(req)
-        return projectController.remove(req, res, user, matches[1])
+        await projectController.remove(req, res, user, req.params.projectId)
     })
 
-    router.addRegex('GET', /^\/api\/projects\/([^/]+)\/members$/, (req, res, matches) => {
+    router.get('/api/projects/:projectId/members', async (req, res) => {
         const user = authenticateRequest(req)
-        return projectController.listMembers(req, res, user, matches[1])
+        await projectController.listMembers(req, res, user, req.params.projectId)
     })
 
-    router.addRegex('POST', /^\/api\/projects\/([^/]+)\/members$/, (req, res, matches) => {
+    router.post('/api/projects/:projectId/members', async (req, res) => {
         const user = authenticateRequest(req)
-        return projectController.addMember(req, res, user, matches[1])
+        await projectController.addMember(req, res, user, req.params.projectId)
     })
 
-    router.addRegex('DELETE', /^\/api\/projects\/([^/]+)\/members\/([^/]+)$/, (req, res, matches) => {
+    router.delete('/api/projects/:projectId/members/:memberId', async (req, res) => {
         const user = authenticateRequest(req)
-        return projectController.removeMember(req, res, user, matches[1], matches[2])
+        await projectController.removeMember(req, res, user, req.params.projectId, req.params.memberId)
     })
 }

@@ -1,18 +1,18 @@
 import { authenticateRequest } from '../middleware/authenticate.js'
 
 export function registerAdminRoutes({ router, adminController }) {
-    router.addRegex('GET', /^\/api\/organizations\/([^/]+)\/members$/, (req, res, matches) => {
+    router.get('/api/organizations/:organizationId/members', async (req, res) => {
         const user = authenticateRequest(req)
-        return adminController.listMembers(req, res, user, matches[1])
+        await adminController.listMembers(req, res, user, req.params.organizationId)
     })
 
-    router.addRegex('PATCH', /^\/api\/organizations\/([^/]+)\/members\/([^/]+)\/role$/, (req, res, matches) => {
+    router.patch('/api/organizations/:organizationId/members/:memberId/role', async (req, res) => {
         const user = authenticateRequest(req)
-        return adminController.updateMemberRole(req, res, user, matches[1], matches[2])
+        await adminController.updateMemberRole(req, res, user, req.params.organizationId, req.params.memberId)
     })
 
-    router.addRegex('DELETE', /^\/api\/organizations\/([^/]+)\/members\/([^/]+)$/, (req, res, matches) => {
+    router.delete('/api/organizations/:organizationId/members/:memberId', async (req, res) => {
         const user = authenticateRequest(req)
-        return adminController.removeMember(req, res, user, matches[1], matches[2])
+        await adminController.removeMember(req, res, user, req.params.organizationId, req.params.memberId)
     })
 }

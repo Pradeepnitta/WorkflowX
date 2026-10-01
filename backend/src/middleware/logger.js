@@ -1,7 +1,7 @@
-export function loggerMiddleware(request) {
+export function loggerMiddleware(request, response, next) {
     const start = Date.now()
     const method = request.method
-    const url = request.url
+    const url = request.originalUrl || request.url
 
     // Intercept finish/close to log response status and duration
     request.on('close', () => {
@@ -10,4 +10,8 @@ export function loggerMiddleware(request) {
             console.log(`[${new Date().toISOString()}] ${method} ${url} - ${duration}ms`)
         }
     })
+
+    if (typeof next === 'function') {
+        next()
+    }
 }

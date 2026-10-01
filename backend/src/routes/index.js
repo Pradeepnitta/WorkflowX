@@ -27,6 +27,7 @@ import { registerAnalyticsRoutes } from './analyticsRoutes.js'
 import { registerNotificationRoutes } from './notificationRoutes.js'
 import { registerSearchRoutes } from './searchRoutes.js'
 import { registerAttachmentRoutes } from './attachmentRoutes.js'
+import { Router } from 'express'
 import { corsMiddleware, loggerMiddleware, rateLimiterMiddleware } from '../middleware/index.js'
 
 let openapiSpec = null
@@ -37,41 +38,6 @@ try {
     openapiSpec = { openapi: '3.0.3', info: { title: 'WorkFlowX API', version: '1.0.0' } }
 }
 
-class ApiRouter {
-    constructor() {
-        this.staticRoutes = new Map()
-        this.regexRoutes = []
-    }
-
-    add(method, path, handler) {
-        this.staticRoutes.set(`${method}:${path}`, handler)
-    }
-
-    addRegex(method, regex, handler) {
-        this.regexRoutes.push({ method, regex, handler })
-    }
-
-    async route(request, response, sendJson) {
-        const url = new URL(request.url, 'http://localhost')
-        const key = `${request.method}:${url.pathname}`
-
-        const staticHandler = this.staticRoutes.get(key)
-        if (staticHandler) {
-            return staticHandler(request, response, null, url)
-        }
-
-        for (const { method, regex, handler } of this.regexRoutes) {
-            if (request.method === method) {
-                const match = url.pathname.match(regex)
-                if (match) {
-                    return handler(request, response, match, url)
-                }
-            }
-        }
-
-        sendJson(response, 404, { error: 'Route not found' })
-    }
-}
 
 export function createRoutes({
     sendJson,
@@ -103,10 +69,35 @@ export function createRoutes({
     const attachmentController = attachmentService ? createAttachmentController({ attachmentService, sendJson, readBody }) : null
     const commentController = createCommentController({ commentService, sendJson, readBody, getIO })
 
-    // 2. Initialize Router & Register modular route modules
-    const router = new ApiRouter()
+    // 2. Initialize Express Router & Register modular route modules
+    const router = Router()
 
-    router.add('GET', '/health', async (req, res) => {
+    router.add = (method, path, handler) => {
+        const fn = method.toLowerCase()
+        router[fn](path, async (req, res, next) => {
+            try {
+                const url = new URL(req.originalUrl || req.url, `http://${req.headers.host || 'localhost'}`)
+                await handler(req, res, null, url)
+            } catch (err) {
+                next(err)
+            }
+        })
+    }
+
+    router.addRegex = (method, regex, handler) => {
+        const fn = method.toLowerCase()
+        router[fn](regex, async (req, res, next) => {
+            try {
+                const url = new URL(req.originalUrl || req.url, `http://${req.headers.host || 'localhost'}`)
+                const matches = req.path.match(regex) || url.pathname.match(regex)
+                await handler(req, res, matches, url)
+            } catch (err) {
+                next(err)
+            }
+        })
+    }
+
+    router.get('/health', async (req, res) => {
         let dbStatus = 'connected'
         let dbError = null
         try {
@@ -127,7 +118,8 @@ export function createRoutes({
             redis: redisHealth.status,
         })
     })
-    router.add('GET', '/api/health', async (req, res) => {
+
+    router.get('/api/health', async (req, res) => {
         let dbStatus = 'connected'
         let dbError = null
         try {
@@ -149,13 +141,14 @@ export function createRoutes({
             redis: redisHealth.status,
         })
     })
-    router.add('GET', '/test', (req, res) => sendJson(res, 200, { status: 'ok', message: 'server health is ok' }))
-    router.add('GET', '/test-health', (req, res) => sendJson(res, 200, { status: 'ok', message: 'server health is ok' }))
-    router.add('GET', '/api/test', (req, res) => sendJson(res, 200, { status: 'ok', message: 'server health is ok' }))
-    router.add('GET', '/api/test-health', (req, res) => sendJson(res, 200, { status: 'ok', message: 'server health is ok' }))
-    router.add('GET', '/api/docs', (req, res) => sendJson(res, 200, openapiSpec))
-    router.add('GET', '/docs/swagger.json', (req, res) => sendJson(res, 200, openapiSpec))
-    router.add('GET', '/', (req, res) => sendJson(res, 200, { message: 'WorkFlowX API is running' }))
+
+    router.get('/test', (req, res) => sendJson(res, 200, { status: 'ok', message: 'server health is ok' }))
+    router.get('/test-health', (req, res) => sendJson(res, 200, { status: 'ok', message: 'server health is ok' }))
+    router.get('/api/test', (req, res) => sendJson(res, 200, { status: 'ok', message: 'server health is ok' }))
+    router.get('/api/test-health', (req, res) => sendJson(res, 200, { status: 'ok', message: 'server health is ok' }))
+    router.get('/api/docs', (req, res) => sendJson(res, 200, openapiSpec))
+    router.get('/docs/swagger.json', (req, res) => sendJson(res, 200, openapiSpec))
+    router.get('/', (req, res) => sendJson(res, 200, { message: 'WorkFlowX API is running' }))
 
     // Register each page's specific routes
     registerAuthRoutes({ router, authController })
@@ -169,14 +162,6 @@ export function createRoutes({
     registerSearchRoutes({ router, searchController })
     registerAttachmentRoutes({ router, attachmentController, commentController })
 
-    return async function routeRequest(request, response) {
-        loggerMiddleware(request)
-        if (corsMiddleware(request, response)) {
-            return
-        }
-        rateLimiterMiddleware(request)
-
-        await router.route(request, response, sendJson)
-    }
+    return router
 }
 

@@ -1,23 +1,23 @@
 import { authenticateRequest } from '../middleware/authenticate.js'
 
 export function registerOrganizationRoutes({ router, orgController }) {
-    router.add('POST', '/api/organizations', (req, res) => {
+    router.post('/api/organizations', async (req, res) => {
         const user = authenticateRequest(req)
-        return orgController.create(req, res, user)
+        await orgController.create(req, res, user)
     })
 
-    router.add('GET', '/api/organizations', (req, res) => {
+    router.get('/api/organizations', async (req, res) => {
         const user = authenticateRequest(req)
-        return orgController.list(req, res, user)
+        await orgController.list(req, res, user)
     })
 
-    router.addRegex('POST', /^\/api\/organizations\/([^/]+)\/invite$/, (req, res, matches) => {
+    router.post('/api/organizations/:organizationId/invite', async (req, res) => {
         const user = authenticateRequest(req)
-        return orgController.inviteMember(req, res, user, matches[1])
+        await orgController.inviteMember(req, res, user, req.params.organizationId)
     })
 
-    router.addRegex('POST', /^\/api\/invitations\/([^/]+)\/accept$/, (req, res, matches) => {
+    router.post('/api/invitations/:token/accept', async (req, res) => {
         const user = authenticateRequest(req)
-        return orgController.acceptInvitation(req, res, user, matches[1])
+        await orgController.acceptInvitation(req, res, user, req.params.token)
     })
 }

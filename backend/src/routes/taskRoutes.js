@@ -1,35 +1,35 @@
 import { authenticateRequest } from '../middleware/authenticate.js'
 
 export function registerTaskRoutes({ router, taskController }) {
-    router.add('POST', '/api/projects/tasks', (req, res) => {
+    router.post('/api/projects/tasks', async (req, res) => {
         const user = authenticateRequest(req)
-        return taskController.createProjectTask(req, res, user)
+        await taskController.createProjectTask(req, res, user)
     })
 
-    router.add('GET', '/api/projects/tasks', (req, res, _matches, url) => {
+    router.get('/api/projects/tasks', async (req, res) => {
         const user = authenticateRequest(req)
-        return taskController.listProjectTasks(req, res, user, url.searchParams.get('projectId'))
+        await taskController.listProjectTasks(req, res, user, req.query.projectId)
     })
 
-    router.addRegex('PATCH', /^\/api\/projects\/tasks\/([^/]+)$/, (req, res, matches) => {
+    router.patch('/api/projects/tasks/:taskId', async (req, res) => {
         const user = authenticateRequest(req)
-        return taskController.updateProjectTask(req, res, user, matches[1])
+        await taskController.updateProjectTask(req, res, user, req.params.taskId)
     })
 
-    router.add('GET', '/api/tasks', (req, res, _matches, url) => {
-        return taskController.listGeneralTasks(req, res, url.searchParams)
+    router.get('/api/tasks', async (req, res) => {
+        const url = new URL(req.originalUrl || req.url, 'http://localhost')
+        await taskController.listGeneralTasks(req, res, url.searchParams)
     })
 
-    router.add('POST', '/api/tasks', (req, res) => {
-        return taskController.createGeneralTask(req, res)
+    router.post('/api/tasks', async (req, res) => {
+        await taskController.createGeneralTask(req, res)
     })
 
-    router.addRegex('PATCH', /^\/api\/tasks\/([^/]+)$/, (req, res, matches) => {
-        return taskController.updateGeneralTask(req, res, matches[1])
+    router.patch('/api/tasks/:taskId', async (req, res) => {
+        await taskController.updateGeneralTask(req, res, req.params.taskId)
     })
 
-    router.addRegex('DELETE', /^\/api\/tasks\/([^/]+)$/, (req, res, matches) => {
-        return taskController.deleteGeneralTask(req, res, matches[1])
+    router.delete('/api/tasks/:taskId', async (req, res) => {
+        await taskController.deleteGeneralTask(req, res, req.params.taskId)
     })
 }
-

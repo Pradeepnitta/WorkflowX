@@ -30,19 +30,9 @@ if (!process.env.ADMIN_SECRET_KEY) {
 const port = Number(process.env.PORT || 3001)
 const app = createApp()
 
-// Test route in server.js: server health is ok
-const server = createServer((req, res) => {
-    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`)
-    if (['/test', '/test-health', '/api/test', '/api/test-health'].includes(url.pathname)) {
-        res.writeHead(200, {
-            'Content-Type': 'application/json; charset=utf-8',
-            'Access-Control-Allow-Origin': '*',
-        })
-        res.end(JSON.stringify({ status: 'ok', message: 'server health is ok' }))
-        return
-    }
-    return app(req, res)
-})
+// Pass the Express app to HTTP server for Socket.IO integration
+const server = createServer(app)
+
 
 initSocketServer(server)
 initQueue()

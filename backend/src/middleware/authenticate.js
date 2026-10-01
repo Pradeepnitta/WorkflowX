@@ -20,3 +20,13 @@ export function authenticateRequest(request) {
         throw authenticationError('Invalid or expired access token')
     }
 }
+
+export function requireAuth(req, res, next) {
+    try {
+        req.user = authenticateRequest(req)
+        next()
+    } catch (err) {
+        next(err)
+    }
+}
+

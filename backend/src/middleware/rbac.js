@@ -41,3 +41,17 @@ export async function authorizeOrgAction(organizationId, userId, requiredRole = 
     }
     return role
 }
+
+export function requireOrgRole(requiredRole = 'MEMBER') {
+    return async (req, res, next) => {
+        try {
+            const orgId = req.params.organizationId || req.query.organizationId || req.body?.organizationId
+            const userId = req.user?.sub || req.user?.id
+            await authorizeOrgAction(orgId, userId, requiredRole)
+            next()
+        } catch (err) {
+            next(err)
+        }
+    }
+}
+

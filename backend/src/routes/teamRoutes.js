@@ -1,28 +1,28 @@
 import { authenticateRequest } from '../middleware/authenticate.js'
 
 export function registerTeamRoutes({ router, teamController }) {
-    router.add('POST', '/api/teams', (req, res) => {
+    router.post('/api/teams', async (req, res) => {
         const user = authenticateRequest(req)
-        return teamController.create(req, res, user)
+        await teamController.create(req, res, user)
     })
 
-    router.add('GET', '/api/teams', (req, res, _matches, url) => {
+    router.get('/api/teams', async (req, res) => {
         const user = authenticateRequest(req)
-        return teamController.list(req, res, user, url.searchParams.get('organizationId'))
+        await teamController.list(req, res, user, req.query.organizationId)
     })
 
-    router.addRegex('POST', /^\/api\/teams\/([^/]+)\/members$/, (req, res, matches) => {
+    router.post('/api/teams/:teamId/members', async (req, res) => {
         const user = authenticateRequest(req)
-        return teamController.addMember(req, res, user, matches[1])
+        await teamController.addMember(req, res, user, req.params.teamId)
     })
 
-    router.addRegex('DELETE', /^\/api\/teams\/([^/]+)\/members\/([^/]+)$/, (req, res, matches) => {
+    router.delete('/api/teams/:teamId/members/:memberId', async (req, res) => {
         const user = authenticateRequest(req)
-        return teamController.removeMember(req, res, user, matches[1], matches[2])
+        await teamController.removeMember(req, res, user, req.params.teamId, req.params.memberId)
     })
 
-    router.addRegex('DELETE', /^\/api\/teams\/([^/]+)$/, (req, res, matches) => {
+    router.delete('/api/teams/:teamId', async (req, res) => {
         const user = authenticateRequest(req)
-        return teamController.removeTeam(req, res, user, matches[1])
+        await teamController.removeTeam(req, res, user, req.params.teamId)
     })
 }
