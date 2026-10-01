@@ -88,7 +88,7 @@ function RegisterPage() {
         try {
             await sendOtp({ email: trimmedEmail, type: 'signup' })
             setOtpSent(true)
-            setOtpCooldown(30)
+            setOtpCooldown(60)
         } catch (err) {
             setOtpError(err.message || 'Failed to send OTP code. Please try again.')
         } finally {
