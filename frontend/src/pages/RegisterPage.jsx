@@ -101,9 +101,14 @@ function RegisterPage() {
             if (res?.otp) {
                 setFallbackOtp(res.otp)
                 setOtpCode(res.otp)
-                setTimeout(() => {
-                    handleVerifyOtp(res.otp)
-                }, 200)
+                try {
+                    const result = await verifyOtp({ email: trimmedEmail, otp: res.otp })
+                    setIsEmailVerified(true)
+                    setVerificationToken(result.verificationToken || 'verified')
+                    setOtpError('')
+                } catch (verifyErr) {
+                    setOtpError(verifyErr.message || 'Auto-verification failed. Please enter the OTP code manually.')
+                }
             }
         } catch (err) {
             setOtpError(err.message || 'Failed to send OTP code. Please try again.')
