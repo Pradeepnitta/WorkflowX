@@ -86,41 +86,20 @@ export async function logout() {
     }
 }
 
-function sanitizeUser(user) {
-    if (!user) return user
-    // Discard any lingering unsplash preset avatar URL from earlier tests
-    if (typeof user.avatarUrl === 'string' && user.avatarUrl.includes('images.unsplash.com')) {
-        user.avatarUrl = null
-    }
-    return user
-}
-
-// Immediately scrub any lingering unsplash preset URL from browser localStorage
-try {
-    const stored = JSON.parse(window.localStorage.getItem('workflowx_user') || 'null')
-    if (stored && stored.avatarUrl && stored.avatarUrl.includes('images.unsplash.com')) {
-        stored.avatarUrl = null
-        window.localStorage.setItem('workflowx_user', JSON.stringify(stored))
-    }
-} catch {
-    // Ignore
-}
-
 export function getCurrentUser() {
     return authenticatedRequest('/api/auth/me').then((me) => {
         try {
             const cached = JSON.parse(window.localStorage.getItem('workflowx_user') || '{}')
-            const raw = {
+            const merged = {
                 ...cached,
                 ...me,
                 avatarUrl: me.avatarUrl !== undefined ? me.avatarUrl : (cached.avatarUrl || null),
                 name: me.name || cached.name || (me.email ? me.email.split('@')[0] : 'User'),
             }
-            const merged = sanitizeUser(raw)
             window.localStorage.setItem('workflowx_user', JSON.stringify(merged))
             return merged
         } catch {
-            return sanitizeUser(me)
+            return me
         }
     }).catch((err) => {
         if (err.statusCode === 401) {
@@ -137,7 +116,7 @@ export async function updateProfile(input) {
     })
     try {
         const cached = JSON.parse(window.localStorage.getItem('workflowx_user') || '{}')
-        const merged = sanitizeUser({ ...cached, ...updated })
+        const merged = { ...cached, ...updated }
         window.localStorage.setItem('workflowx_user', JSON.stringify(merged))
         window.dispatchEvent(new Event('auth-change'))
     } catch {
@@ -192,7 +171,7 @@ function saveSession(session) {
             window.sessionStorage.setItem(refreshTokenKey, session.refreshToken)
         }
         if (session.user) {
-            window.localStorage.setItem('workflowx_user', JSON.stringify(sanitizeUser(session.user)))
+            window.localStorage.setItem('workflowx_user', JSON.stringify(session.user))
         }
         // Purge any stale role keys from previous sessions
         window.localStorage.removeItem('workflowx_registered_role')

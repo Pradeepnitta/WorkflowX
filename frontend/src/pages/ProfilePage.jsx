@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getCurrentUser, updateProfile, logout } from '../services/authService.js'
 import { getOrganizations } from '../services/organizationService.js'
+import { AVATAR_OPTIONS } from '../constants/avatarOptions.js'
 import '../App.css'
 
 function ProfilePage() {
@@ -245,6 +246,53 @@ function ProfilePage() {
                                     ✕ Remove Picture
                                 </button>
                             )}
+                        </div>
+
+                        {/* Avatar Options Selection */}
+                        <div style={{ marginTop: '16px', marginBottom: '20px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                <span style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>
+                                    Or choose an avatar option:
+                                </span>
+                                {avatarUrl && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setAvatarUrl('')}
+                                        style={{ fontSize: '11px', color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                                    >
+                                        Reset to Initials
+                                    </button>
+                                )}
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                {AVATAR_OPTIONS.map((opt) => {
+                                    const isSelected = avatarUrl === opt.url
+                                    return (
+                                        <button
+                                            key={opt.id}
+                                            type="button"
+                                            onClick={() => setAvatarUrl(opt.url)}
+                                            title={`Select ${opt.label}`}
+                                            style={{
+                                                position: 'relative',
+                                                width: '38px',
+                                                height: '38px',
+                                                borderRadius: '50%',
+                                                padding: 0,
+                                                border: isSelected ? '2.5px solid #ee785e' : '1px solid #cbd5e1',
+                                                boxShadow: isSelected ? '0 0 0 2px rgba(238, 120, 94, 0.35)' : 'none',
+                                                overflow: 'hidden',
+                                                cursor: 'pointer',
+                                                transform: isSelected ? 'scale(1.12)' : 'scale(1)',
+                                                transition: 'all 0.15s ease',
+                                                background: '#f8fafc',
+                                            }}
+                                        >
+                                            <img src={opt.url} alt={opt.label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        </button>
+                                    )
+                                })}
+                            </div>
                         </div>
 
                         {/* Profile Edit Form */}

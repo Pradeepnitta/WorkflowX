@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getCurrentUser, updateProfile, logout } from '../services/authService.js'
 import { getOrganizations } from '../services/organizationService.js'
+import { AVATAR_OPTIONS } from '../constants/avatarOptions.js'
 import '../App.css'
 
 function playTestChime() {
@@ -429,6 +430,52 @@ export default function SettingsPage() {
                                             </div>
                                         </label>
 
+                                        {/* Avatar Options Selection */}
+                                        <div style={{ marginTop: '14px', marginBottom: '8px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                                <small style={{ fontSize: '11.5px', color: '#64748b', fontWeight: 600 }}>
+                                                    Or choose an avatar option:
+                                                </small>
+                                                {avatarUrl && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setAvatarUrl('')}
+                                                        style={{ fontSize: '11px', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+                                                    >
+                                                        ✕ Remove
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                {AVATAR_OPTIONS.map((opt) => {
+                                                    const isSelected = avatarUrl === opt.url
+                                                    return (
+                                                        <button
+                                                            key={opt.id}
+                                                            type="button"
+                                                            onClick={() => setAvatarUrl(opt.url)}
+                                                            title={`Select ${opt.label}`}
+                                                            style={{
+                                                                width: '36px',
+                                                                height: '36px',
+                                                                borderRadius: '50%',
+                                                                border: isSelected ? '2.5px solid #ee785e' : '1px solid #cbd5e1',
+                                                                boxShadow: isSelected ? '0 0 0 2px rgba(238, 120, 94, 0.35)' : 'none',
+                                                                padding: 0,
+                                                                overflow: 'hidden',
+                                                                cursor: 'pointer',
+                                                                transform: isSelected ? 'scale(1.12)' : 'scale(1)',
+                                                                transition: 'all 0.15s ease',
+                                                                background: '#f8fafc',
+                                                            }}
+                                                        >
+                                                            <img src={opt.url} alt={opt.label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                        </button>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+
                                         {avatarUrl && (
                                             <div style={{ marginTop: '6px' }}>
                                                 <button
@@ -444,7 +491,7 @@ export default function SettingsPage() {
                                                         fontWeight: 600,
                                                     }}
                                                 >
-                                                    ✕ Remove Profile Picture
+                                                    ✕ Remove Profile Picture (Use Initials)
                                                 </button>
                                             </div>
                                         )}
