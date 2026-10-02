@@ -4,14 +4,6 @@ import { getCurrentUser, updateProfile, logout } from '../services/authService.j
 import { getOrganizations } from '../services/organizationService.js'
 import '../App.css'
 
-const AVATAR_PRESETS = [
-    { label: 'Developer', url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&h=120&q=80' },
-    { label: 'Designer', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&h=120&q=80' },
-    { label: 'Manager', url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&h=120&q=80' },
-    { label: 'Architect', url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&h=120&q=80' },
-    { label: 'Engineer', url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=120&h=120&q=80' },
-]
-
 function ProfilePage() {
     const navigate = useNavigate()
     const fileInputRef = useRef(null)
@@ -253,36 +245,6 @@ function ProfilePage() {
                                     ✕ Remove Picture
                                 </button>
                             )}
-                        </div>
-
-                        {/* Preset Avatars Selection */}
-                        <div style={{ marginBottom: '22px' }}>
-                            <span style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, color: '#64748b', marginBottom: '8px' }}>
-                                Or pick a preset profile avatar:
-                            </span>
-                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                {AVATAR_PRESETS.map((preset, idx) => (
-                                    <button
-                                        key={idx}
-                                        type="button"
-                                        onClick={() => setAvatarUrl(preset.url)}
-                                        title={`Select ${preset.label}`}
-                                        style={{
-                                            width: '38px',
-                                            height: '38px',
-                                            borderRadius: '50%',
-                                            border: avatarUrl === preset.url ? '2px solid #ee785e' : '1px solid #e2e8f0',
-                                            padding: 0,
-                                            overflow: 'hidden',
-                                            cursor: 'pointer',
-                                            transform: avatarUrl === preset.url ? 'scale(1.12)' : 'scale(1)',
-                                            transition: 'transform 0.15s ease',
-                                        }}
-                                    >
-                                        <img src={preset.url} alt={preset.label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                    </button>
-                                ))}
-                            </div>
                         </div>
 
                         {/* Profile Edit Form */}

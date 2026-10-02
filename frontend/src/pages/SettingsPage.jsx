@@ -4,33 +4,6 @@ import { getCurrentUser, updateProfile, logout } from '../services/authService.j
 import { getOrganizations } from '../services/organizationService.js'
 import '../App.css'
 
-const AVATAR_PRESETS = [
-    {
-        label: 'Lead 1',
-        url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=160&q=80',
-    },
-    {
-        label: 'Lead 2',
-        url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=160&q=80',
-    },
-    {
-        label: 'Engineer 1',
-        url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=160&q=80',
-    },
-    {
-        label: 'Engineer 2',
-        url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=160&q=80',
-    },
-    {
-        label: 'Designer 1',
-        url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=160&q=80',
-    },
-    {
-        label: 'Designer 2',
-        url: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=160&q=80',
-    },
-]
-
 function playTestChime() {
     try {
         const AudioCtx = window.AudioContext || window.webkitAudioContext
@@ -456,51 +429,25 @@ export default function SettingsPage() {
                                             </div>
                                         </label>
 
-                                        {/* Avatar Quick Presets */}
-                                        <div style={{ marginTop: '10px' }}>
-                                            <small style={{ display: 'block', fontSize: '11px', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>
-                                                Or pick a preset avatar:
-                                            </small>
-                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                                {AVATAR_PRESETS.map((preset, idx) => (
-                                                    <button
-                                                        key={idx}
-                                                        type="button"
-                                                        onClick={() => setAvatarUrl(preset.url)}
-                                                        title={`Pick ${preset.label}`}
-                                                        style={{
-                                                            width: '36px',
-                                                            height: '36px',
-                                                            borderRadius: '50%',
-                                                            border: avatarUrl === preset.url ? '2px solid #ee785e' : '1px solid #e5e7eb',
-                                                            padding: 0,
-                                                            overflow: 'hidden',
-                                                            cursor: 'pointer',
-                                                            transform: avatarUrl === preset.url ? 'scale(1.1)' : 'scale(1)',
-                                                            transition: 'transform 0.15s ease',
-                                                        }}
-                                                    >
-                                                        <img src={preset.url} alt={preset.label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                                    </button>
-                                                ))}
-                                                {avatarUrl && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setAvatarUrl('')}
-                                                        style={{
-                                                            fontSize: '11px',
-                                                            color: '#ef4444',
-                                                            background: 'none',
-                                                            border: 'none',
-                                                            cursor: 'pointer',
-                                                            padding: '4px 8px',
-                                                        }}
-                                                    >
-                                                        ✕ Clear
-                                                    </button>
-                                                )}
+                                        {avatarUrl && (
+                                            <div style={{ marginTop: '6px' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setAvatarUrl('')}
+                                                    style={{
+                                                        fontSize: '11.5px',
+                                                        color: '#ef4444',
+                                                        background: 'none',
+                                                        border: 'none',
+                                                        cursor: 'pointer',
+                                                        padding: '2px 0',
+                                                        fontWeight: 600,
+                                                    }}
+                                                >
+                                                    ✕ Remove Profile Picture
+                                                </button>
                                             </div>
-                                        </div>
+                                        )}
                                     </div>
                                 </div>
 
