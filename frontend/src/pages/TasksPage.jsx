@@ -11,13 +11,30 @@ const STATUSES = ['All tasks', 'Todo', 'In progress', 'Review', 'Done']
 const KANBAN_COLUMNS = ['Todo', 'In progress', 'Review', 'Done']
 const PRIORITIES = ['Critical', 'High', 'Medium', 'Low']
 
+function normalizeStatus(status) {
+    if (!status) return 'Todo'
+    const s = String(status).trim().toUpperCase().replace(/[\s-]+/g, '_')
+    if (s === 'TODO' || s === 'PLANNING' || s === 'BACKLOG') return 'Todo'
+    if (s === 'IN_PROGRESS' || s === 'INPROGRESS' || s === 'ACTIVE') return 'In progress'
+    if (s === 'IN_REVIEW' || s === 'INREVIEW' || s === 'REVIEW') return 'Review'
+    if (s === 'DONE' || s === 'COMPLETED' || s === 'FINISHED') return 'Done'
+    return status
+}
+
 export default function TasksPage() {
     const [searchParams, setSearchParams] = useSearchParams()
     const projectQuery = searchParams.get('project')
     const statusQuery = searchParams.get('status')
     const taskIdQuery = searchParams.get('taskId') || searchParams.get('task')
 
-    const [tasks, setTasks] = useState([])
+    const [tasks, setTasks] = useState(() => {
+        try {
+            const cached = JSON.parse(localStorage.getItem('workflowx_cached_tasks') || '[]')
+            return Array.isArray(cached) ? cached.map((t) => ({ ...t, status: normalizeStatus(t.status) })) : []
+        } catch {
+            return []
+        }
+    })
     const [organizations, setOrganizations] = useState([])
     const [organizationId, setOrganizationId] = useState('')
     const [members, setMembers] = useState([])
@@ -76,7 +93,8 @@ export default function TasksPage() {
             getOrganizations().catch(() => []),
         ])
             .then(([loadedTasks, loadedOrgs]) => {
-                setTasks(Array.isArray(loadedTasks) ? loadedTasks : [])
+                const list = Array.isArray(loadedTasks) ? loadedTasks : []
+                setTasks(list.map((t) => ({ ...t, status: normalizeStatus(t.status) })))
                 const orgList = Array.isArray(loadedOrgs) ? loadedOrgs : []
                 setOrganizations(orgList)
                 if (orgList.length > 0) {
@@ -104,13 +122,17 @@ export default function TasksPage() {
         if (!socket) return
 
         function handleTaskCreated(newTask) {
-            setTasks((prev) => [newTask, ...prev.filter((t) => t.id !== newTask.id)])
+            if (!newTask) return
+            const normalized = { ...newTask, status: normalizeStatus(newTask.status) }
+            setTasks((prev) => [normalized, ...prev.filter((t) => t.id !== normalized.id)])
         }
 
         function handleTaskUpdated(updatedTask) {
-            setTasks((prev) => prev.map((t) => (t.id === updatedTask.id ? { ...t, ...updatedTask } : t)))
-            if (activeTask && activeTask.id === updatedTask.id) {
-                setActiveTask((prev) => ({ ...prev, ...updatedTask }))
+            if (!updatedTask) return
+            const normalized = { ...updatedTask, status: normalizeStatus(updatedTask.status) }
+            setTasks((prev) => prev.map((t) => (t.id === normalized.id ? { ...t, ...normalized } : t)))
+            if (activeTask && activeTask.id === normalized.id) {
+                setActiveTask((prev) => ({ ...prev, ...normalized }))
             }
         }
 
@@ -199,7 +221,8 @@ export default function TasksPage() {
             if (task.isSuggestion && task.approvalStatus === 'PENDING') return false
             if (task.approvalStatus === 'REJECTED') return false
 
-            const matchesStatus = filter === 'All tasks' || task.status === filter
+            const taskStatus = normalizeStatus(task.status)
+            const matchesStatus = filter === 'All tasks' || taskStatus === normalizeStatus(filter)
             const matchesAssignee = assigneeFilter === 'ALL' || task.assignee === assigneeFilter
             const matchesPriority = priorityFilter === 'ALL' || (task.priority || '').toLowerCase() === priorityFilter.toLowerCase()
             const matchesProject = projectFilter === 'ALL' || (task.project || '').toLowerCase().includes(projectFilter.toLowerCase())
@@ -222,10 +245,10 @@ export default function TasksPage() {
     // Status counts for Manager/Developer tracking
     const statusCounts = useMemo(() => {
         const boardTasks = tasks.filter((t) => (!t.isSuggestion || t.approvalStatus === 'APPROVED') && t.approvalStatus !== 'REJECTED')
-        const todo = boardTasks.filter((t) => t.status === 'Todo').length
-        const inProgress = boardTasks.filter((t) => t.status === 'In progress').length
-        const review = boardTasks.filter((t) => t.status === 'Review').length
-        const done = boardTasks.filter((t) => t.status === 'Done').length
+        const todo = boardTasks.filter((t) => normalizeStatus(t.status) === 'Todo').length
+        const inProgress = boardTasks.filter((t) => normalizeStatus(t.status) === 'In progress').length
+        const review = boardTasks.filter((t) => normalizeStatus(t.status) === 'Review').length
+        const done = boardTasks.filter((t) => normalizeStatus(t.status) === 'Done').length
         const total = todo + inProgress + review + done
         const completionRate = total > 0 ? Math.round((done / total) * 100) : 0
 
@@ -1249,7 +1272,7 @@ export default function TasksPage() {
 
                         <div className="kanban-board-container">
                             {KANBAN_COLUMNS.map((column) => {
-                                const colTasks = visibleTasks.filter((t) => t.status === column)
+                                const colTasks = visibleTasks.filter((t) => normalizeStatus(t.status) === column)
                                 const isDragOver = dragOverCol === column
 
                                 const themeClass =

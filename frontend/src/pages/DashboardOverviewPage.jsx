@@ -10,9 +10,26 @@ import '../App.css'
 const columns = ['Todo', 'In progress', 'Review', 'Done']
 const PRIORITIES = ['Critical', 'High', 'Medium', 'Low']
 
+export function normalizeStatus(status) {
+    if (!status) return 'Todo'
+    const s = String(status).trim().toUpperCase().replace(/[\s-]+/g, '_')
+    if (s === 'TODO' || s === 'PLANNING' || s === 'BACKLOG') return 'Todo'
+    if (s === 'IN_PROGRESS' || s === 'INPROGRESS' || s === 'ACTIVE') return 'In progress'
+    if (s === 'IN_REVIEW' || s === 'INREVIEW' || s === 'REVIEW') return 'Review'
+    if (s === 'DONE' || s === 'COMPLETED' || s === 'FINISHED') return 'Done'
+    return status
+}
+
 export default function DashboardOverviewPage() {
     const navigate = useNavigate()
-    const [tasks, setTasks] = useState([])
+    const [tasks, setTasks] = useState(() => {
+        try {
+            const cached = JSON.parse(localStorage.getItem('workflowx_cached_tasks') || '[]')
+            return Array.isArray(cached) ? cached.map((t) => ({ ...t, status: normalizeStatus(t.status) })) : []
+        } catch {
+            return []
+        }
+    })
     const [organizations, setOrganizations] = useState([])
     const [organizationId, setOrganizationId] = useState('')
     const [projects, setProjects] = useState([])
@@ -50,7 +67,10 @@ export default function DashboardOverviewPage() {
         getCurrentUser().then(setCurrentUser).catch(() => null)
 
         getTasks()
-            .then((loadedTasks) => setTasks(Array.isArray(loadedTasks) ? loadedTasks : []))
+            .then((loadedTasks) => {
+                const list = Array.isArray(loadedTasks) ? loadedTasks : []
+                setTasks(list.map((t) => ({ ...t, status: normalizeStatus(t.status) })))
+            })
             .catch(() => setError('Unable to load tasks right now. Please refresh.'))
             .finally(() => setIsLoading(false))
 
@@ -84,12 +104,16 @@ export default function DashboardOverviewPage() {
         const socket = getSocket()
         if (socket) {
             function handleTaskCreated(newTask) {
-                setTasks((prev) => [newTask, ...prev.filter((t) => t.id !== newTask.id)])
+                if (!newTask) return
+                const normalized = { ...newTask, status: normalizeStatus(newTask.status) }
+                setTasks((prev) => [normalized, ...prev.filter((t) => t.id !== normalized.id)])
             }
             function handleTaskUpdated(updatedTask) {
-                setTasks((prev) => prev.map((t) => (t.id === updatedTask.id ? { ...t, ...updatedTask } : t)))
-                if (activeTask && activeTask.id === updatedTask.id) {
-                    setActiveTask((prev) => ({ ...prev, ...updatedTask }))
+                if (!updatedTask) return
+                const normalized = { ...updatedTask, status: normalizeStatus(updatedTask.status) }
+                setTasks((prev) => prev.map((t) => (t.id === normalized.id ? { ...t, ...normalized } : t)))
+                if (activeTask && activeTask.id === normalized.id) {
+                    setActiveTask((prev) => ({ ...prev, ...normalized }))
                 }
             }
             function handleTaskDeleted(payload) {
@@ -118,7 +142,8 @@ export default function DashboardOverviewPage() {
             if (task.isSuggestion && task.approvalStatus === 'PENDING') return false
             if (task.approvalStatus === 'REJECTED') return false
 
-            const matchesStatus = filter === 'All tasks' || task.status === filter
+            const taskStatus = normalizeStatus(task.status)
+            const matchesStatus = filter === 'All tasks' || taskStatus === normalizeStatus(filter)
             const matchesProject = projectFilter === 'ALL' || (task.project || '').toLowerCase().includes(projectFilter.toLowerCase())
             const matchesSearch = !searchQuery.trim() || (task.title || '').toLowerCase().includes(searchQuery.toLowerCase().trim()) || (task.assignee || '').toLowerCase().includes(searchQuery.toLowerCase().trim())
 
@@ -128,15 +153,15 @@ export default function DashboardOverviewPage() {
 
     // Statistics memo
     const completedTasksCount = useMemo(
-        () => tasks.filter((t) => t.status === 'Done' || t.status === 'COMPLETED').length,
+        () => tasks.filter((t) => normalizeStatus(t.status) === 'Done').length,
         [tasks]
     )
     const inProgressTasksCount = useMemo(
-        () => tasks.filter((t) => t.status === 'In progress' || t.status === 'IN_PROGRESS').length,
+        () => tasks.filter((t) => normalizeStatus(t.status) === 'In progress').length,
         [tasks]
     )
     const openTasksCount = useMemo(
-        () => tasks.filter((t) => t.status !== 'Done' && t.status !== 'COMPLETED').length,
+        () => tasks.filter((t) => normalizeStatus(t.status) !== 'Done').length,
         [tasks]
     )
     const completionRate = useMemo(() => {
@@ -529,7 +554,7 @@ export default function DashboardOverviewPage() {
                     {/* Interactive Drag & Drop Columns */}
                     <div className="kanban" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(180px, 1fr))', gap: '12px', alignItems: 'start' }}>
                         {columns.map((column) => {
-                            const colTasks = visibleTasks.filter((task) => task.status === column)
+                            const colTasks = visibleTasks.filter((task) => normalizeStatus(task.status) === column)
                             const isDragOver = dragOverColumn === column
 
                             return (

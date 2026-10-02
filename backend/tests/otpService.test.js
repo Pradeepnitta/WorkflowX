@@ -46,10 +46,11 @@ test('otpService rejects invalid and expired OTP codes', async () => {
     }
     const otpService = createOtpService({ userRepository, mailService })
 
-    await otpService.sendOtp({ email: 'test2@example.com', type: 'signup' })
+    const testEmail = `test-expire-${Date.now()}@example.com`
+    await otpService.sendOtp({ email: testEmail, type: 'signup' })
 
     await assert.rejects(
-        () => otpService.verifyOtp({ email: 'test2@example.com', otp: '999999' }),
+        () => otpService.verifyOtp({ email: testEmail, otp: '999999' }),
         /Invalid verification code/
     )
 })
