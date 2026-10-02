@@ -55,4 +55,6 @@ server.listen(port, async () => {
     await checkDatabase()
 })
 
+export { app, server }
 export default server
+

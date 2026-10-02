@@ -1,27 +1,51 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run build",
-  "outputDirectory": "frontend/dist",
+  "services": {
+    "backend": {
+      "root": "backend",
+      "framework": "express"
+    },
+    "frontend": {
+      "root": "frontend",
+      "framework": "vite"
+    }
+  },
   "rewrites": [
     {
+      "source": "/api/(.*)",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
       "source": "/health",
-      "destination": "/api/index.js"
+      "destination": {
+        "service": "backend"
+      }
     },
     {
       "source": "/test",
-      "destination": "/api/index.js"
+      "destination": {
+        "service": "backend"
+      }
     },
     {
       "source": "/test-health",
-      "destination": "/api/index.js"
+      "destination": {
+        "service": "backend"
+      }
     },
     {
-      "source": "/api/(.*)",
-      "destination": "/api/index.js"
+      "source": "/docs/swagger.json",
+      "destination": {
+        "service": "backend"
+      }
     },
     {
       "source": "/(.*)",
-      "destination": "/index.html"
+      "destination": {
+        "service": "frontend"
+      }
     }
   ]
 }
