@@ -7,6 +7,7 @@ import {
     inviteOrganizationMember,
 } from '../services/organizationService.js'
 import { getCurrentUser } from '../services/authService.js'
+import { connectSocket } from '../services/socketService.js'
 import '../App.css'
 
 const ROLES = ['ADMIN', 'MANAGER', 'MEMBER', 'VIEWER']
@@ -51,8 +52,8 @@ function OrganizationMembersPage() {
     const isAdmin = activeRole === 'ADMIN'
     const isManager = activeRole === 'MANAGER'
 
-    // Filter out Admin accounts from member list: only show Managers, Developers/Members, and Viewers
-    const visibleMembers = members.filter((m) => (m.role || '').toUpperCase() !== 'ADMIN')
+    // Show all members across all roles (Admin, Manager, Member, Viewer)
+    const visibleMembers = members
 
     useEffect(() => {
         if (!organizationId) {
@@ -66,6 +67,32 @@ function OrganizationMembersPage() {
             })
             .catch((requestError) => setError(requestError.message))
             .finally(() => setIsLoading(false))
+    }, [organizationId])
+
+    // Real-time synchronization for new members added to the organization
+    useEffect(() => {
+        const socket = connectSocket()
+        if (!socket) return
+
+        function handleMemberAdded(payload) {
+            if (!organizationId) return
+            if (payload?.organizationId && payload.organizationId !== organizationId) return
+            getOrganizationMembers(organizationId)
+                .then((loadedMembers) => {
+                    if (Array.isArray(loadedMembers)) {
+                        setMembers(loadedMembers)
+                    }
+                })
+                .catch(() => null)
+        }
+
+        socket.on('organization:member-added', handleMemberAdded)
+        socket.on('member:added', handleMemberAdded)
+
+        return () => {
+            socket.off('organization:member-added', handleMemberAdded)
+            socket.off('member:added', handleMemberAdded)
+        }
     }, [organizationId])
 
     async function handleRoleChange(targetUserId, newRole) {
@@ -291,58 +318,67 @@ function OrganizationMembersPage() {
                     )}
 
                     <div className="project-list">
-                        {(visibleMembers || []).map((member) => (
-                            <article className="project-row" key={member.userId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-                                <div>
-                                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                                        {member.name || member.email}
-                                        <span className={`priority ${member.role.toLowerCase()}`} style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px', background: member.role === 'ADMIN' ? '#fff0ec' : member.role === 'MANAGER' ? '#fff8df' : member.role === 'MEMBER' ? '#eaf7f0' : '#edf4ff', color: member.role === 'ADMIN' ? '#e96f59' : member.role === 'MANAGER' ? '#d4a523' : member.role === 'MEMBER' ? '#4a9e7e' : '#5d8bdb' }}>
-                                            {member.role}
-                                        </span>
-                                    </h3>
-                                    <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#858996' }}>{member.email}</p>
-                                </div>
+                        {(visibleMembers || []).map((member) => {
+                            const memberName = member.name || member.user?.name || (member.email || member.user?.email || '').split('@')[0] || 'Member'
+                            const memberEmail = member.email || member.user?.email || ''
+                            const memberRole = (member.role || member.user?.role || 'MEMBER').toUpperCase()
+                            const mUserId = member.userId || member.user?.id || member.id
 
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    {/* Role selector dropdown: Admins ONLY. For managers, role is read-only. */}
-                                    {isAdmin ? (
-                                        <>
-                                            <select
-                                                value={member.role}
-                                                onChange={(e) => handleRoleChange(member.userId, e.target.value)}
-                                                style={{
-                                                    padding: '6px 10px',
-                                                    fontSize: '12px',
-                                                    borderRadius: '6px',
-                                                    border: '1px solid #ebe9e5',
-                                                    background: '#fff',
-                                                    cursor: 'pointer',
-                                                }}
-                                                aria-label={`Role for ${member.email}`}
-                                            >
-                                                {ASSIGNABLE_ROLES.map((r) => (
-                                                    <option key={r} value={r}>
-                                                        {r}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            <button
-                                                type="button"
-                                                className="secondary-button"
-                                                onClick={() => handleRemoveMember(member.userId)}
-                                                style={{ padding: '6px 10px', fontSize: '11px', color: '#e96f59', background: '#fff0ec' }}
-                                            >
-                                                Remove
-                                            </button>
-                                        </>
-                                    ) : (
-                                        <span style={{ fontSize: '11px', color: '#858996', fontStyle: 'italic' }}>
-                                            Role assigned by Admin
-                                        </span>
-                                    )}
-                                </div>
-                            </article>
-                        ))}
+                            return (
+                                <article className="project-row" key={mUserId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                                    <div>
+                                        <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                                            {memberName}
+                                            <span className={`priority ${memberRole.toLowerCase()}`} style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px', background: memberRole === 'ADMIN' ? '#fff0ec' : memberRole === 'MANAGER' ? '#fff8df' : memberRole === 'MEMBER' ? '#eaf7f0' : '#edf4ff', color: memberRole === 'ADMIN' ? '#e96f59' : memberRole === 'MANAGER' ? '#d4a523' : memberRole === 'MEMBER' ? '#4a9e7e' : '#5d8bdb' }}>
+                                                {memberRole}
+                                            </span>
+                                        </h3>
+                                        <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#858996' }}>{memberEmail}</p>
+                                    </div>
+
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        {/* Role selector dropdown: Admins ONLY. For managers, role is read-only. */}
+                                        {isAdmin ? (
+                                            <>
+                                                <select
+                                                    value={memberRole}
+                                                    onChange={(e) => handleRoleChange(mUserId, e.target.value)}
+                                                    style={{
+                                                        padding: '6px 10px',
+                                                        fontSize: '12px',
+                                                        borderRadius: '6px',
+                                                        border: '1px solid #ebe9e5',
+                                                        background: '#fff',
+                                                        cursor: 'pointer',
+                                                    }}
+                                                    aria-label={`Role for ${memberEmail}`}
+                                                >
+                                                    {ROLES.map((r) => (
+                                                        <option key={r} value={r}>
+                                                            {r}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                {mUserId !== currentUser?.id && (
+                                                    <button
+                                                        type="button"
+                                                        className="secondary-button"
+                                                        onClick={() => handleRemoveMember(mUserId)}
+                                                        style={{ padding: '6px 10px', fontSize: '11px', color: '#e96f59', background: '#fff0ec' }}
+                                                    >
+                                                        Remove
+                                                    </button>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <span style={{ fontSize: '11px', color: '#858996', fontStyle: 'italic' }}>
+                                                Role assigned by Admin
+                                            </span>
+                                        )}
+                                    </div>
+                                </article>
+                            )
+                        })}
                     </div>
                 </section>
             </section>

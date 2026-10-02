@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { getOrganizations, getOrganizationMembers } from '../services/organizationService.js'
 import { createTeam, getTeams, addTeamMember, removeTeamMember, deleteTeam } from '../services/teamService.js'
 import { getProjects } from '../services/projectService.js'
+import { connectSocket } from '../services/socketService.js'
 import '../App.css'
 
 
@@ -144,6 +145,52 @@ function inferDepartment(name, dept) {
             .finally(() => setIsLoading(false))
     }, [organizationId])
 
+    // Real-time synchronization for members added to organization
+    useEffect(() => {
+        const socket = connectSocket()
+        if (!socket) return
+
+        function handleMemberAdded(payload) {
+            if (!organizationId) return
+            if (payload?.organizationId && payload.organizationId !== organizationId) return
+            getOrganizationMembers(organizationId)
+                .then((mems) => {
+                    if (Array.isArray(mems)) setOrgMembers(mems)
+                })
+                .catch(() => null)
+        }
+
+        socket.on('organization:member-added', handleMemberAdded)
+        socket.on('member:added', handleMemberAdded)
+
+        return () => {
+            socket.off('organization:member-added', handleMemberAdded)
+            socket.off('member:added', handleMemberAdded)
+        }
+    }, [organizationId])
+
+    function handleOpenCreateModal() {
+        if (organizationId) {
+            getOrganizationMembers(organizationId)
+                .then((mems) => {
+                    if (Array.isArray(mems)) setOrgMembers(mems)
+                })
+                .catch(() => null)
+        }
+        setShowCreateModal(true)
+    }
+
+    function handleOpenDetailTeam(team) {
+        if (organizationId) {
+            getOrganizationMembers(organizationId)
+                .then((mems) => {
+                    if (Array.isArray(mems)) setOrgMembers(mems)
+                })
+                .catch(() => null)
+        }
+        setDetailTeam(team)
+    }
+
     // Filter teams based on search query & department
     const filteredTeams = useMemo(() => {
         return teams.filter((t) => {
@@ -179,22 +226,23 @@ function inferDepartment(name, dept) {
 
         return {
             totalTeams: total,
-            totalMembers: memberCount,
+            totalMembers: orgMembers.length > 0 ? orgMembers.length : memberCount,
             totalProjectsLinked: projectSet.size || (projects.length || 1),
             activeSquads: teams.filter((t) => (t.members?.length || 0) > 0).length,
         }
-    }, [teams, projects])
+    }, [teams, projects, orgMembers])
 
     // Candidate members for lead & squad member dropdown selection
     const availableCandidateMembers = useMemo(() => {
         if (orgMembers && orgMembers.length > 0) {
-            return orgMembers.map((m) => ({
-                userId: m.userId,
-                name: m.name || m.user?.name || m.email?.split('@')[0] || 'Member',
-                email: m.email || m.user?.email || '',
-                role: m.role || 'MEMBER',
-                avatarUrl: m.avatarUrl || m.user?.avatarUrl || null,
-            }))
+            return orgMembers.map((m) => {
+                const uid = m.userId || m.id || m.user?.id
+                const name = m.name || m.user?.name || (m.email || m.user?.email ? (m.email || m.user?.email).split('@')[0] : 'Member')
+                const email = m.email || m.user?.email || ''
+                const role = (m.role || m.user?.role || 'MEMBER').toUpperCase()
+                const avatarUrl = m.avatarUrl || m.user?.avatarUrl || null
+                return { userId: uid, name, email, role, avatarUrl }
+            })
         }
         return []
     }, [orgMembers])
@@ -403,7 +451,7 @@ function inferDepartment(name, dept) {
                             id="open-create-team-btn"
                             className="primary-button"
                             type="button"
-                            onClick={() => setShowCreateModal(true)}
+                            onClick={handleOpenCreateModal}
                             style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                         >
                             <span>+</span> Create Team
@@ -703,7 +751,7 @@ function inferDepartment(name, dept) {
                                             color: '#111827',
                                             cursor: 'pointer',
                                         }}
-                                        onClick={() => setDetailTeam(team)}
+                                        onClick={() => handleOpenDetailTeam(team)}
                                         title="Click to view full team details"
                                     >
                                         {highlightMatch(team.name, searchQuery)}
@@ -825,7 +873,7 @@ function inferDepartment(name, dept) {
                                     <button
                                         id={`manage-team-members-${team.id}`}
                                         type="button"
-                                        onClick={() => setDetailTeam(team)}
+                                        onClick={() => handleOpenDetailTeam(team)}
                                         style={{
                                             background: '#f8fafc',
                                             border: '1px solid #cbd5e1',
@@ -943,7 +991,7 @@ function inferDepartment(name, dept) {
                                             <td style={{ padding: '14px 18px' }}>
                                                 <strong
                                                     style={{ display: 'block', color: '#111827', cursor: 'pointer' }}
-                                                    onClick={() => setDetailTeam(team)}
+                                                    onClick={() => handleOpenDetailTeam(team)}
                                                 >
                                                     {highlightMatch(team.name, searchQuery)}
                                                 </strong>
@@ -985,7 +1033,7 @@ function inferDepartment(name, dept) {
                                                 <div style={{ display: 'inline-flex', gap: '6px' }}>
                                                     <button
                                                         type="button"
-                                                        onClick={() => setDetailTeam(team)}
+                                                        onClick={() => handleOpenDetailTeam(team)}
                                                         style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}
                                                     >
                                                         Roster
@@ -1431,9 +1479,9 @@ function inferDepartment(name, dept) {
                                         style={{ flex: 1, padding: '7px 10px', fontSize: '12px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff' }}
                                     >
                                         <option value="">Select organization member to add...</option>
-                                        {orgMembers.map((m) => (
+                                        {availableCandidateMembers.map((m) => (
                                             <option key={m.userId} value={m.userId}>
-                                                {m.name || m.email} ({m.role})
+                                                {m.name} {m.email ? `(${m.email})` : ''} — {m.role}
                                             </option>
                                         ))}
                                     </select>

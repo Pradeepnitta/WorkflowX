@@ -7,13 +7,34 @@ export async function createWithAdmin({ name, description, userId, role = 'ADMIN
     const validRoles = new Set(['ADMIN', 'MANAGER', 'MEMBER', 'VIEWER'])
     const assignedRole = validRoles.has(role) ? role : 'ADMIN'
     return withTransaction(async (client) => {
-        const id = randomUUID()
+        const trimmedName = (name || '').trim()
+        const existingOrgRes = await client.query(
+            `SELECT * FROM "Organization" WHERE LOWER(TRIM(name)) = LOWER($1) ORDER BY "createdAt" ASC LIMIT 1`,
+            [trimmedName]
+        )
         const now = new Date()
+        if (existingOrgRes.rows.length > 0) {
+            const organization = existingOrgRes.rows[0]
+            const memberCheck = await client.query(
+                `SELECT * FROM "OrganizationMember" WHERE "organizationId" = $1 AND "userId" = $2`,
+                [organization.id, userId]
+            )
+            if (memberCheck.rows.length === 0) {
+                await client.query(
+                    `INSERT INTO "OrganizationMember" ("organizationId", "userId", role, "joinedAt")
+                     VALUES ($1, $2, $3, $4)`,
+                    [organization.id, userId, assignedRole, now]
+                )
+            }
+            return organization
+        }
+
+        const id = randomUUID()
         const orgRes = await client.query(
             `INSERT INTO "Organization" (id, name, description, "createdAt", "updatedAt")
              VALUES ($1, $2, $3, $4, $5)
              RETURNING *`,
-            [id, name, description || null, now, now]
+            [id, trimmedName, description || null, now, now]
         )
         const organization = orgRes.rows[0]
         await client.query(
