@@ -138,11 +138,22 @@ export default function DashboardOverviewPage() {
         }
     }, [activeTask])
 
+    const activeOrg = organizations.find((o) => o.id === organizationId)
+    const storedRole = (typeof window !== 'undefined' ? localStorage.getItem('workflowx_registered_role') || '' : '').toUpperCase()
+    const userRole = (activeOrg?.role || currentUser?.role || storedRole || 'MEMBER').toUpperCase()
+    const isDeveloper = userRole !== 'ADMIN' && userRole !== 'MANAGER'
+    const canCreateDirectTask = !isDeveloper
+
     // Filtered tasks memo
     const visibleTasks = useMemo(() => {
         return tasks.filter((task) => {
             if (task.isSuggestion && task.approvalStatus === 'PENDING') return false
             if (task.approvalStatus === 'REJECTED') return false
+
+            // Strict Privacy: Developers only see tasks assigned to them
+            if (isDeveloper && !isTaskAssignedToUser(task, currentUser)) {
+                return false
+            }
 
             const taskStatus = normalizeStatus(task.status)
             const matchesStatus = filter === 'All tasks' || taskStatus === normalizeStatus(filter)
@@ -152,28 +163,35 @@ export default function DashboardOverviewPage() {
 
             return matchesStatus && matchesProject && matchesSearch && matchesOnlyMy
         })
-    }, [filter, projectFilter, searchQuery, onlyMyTasks, currentUser, tasks])
+    }, [filter, projectFilter, searchQuery, onlyMyTasks, currentUser, tasks, isDeveloper])
 
     // Statistics memo
+    const baseTasks = useMemo(() => {
+        if (isDeveloper) {
+            return tasks.filter((t) => isTaskAssignedToUser(t, currentUser) && (!t.isSuggestion || t.approvalStatus === 'APPROVED') && t.approvalStatus !== 'REJECTED')
+        }
+        return tasks.filter((t) => (!t.isSuggestion || t.approvalStatus === 'APPROVED') && t.approvalStatus !== 'REJECTED')
+    }, [tasks, isDeveloper, currentUser])
+
     const myAssignedTasksCount = useMemo(
         () => tasks.filter((t) => isTaskAssignedToUser(t, currentUser) && (!t.isSuggestion || t.approvalStatus === 'APPROVED')).length,
         [tasks, currentUser]
     )
     const completedTasksCount = useMemo(
-        () => tasks.filter((t) => normalizeStatus(t.status) === 'Done').length,
-        [tasks]
+        () => baseTasks.filter((t) => normalizeStatus(t.status) === 'Done').length,
+        [baseTasks]
     )
     const inProgressTasksCount = useMemo(
-        () => tasks.filter((t) => normalizeStatus(t.status) === 'In progress').length,
-        [tasks]
+        () => baseTasks.filter((t) => normalizeStatus(t.status) === 'In progress').length,
+        [baseTasks]
     )
     const openTasksCount = useMemo(
-        () => tasks.filter((t) => normalizeStatus(t.status) !== 'Done').length,
-        [tasks]
+        () => baseTasks.filter((t) => normalizeStatus(t.status) !== 'Done').length,
+        [baseTasks]
     )
     const completionRate = useMemo(() => {
-        return tasks.length > 0 ? Math.round((completedTasksCount / tasks.length) * 100) : 0
-    }, [tasks, completedTasksCount])
+        return baseTasks.length > 0 ? Math.round((completedTasksCount / baseTasks.length) * 100) : 0
+    }, [baseTasks, completedTasksCount])
 
     // HTML5 Drag-and-Drop Drop Handler
     async function handleDropOnColumn(targetColumn) {
@@ -275,10 +293,6 @@ export default function DashboardOverviewPage() {
     }
 
     const greetingName = currentUser?.name || currentUser?.email?.split('@')[0] || 'Team'
-    const activeOrg = organizations.find((o) => o.id === organizationId)
-    const storedRole = (localStorage.getItem('workflowx_registered_role') || '').toUpperCase()
-    const userRole = (activeOrg?.role || currentUser?.role || storedRole || 'MEMBER').toUpperCase()
-    const canCreateDirectTask = userRole === 'ADMIN' || userRole === 'MANAGER'
 
     return (
         <main className="feature-page">
@@ -340,21 +354,21 @@ export default function DashboardOverviewPage() {
                 <div
                     className="stat-card"
                     style={{
-                        cursor: 'pointer',
+                        cursor: isDeveloper ? 'default' : 'pointer',
                         transition: 'all 0.2s ease',
-                        border: onlyMyTasks ? '2px solid #2563eb' : '1px solid #e2e8f0',
-                        background: onlyMyTasks ? '#eff6ff' : '#fff',
-                        boxShadow: onlyMyTasks ? '0 8px 16px -4px rgba(37, 99, 235, 0.2)' : '0 1px 3px rgba(0,0,0,0.05)',
+                        border: (isDeveloper || onlyMyTasks) ? '2px solid #2563eb' : '1px solid #e2e8f0',
+                        background: (isDeveloper || onlyMyTasks) ? '#eff6ff' : '#fff',
+                        boxShadow: (isDeveloper || onlyMyTasks) ? '0 8px 16px -4px rgba(37, 99, 235, 0.2)' : '0 1px 3px rgba(0,0,0,0.05)',
                     }}
-                    onClick={() => setOnlyMyTasks(!onlyMyTasks)}
-                    title="Click to toggle board filter for tasks assigned to you"
+                    onClick={() => { if (!isDeveloper) setOnlyMyTasks(!onlyMyTasks) }}
+                    title={isDeveloper ? "Tasks assigned to you" : "Click to toggle board filter for tasks assigned to you"}
                 >
                     <span className="stat-icon purple" style={{ background: '#ede9fe', color: '#6d28d9' }}>🎯</span>
                     <div>
                         <p style={{ color: '#6d28d9' }}>Assigned to Me</p>
                         <strong style={{ color: '#6d28d9' }}>{myAssignedTasksCount}</strong>
                         <small className="neutral" style={{ color: '#7c3aed' }}>
-                            {onlyMyTasks ? '✓ Showing My Tasks' : 'Click to filter board ➔'}
+                            {isDeveloper ? 'Your active board scope' : (onlyMyTasks ? '✓ Showing My Tasks' : 'Click to filter board ➔')}
                         </small>
                     </div>
                 </div>
@@ -540,19 +554,39 @@ export default function DashboardOverviewPage() {
                                     {item}
                                 </button>
                             ))}
-                            <button
-                                type="button"
-                                className={onlyMyTasks ? 'selected' : ''}
-                                onClick={() => setOnlyMyTasks(!onlyMyTasks)}
-                                style={{
-                                    border: onlyMyTasks ? '1px solid #2563eb' : '1px solid #cbd5e1',
-                                    background: onlyMyTasks ? '#eff6ff' : '#fff',
-                                    color: onlyMyTasks ? '#1d4ed8' : '#374151',
-                                    fontWeight: onlyMyTasks ? 700 : '500',
-                                }}
-                            >
-                                👤 {onlyMyTasks ? `✓ My Tasks (${myAssignedTasksCount})` : `My Tasks (${myAssignedTasksCount})`}
-                            </button>
+                            {isDeveloper ? (
+                                <div
+                                    style={{
+                                        padding: '6px 12px',
+                                        fontSize: '12px',
+                                        borderRadius: '6px',
+                                        border: '1px solid #bfdbfe',
+                                        background: '#eff6ff',
+                                        color: '#1d4ed8',
+                                        fontWeight: 700,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                    }}
+                                    title="Your overview is scoped exclusively to tasks assigned to you"
+                                >
+                                    <span>🎯</span> Assigned to You ({baseTasks.length})
+                                </div>
+                            ) : (
+                                <button
+                                    type="button"
+                                    className={onlyMyTasks ? 'selected' : ''}
+                                    onClick={() => setOnlyMyTasks(!onlyMyTasks)}
+                                    style={{
+                                        border: onlyMyTasks ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                                        background: onlyMyTasks ? '#eff6ff' : '#fff',
+                                        color: onlyMyTasks ? '#1d4ed8' : '#374151',
+                                        fontWeight: onlyMyTasks ? 700 : '500',
+                                    }}
+                                >
+                                    👤 {onlyMyTasks ? `✓ My Tasks (${myAssignedTasksCount})` : `My Tasks (${myAssignedTasksCount})`}
+                                </button>
+                            )}
                         </div>
 
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>

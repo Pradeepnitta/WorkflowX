@@ -69,9 +69,6 @@ async function dispatchTaskNotifications({ task, previousTask = null, actor = nu
                     } else if (role === 'ADMIN') {
                         type = 'TASK_CREATED'
                         message = `🛡️ Workspace Task: "${task.title}" created in ${task.project || 'workspace'} (Assignee: ${task.assignee || 'Unassigned'})`
-                    } else {
-                        type = 'TASK_CREATED'
-                        message = `📌 New Task: "${task.title}" added to ${task.project || 'workspace'}`
                     }
                 }
             } else {

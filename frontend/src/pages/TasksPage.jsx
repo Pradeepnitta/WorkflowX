@@ -238,19 +238,38 @@ export default function TasksPage() {
         return tasks.filter((t) => isTaskAssignedToUser(t, currentUser) && (!t.isSuggestion || t.approvalStatus === 'APPROVED') && t.approvalStatus !== 'REJECTED')
     }, [tasks, currentUser])
 
+    // Current user membership, role and assignment authorization check
+    const currentMembership = useMemo(() => {
+        if (!currentUser || !members) return null
+        return members.find((m) => m.email === currentUser.email || m.userId === currentUser.id)
+    }, [currentUser, members])
+
+    const userRole = useMemo(() => {
+        const storedRole = (localStorage.getItem('workflowx_registered_role') || '').toUpperCase()
+        return (currentMembership?.role || currentUser?.role || storedRole || 'MEMBER').toUpperCase()
+    }, [currentUser, currentMembership])
+
+    const isDeveloper = userRole !== 'ADMIN' && userRole !== 'MANAGER'
+    const canAssign = !isDeveloper
+
     const visibleTasks = useMemo(() => {
         return tasks.filter((task) => {
             if (task.isSuggestion && task.approvalStatus === 'PENDING') return false
             if (task.approvalStatus === 'REJECTED') return false
 
+            // Strict Privacy: Developers only see tasks assigned to them
+            if (isDeveloper && !isTaskAssignedToUser(task, currentUser)) {
+                return false
+            }
+
             const taskStatus = normalizeStatus(task.status)
             const matchesStatus = filter === 'All tasks' || taskStatus === normalizeStatus(filter)
-            const matchesAssignee = assigneeFilter === 'ALL' || (
+            const matchesAssignee = isDeveloper ? true : (assigneeFilter === 'ALL' || (
                 task.assignee && (
                     task.assignee === assigneeFilter ||
                     task.assignee.toLowerCase().includes(assigneeFilter.toLowerCase())
                 )
-            )
+            ))
             const matchesPriority = priorityFilter === 'ALL' || (task.priority || '').toLowerCase() === priorityFilter.toLowerCase()
             const matchesProject = projectFilter === 'ALL' || (task.project || '').toLowerCase().includes(projectFilter.toLowerCase())
             const matchesSearch = !searchQuery.trim() || (task.title || '').toLowerCase().includes(searchQuery.toLowerCase().trim())
@@ -259,11 +278,16 @@ export default function TasksPage() {
 
             return matchesStatus && matchesAssignee && matchesPriority && matchesProject && matchesOnlyMy && matchesSearch
         })
-    }, [filter, assigneeFilter, priorityFilter, projectFilter, onlyMyTasks, searchQuery, currentUser, tasks])
+    }, [filter, assigneeFilter, priorityFilter, projectFilter, onlyMyTasks, searchQuery, currentUser, tasks, isDeveloper])
 
     // Status counts for Manager/Developer tracking
     const statusCounts = useMemo(() => {
-        const boardTasks = tasks.filter((t) => (!t.isSuggestion || t.approvalStatus === 'APPROVED') && t.approvalStatus !== 'REJECTED')
+        const boardTasks = tasks.filter((t) => {
+            if (t.isSuggestion && t.approvalStatus !== 'APPROVED') return false
+            if (t.approvalStatus === 'REJECTED') return false
+            if (isDeveloper && !isTaskAssignedToUser(t, currentUser)) return false
+            return true
+        })
         const todo = boardTasks.filter((t) => normalizeStatus(t.status) === 'Todo').length
         const inProgress = boardTasks.filter((t) => normalizeStatus(t.status) === 'In progress').length
         const review = boardTasks.filter((t) => normalizeStatus(t.status) === 'Review').length
@@ -280,20 +304,7 @@ export default function TasksPage() {
             completionRate,
             pendingSuggestions: pendingSuggestions.length,
         }
-    }, [tasks, pendingSuggestions])
-
-    // Current user membership and assignment authorization check
-    const currentMembership = useMemo(() => {
-        if (!currentUser || !members) return null
-        return members.find((m) => m.email === currentUser.email || m.userId === currentUser.id)
-    }, [currentUser, members])
-
-    const canAssign = useMemo(() => {
-        if (!currentUser) return false
-        const storedRole = (localStorage.getItem('workflowx_registered_role') || '').toUpperCase()
-        const role = (currentMembership?.role || currentUser.role || storedRole || '').toUpperCase()
-        return role === 'ADMIN' || role === 'MANAGER'
-    }, [currentUser, currentMembership])
+    }, [tasks, pendingSuggestions, isDeveloper, currentUser])
 
     async function submit(event) {
         event.preventDefault()
@@ -1057,26 +1068,46 @@ export default function TasksPage() {
                         )}
                     </div>
 
-                    <button
-                        type="button"
-                        onClick={() => setOnlyMyTasks(!onlyMyTasks)}
-                        style={{
-                            padding: '7px 13px',
-                            fontSize: '11.5px',
-                            borderRadius: '8px',
-                            border: onlyMyTasks ? '1px solid #2563eb' : '1px solid #d1d5db',
-                            background: onlyMyTasks ? '#eff6ff' : '#fff',
-                            color: onlyMyTasks ? '#1d4ed8' : '#374151',
-                            fontWeight: onlyMyTasks ? 700 : '500',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            transition: 'all 0.15s ease',
-                        }}
-                    >
-                        <span>👤</span> {onlyMyTasks ? `✓ My Tasks (${myAssignedTasks.length})` : `My Tasks Only (${myAssignedTasks.length})`}
-                    </button>
+                    {isDeveloper ? (
+                        <div
+                            style={{
+                                padding: '7px 13px',
+                                fontSize: '11.5px',
+                                borderRadius: '8px',
+                                border: '1px solid #bfdbfe',
+                                background: '#eff6ff',
+                                color: '#1d4ed8',
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                            }}
+                            title="Your signboard is scoped exclusively to tasks assigned to you"
+                        >
+                            <span>🎯</span> Assigned to You ({myAssignedTasks.length})
+                        </div>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={() => setOnlyMyTasks(!onlyMyTasks)}
+                            style={{
+                                padding: '7px 13px',
+                                fontSize: '11.5px',
+                                borderRadius: '8px',
+                                border: onlyMyTasks ? '1px solid #2563eb' : '1px solid #d1d5db',
+                                background: onlyMyTasks ? '#eff6ff' : '#fff',
+                                color: onlyMyTasks ? '#1d4ed8' : '#374151',
+                                fontWeight: onlyMyTasks ? 700 : '500',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                transition: 'all 0.15s ease',
+                            }}
+                        >
+                            <span>👤</span> {onlyMyTasks ? `✓ My Tasks (${myAssignedTasks.length})` : `My Tasks Only (${myAssignedTasks.length})`}
+                        </button>
+                    )}
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1118,14 +1149,16 @@ export default function TasksPage() {
                         </button>
                     )}
 
-                    <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} style={{ padding: '7px 11px', fontSize: '11.5px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#1f2937' }}>
-                        <option value="ALL">All Assignees</option>
-                        {members.map((m) => (
-                            <option key={m.userId} value={m.email || m.name}>
-                                {m.name} ({m.role})
-                            </option>
-                        ))}
-                    </select>
+                    {!isDeveloper && (
+                        <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} style={{ padding: '7px 11px', fontSize: '11.5px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#1f2937' }}>
+                            <option value="ALL">All Assignees</option>
+                            {members.map((m) => (
+                                <option key={m.userId} value={m.email || m.name}>
+                                    {m.name} ({m.role})
+                                </option>
+                            ))}
+                        </select>
+                    )}
                     <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} style={{ padding: '7px 11px', fontSize: '11.5px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#1f2937' }}>
                         <option value="ALL">All Priorities</option>
                         {PRIORITIES.map((p) => (

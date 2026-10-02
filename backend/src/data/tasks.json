@@ -13,6 +13,19 @@
     "suggestionReason": null
   },
   {
+    "id": 1,
+    "title": "Audit API permissions",
+    "project": "General",
+    "status": "Todo",
+    "priority": "High",
+    "assignee": "Unassigned",
+    "due": "Next week",
+    "isSuggestion": false,
+    "approvalStatus": "APPROVED",
+    "suggestedBy": null,
+    "suggestionReason": null
+  },
+  {
     "id": 1790950000002,
     "title": "Implement Interactive Signboard Kanban Drag & Drop",
     "project": "WorkFlowX Platform",
@@ -20,6 +33,19 @@
     "priority": "Critical",
     "assignee": "pradeepnitta199@gmail.com",
     "due": "Oct 12",
+    "isSuggestion": false,
+    "approvalStatus": "APPROVED",
+    "suggestedBy": null,
+    "suggestionReason": null
+  },
+  {
+    "id": 2,
+    "title": "Security review",
+    "project": "General",
+    "status": "Todo",
+    "priority": "High",
+    "assignee": "Unassigned",
+    "due": "Next week",
     "isSuggestion": false,
     "approvalStatus": "APPROVED",
     "suggestedBy": null,
