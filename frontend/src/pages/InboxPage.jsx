@@ -10,6 +10,8 @@ import {
 import { getCurrentUser } from '../services/authService.js'
 import { getOrganizations } from '../services/organizationService.js'
 import { getSocket } from '../services/socketService.js'
+import { getTasks } from '../services/taskService.js'
+import { isTaskAssignedToUser } from './TasksPage.jsx'
 import '../App.css'
 import './InboxPage.css'
 
@@ -61,6 +63,7 @@ const CMETA = {
 export default function InboxPage() {
     const nav = useNavigate()
     const [items, setItems] = useState([])
+    const [assignedTasks, setAssignedTasks] = useState([])
     const [currentUser, setCurrentUser] = useState(null)
     const [userRole, setUserRole] = useState('MEMBER')
     const [loading, setLoading] = useState(true)
@@ -76,15 +79,16 @@ export default function InboxPage() {
         setTimeout(() => setToast(''), 3500)
     }
 
-    // Load User and Notifications
+    // Load User, Notifications, and Assigned Tasks
     useEffect(() => {
         setLoading(true)
         Promise.all([
             getCurrentUser().catch(() => null),
             getOrganizations().catch(() => []),
             getNotifications().catch(() => []),
+            getTasks().catch(() => []),
         ])
-            .then(([userData, orgs, notifs]) => {
+            .then(([userData, orgs, notifs, loadedTasks]) => {
                 if (userData) {
                     setCurrentUser(userData)
                 }
@@ -94,8 +98,11 @@ export default function InboxPage() {
                 const list = Array.isArray(notifs) ? notifs : notifs?.data || []
                 setItems(list)
 
+                const rawTasks = Array.isArray(loadedTasks) ? loadedTasks : loadedTasks?.data || []
+                setAssignedTasks(rawTasks)
+
                 // If developer has assigned tasks, default view to Assigned
-                if (activeRole === 'MEMBER' && list.some(n => getCat(n) === 'ASSIGNED' && !n.isRead)) {
+                if (activeRole === 'MEMBER' && (list.some(n => getCat(n) === 'ASSIGNED' && !n.isRead) || rawTasks.some(t => isTaskAssignedToUser(t, userData)))) {
                     setFilter('ASSIGNED')
                 } else if (activeRole === 'MANAGER' && list.some(n => getCat(n) === 'REVIEW' && !n.isRead)) {
                     setFilter('REVIEW')
@@ -105,7 +112,7 @@ export default function InboxPage() {
             .finally(() => setLoading(false))
     }, [])
 
-    // Realtime Notifications via Socket
+    // Realtime Notifications & Tasks via Socket
     useEffect(() => {
         const socket = getSocket()
         if (!socket) return
@@ -128,9 +135,31 @@ export default function InboxPage() {
             window.dispatchEvent(new CustomEvent('notification:read'))
         }
 
+        function onTaskCreated(task) {
+            if (!task) return
+            setAssignedTasks(prev => [task, ...prev.filter(t => t.id !== task.id)])
+        }
+
+        function onTaskUpdated(task) {
+            if (!task) return
+            setAssignedTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...task } : t))
+        }
+
+        function onTaskDeleted(payload) {
+            const delId = payload?.id || payload?.taskId
+            if (delId) setAssignedTasks(prev => prev.filter(t => t.id !== delId && String(t.id) !== String(delId)))
+        }
+
         socket.on('notification:new', onNew)
+        socket.on('task:created', onTaskCreated)
+        socket.on('task:updated', onTaskUpdated)
+        socket.on('task:deleted', onTaskDeleted)
+
         return () => {
             socket.off('notification:new', onNew)
+            socket.off('task:created', onTaskCreated)
+            socket.off('task:updated', onTaskUpdated)
+            socket.off('task:deleted', onTaskDeleted)
         }
     }, [currentUser])
 
@@ -183,16 +212,21 @@ export default function InboxPage() {
         }
     }
 
+    const myAssignedTasks = useMemo(() => {
+        if (!currentUser) return []
+        return assignedTasks.filter((t) => isTaskAssignedToUser(t, currentUser) && (!t.isSuggestion || t.approvalStatus === 'APPROVED') && t.approvalStatus !== 'REJECTED')
+    }, [assignedTasks, currentUser])
+
     const counts = useMemo(() => ({
-        total: items.length,
+        total: items.length + (userRole === 'MEMBER' ? myAssignedTasks.length : 0),
         unread: items.filter(n => !n.isRead).length,
-        assigned: items.filter(n => getCat(n) === 'ASSIGNED').length,
+        assigned: items.filter(n => getCat(n) === 'ASSIGNED').length + myAssignedTasks.length,
         review: items.filter(n => getCat(n) === 'REVIEW').length,
         task: items.filter(n => getCat(n) === 'TASK').length,
         project: items.filter(n => getCat(n) === 'PROJECT').length,
         team: items.filter(n => getCat(n) === 'TEAM').length,
         system: items.filter(n => getCat(n) === 'SYSTEM').length,
-    }), [items])
+    }), [items, myAssignedTasks, userRole])
 
     const filtered = useMemo(() => items.filter(n => {
         const cat = getCat(n)
@@ -347,24 +381,91 @@ export default function InboxPage() {
 
                     {/* Items */}
                     <div className="inbox-list">
+                        {/* Dedicated Active Assigned Tasks for Developer / Member */}
+                        {userRole === 'MEMBER' && myAssignedTasks.length > 0 && (filter === 'ALL' || filter === 'ASSIGNED') && (
+                            <div style={{ margin: '12px 14px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '10px', padding: '12px 14px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ fontSize: '15px' }}>🎯</span>
+                                        <strong style={{ fontSize: '13px', color: '#065f46' }}>
+                                            Active Tasks Assigned to You ({myAssignedTasks.length})
+                                        </strong>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => nav('/tasks?filter=mine')}
+                                        style={{ background: 'none', border: 'none', color: '#047857', fontWeight: 700, fontSize: '11.5px', cursor: 'pointer', padding: 0 }}
+                                    >
+                                        View on Signboard ➔
+                                    </button>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {myAssignedTasks.map((t) => (
+                                        <div
+                                            key={t.id}
+                                            onClick={() => nav(`/tasks?taskId=${t.id}`)}
+                                            style={{
+                                                background: '#ffffff',
+                                                border: '1px solid #d1fae5',
+                                                borderRadius: '8px',
+                                                padding: '10px 12px',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                gap: '10px',
+                                                transition: 'all 0.15s ease',
+                                                boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                                            }}
+                                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.transform = 'translateY(-1px)' }}
+                                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#d1fae5'; e.currentTarget.style.transform = 'none' }}
+                                        >
+                                            <div style={{ minWidth: 0, flex: 1 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                                    <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: '#eff6ff', color: '#1d4ed8', fontWeight: 700 }}>
+                                                        {t.status || 'Todo'}
+                                                    </span>
+                                                    <span style={{ fontSize: '11px', color: '#64748b' }}>
+                                                        📁 {t.project || 'General'}
+                                                    </span>
+                                                    <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px', background: '#fef3c7', color: '#b45309', fontWeight: 600 }}>
+                                                        {t.priority || 'Medium'}
+                                                    </span>
+                                                </div>
+                                                <strong style={{ fontSize: '13px', color: '#0f172a', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {t.title}
+                                                </strong>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                                                <span style={{ fontSize: '11px', color: '#64748b' }}>Due: {t.due || 'Next week'}</span>
+                                                <span style={{ fontSize: '11.5px', color: '#059669', fontWeight: 700 }}>Open ➔</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         {loading ? (
                             <div className="inbox-empty"><div className="inbox-spinner" /><p>Loading your workspace updates…</p></div>
                         ) : filtered.length === 0 ? (
-                            <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8' }}>
-                                <div style={{ fontSize: 44, marginBottom: 10 }}>
-                                    {filter === 'ASSIGNED' ? '🎯' : filter === 'REVIEW' ? '💡' : '🎉'}
+                            !(userRole === 'MEMBER' && myAssignedTasks.length > 0 && (filter === 'ALL' || filter === 'ASSIGNED')) && (
+                                <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8' }}>
+                                    <div style={{ fontSize: 44, marginBottom: 10 }}>
+                                        {filter === 'ASSIGNED' ? '🎯' : filter === 'REVIEW' ? '💡' : '🎉'}
+                                    </div>
+                                    <h3 style={{ margin: '0 0 6px', color: '#1e293b', fontSize: '15px' }}>
+                                        {filter === 'ASSIGNED'
+                                            ? 'No notifications for assigned tasks'
+                                            : filter === 'REVIEW'
+                                            ? 'No pending proposals to review'
+                                            : 'All caught up!'}
+                                    </h3>
+                                    <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>
+                                        {q ? `No notifications matching "${q}"` : 'When tasks are assigned or updated, notifications will show here instantly.'}
+                                    </p>
                                 </div>
-                                <h3 style={{ margin: '0 0 6px', color: '#1e293b', fontSize: '15px' }}>
-                                    {filter === 'ASSIGNED'
-                                        ? 'No tasks assigned right now'
-                                        : filter === 'REVIEW'
-                                        ? 'No pending proposals to review'
-                                        : 'All caught up!'}
-                                </h3>
-                                <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>
-                                    {q ? `No notifications matching "${q}"` : 'When tasks are assigned or updated, notifications will show here instantly.'}
-                                </p>
-                            </div>
+                            )
                         ) : filtered.map(n => {
                             const cat = getCat(n)
                             const m = CMETA[cat]

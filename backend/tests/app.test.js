@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import test from 'node:test'
 import { createApp } from '../src/app.js'
-import { saveTasks } from '../src/repositories/taskRepository.js'
+import { readTasks, saveTasks } from '../src/repositories/taskRepository.js'
 import { createAccessToken } from '../src/utils/token.js'
 
 process.env.AUTH_ACCESS_TOKEN_SECRET = 'test-only-workflowx-secret'
@@ -20,6 +20,7 @@ async function stopTestServer(server) {
 
 test('app serves health and tasks without starting the production listener', async () => {
     const { server, baseUrl } = await startTestServer()
+    const initialTasks = await readTasks()
 
     try {
         await saveTasks([
@@ -69,7 +70,7 @@ test('app serves health and tasks without starting the production listener', asy
         assert.equal(searchTasks.meta.total, 1)
         assert.equal(searchTasks.data[0].title, 'Audit API permissions')
     } finally {
-        await saveTasks([])
+        await saveTasks(initialTasks)
         await stopTestServer(server)
     }
 })

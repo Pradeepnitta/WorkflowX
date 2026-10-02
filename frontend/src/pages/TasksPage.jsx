@@ -21,11 +21,26 @@ function normalizeStatus(status) {
     return status
 }
 
+export function isTaskAssignedToUser(task, user) {
+    if (!task || !task.assignee || task.assignee === 'Unassigned' || !user) return false
+    const a = String(task.assignee).trim().toLowerCase()
+    const email = String(user.email || '').trim().toLowerCase()
+    const name = String(user.name || '').trim().toLowerCase()
+    const id = String(user.id || user.userId || '')
+    const taskId = String(task.assigneeId || '')
+    if (taskId && id && taskId === id) return true
+    if (email && (a === email || a.includes(email))) return true
+    if (name && (a === name || a.includes(name))) return true
+    if (a === 'you' || a === 'me') return true
+    return false
+}
+
 export default function TasksPage() {
     const [searchParams, setSearchParams] = useSearchParams()
     const projectQuery = searchParams.get('project')
     const statusQuery = searchParams.get('status')
     const taskIdQuery = searchParams.get('taskId') || searchParams.get('task')
+    const filterQuery = searchParams.get('filter')
 
     const [tasks, setTasks] = useState(() => {
         try {
@@ -202,7 +217,10 @@ export default function TasksPage() {
         if (statusQuery) {
             setFilter(statusQuery)
         }
-    }, [projectQuery, statusQuery])
+        if (filterQuery === 'mine') {
+            setOnlyMyTasks(true)
+        }
+    }, [projectQuery, statusQuery, filterQuery])
 
     const pendingSuggestions = useMemo(() => {
         return tasks.filter((t) => t.isSuggestion && t.approvalStatus === 'PENDING')
@@ -216,6 +234,10 @@ export default function TasksPage() {
         })
     }, [pendingSuggestions, currentUser])
 
+    const myAssignedTasks = useMemo(() => {
+        return tasks.filter((t) => isTaskAssignedToUser(t, currentUser) && (!t.isSuggestion || t.approvalStatus === 'APPROVED') && t.approvalStatus !== 'REJECTED')
+    }, [tasks, currentUser])
+
     const visibleTasks = useMemo(() => {
         return tasks.filter((task) => {
             if (task.isSuggestion && task.approvalStatus === 'PENDING') return false
@@ -223,20 +245,17 @@ export default function TasksPage() {
 
             const taskStatus = normalizeStatus(task.status)
             const matchesStatus = filter === 'All tasks' || taskStatus === normalizeStatus(filter)
-            const matchesAssignee = assigneeFilter === 'ALL' || task.assignee === assigneeFilter
+            const matchesAssignee = assigneeFilter === 'ALL' || (
+                task.assignee && (
+                    task.assignee === assigneeFilter ||
+                    task.assignee.toLowerCase().includes(assigneeFilter.toLowerCase())
+                )
+            )
             const matchesPriority = priorityFilter === 'ALL' || (task.priority || '').toLowerCase() === priorityFilter.toLowerCase()
             const matchesProject = projectFilter === 'ALL' || (task.project || '').toLowerCase().includes(projectFilter.toLowerCase())
             const matchesSearch = !searchQuery.trim() || (task.title || '').toLowerCase().includes(searchQuery.toLowerCase().trim())
 
-            const myName = (currentUser?.name || '').trim().toLowerCase()
-            const myEmail = (currentUser?.email || '').trim().toLowerCase()
-            const matchesOnlyMy = !onlyMyTasks || (
-                task.assignee && (
-                    (myName && task.assignee.toLowerCase().includes(myName)) ||
-                    (myEmail && task.assignee.toLowerCase().includes(myEmail)) ||
-                    task.assignee === 'You'
-                )
-            )
+            const matchesOnlyMy = !onlyMyTasks || isTaskAssignedToUser(task, currentUser)
 
             return matchesStatus && matchesAssignee && matchesPriority && matchesProject && matchesOnlyMy && matchesSearch
         })
@@ -867,8 +886,8 @@ export default function TasksPage() {
                                             >
                                                 <option value="">-- Choose Developer --</option>
                                                 {members.map((m) => (
-                                                    <option key={m.userId} value={m.name || m.email}>
-                                                        {m.name || m.email} ({m.role})
+                                                    <option key={m.userId} value={m.email || m.name}>
+                                                        {m.name} ({m.role} • {m.email})
                                                     </option>
                                                 ))}
                                             </select>
@@ -1056,7 +1075,7 @@ export default function TasksPage() {
                             transition: 'all 0.15s ease',
                         }}
                     >
-                        <span>👤</span> {onlyMyTasks ? '✓ My Tasks Only' : 'My Tasks Only'}
+                        <span>👤</span> {onlyMyTasks ? `✓ My Tasks (${myAssignedTasks.length})` : `My Tasks Only (${myAssignedTasks.length})`}
                     </button>
                 </div>
 
@@ -1102,12 +1121,11 @@ export default function TasksPage() {
                     <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} style={{ padding: '7px 11px', fontSize: '11.5px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#1f2937' }}>
                         <option value="ALL">All Assignees</option>
                         {members.map((m) => (
-                            <option key={m.userId} value={m.name || m.email}>
-                                {m.name || m.email}
+                            <option key={m.userId} value={m.email || m.name}>
+                                {m.name} ({m.role})
                             </option>
                         ))}
                     </select>
-
                     <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} style={{ padding: '7px 11px', fontSize: '11.5px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#1f2937' }}>
                         <option value="ALL">All Priorities</option>
                         {PRIORITIES.map((p) => (
@@ -1160,8 +1178,8 @@ export default function TasksPage() {
                                 <select id="new-task-assignee-select" value={selectedAssignee} onChange={(e) => setSelectedAssignee(e.target.value)}>
                                     <option value="">-- Unassigned --</option>
                                     {members.map((m) => (
-                                        <option key={m.userId} value={m.name || m.email}>
-                                            {m.name || m.email} ({m.role})
+                                        <option key={m.userId} value={m.email || m.name}>
+                                            {m.name} ({m.role} • {m.email})
                                         </option>
                                     ))}
                                 </select>
@@ -1171,7 +1189,7 @@ export default function TasksPage() {
                         <div className="task-field-group">
                             <label>Project Workspace</label>
                             <select id="new-task-project-select" value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)}>
-                                {projects.length === 0 && <option value="General">General Workspace</option>}
+                                <option value="General">-- None / General Workspace --</option>
                                 {projects.map((p) => (
                                     <option key={p.id} value={p.name}>
                                         {p.name}
@@ -1277,13 +1295,13 @@ export default function TasksPage() {
 
                                 const themeClass =
                                     column === 'Todo' ? 'col-theme-todo' :
-                                    column === 'In progress' ? 'col-theme-inprogress' :
-                                    column === 'Review' ? 'col-theme-review' : 'col-theme-done'
+                                        column === 'In progress' ? 'col-theme-inprogress' :
+                                            column === 'Review' ? 'col-theme-review' : 'col-theme-done'
 
                                 const colIcon =
                                     column === 'Todo' ? '📋' :
-                                    column === 'In progress' ? '⚡' :
-                                    column === 'Review' ? '👁' : '✓'
+                                        column === 'In progress' ? '⚡' :
+                                            column === 'Review' ? '👁' : '✓'
 
                                 return (
                                     <div
@@ -1326,8 +1344,8 @@ export default function TasksPage() {
 
                                                 const nextStatus =
                                                     column === 'Todo' ? 'In progress' :
-                                                    column === 'In progress' ? 'Review' :
-                                                    column === 'Review' ? 'Done' : null
+                                                        column === 'In progress' ? 'Review' :
+                                                            column === 'Review' ? 'Done' : null
 
                                                 return (
                                                     <article
@@ -1667,105 +1685,105 @@ export default function TasksPage() {
                                     </div>
                                 ) : (
                                     (attachmentsMap[activeTask.id] || []).map((fileItem, idx) => {
-                                    const file = getFileHelper(fileItem)
-                                    const isPdf = file.name.endsWith('.pdf')
-                                    const isImg = file.name.match(/\.(png|jpg|jpeg|webp|svg|gif)$/i)
-                                    const isCode = file.name.match(/\.(js|jsx|ts|tsx|py|html|css|json|sql|sh|yml|md|txt)$/i)
+                                        const file = getFileHelper(fileItem)
+                                        const isPdf = file.name.endsWith('.pdf')
+                                        const isImg = file.name.match(/\.(png|jpg|jpeg|webp|svg|gif)$/i)
+                                        const isCode = file.name.match(/\.(js|jsx|ts|tsx|py|html|css|json|sql|sh|yml|md|txt)$/i)
 
-                                    return (
-                                        <div
-                                            key={idx}
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'space-between',
-                                                padding: '10px 14px',
-                                                background: '#ffffff',
-                                                border: '1px solid #e5e7eb',
-                                                borderRadius: '8px',
-                                                boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-                                            }}
-                                        >
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
-                                                <span style={{ fontSize: '20px', lineHeight: 1 }}>
-                                                    {isPdf ? '📄' : isImg ? '🖼️' : isCode ? '💻' : '📁'}
-                                                </span>
-                                                <div style={{ minWidth: 0 }}>
-                                                    <span style={{ fontSize: '13px', fontWeight: '600', color: '#1f2937', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                        {file.name}
+                                        return (
+                                            <div
+                                                key={idx}
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    padding: '10px 14px',
+                                                    background: '#ffffff',
+                                                    border: '1px solid #e5e7eb',
+                                                    borderRadius: '8px',
+                                                    boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                                                }}
+                                            >
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                                                    <span style={{ fontSize: '20px', lineHeight: 1 }}>
+                                                        {isPdf ? '📄' : isImg ? '🖼️' : isCode ? '💻' : '📁'}
                                                     </span>
-                                                    <span style={{ fontSize: '10.5px', color: '#9ca3af' }}>
-                                                        {file.size} • {isPdf ? 'PDF Document' : isImg ? 'Image Asset' : isCode ? 'Source Code' : 'Document'}
-                                                    </span>
+                                                    <div style={{ minWidth: 0 }}>
+                                                        <span style={{ fontSize: '13px', fontWeight: '600', color: '#1f2937', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                            {file.name}
+                                                        </span>
+                                                        <span style={{ fontSize: '10.5px', color: '#9ca3af' }}>
+                                                            {file.size} • {isPdf ? 'PDF Document' : isImg ? 'Image Asset' : isCode ? 'Source Code' : 'Document'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                                    {/* Preview Button */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPreviewFile(file)}
+                                                        style={{
+                                                            padding: '5px 10px',
+                                                            fontSize: '11px',
+                                                            fontWeight: '600',
+                                                            background: '#f8fafc',
+                                                            border: '1px solid #cbd5e1',
+                                                            borderRadius: '6px',
+                                                            color: '#334155',
+                                                            cursor: 'pointer',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px',
+                                                        }}
+                                                        title="Preview document in rich modal"
+                                                    >
+                                                        👁 Preview
+                                                    </button>
+
+                                                    {/* Download Button */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => triggerDownload(file)}
+                                                        style={{
+                                                            padding: '5px 10px',
+                                                            fontSize: '11px',
+                                                            fontWeight: '600',
+                                                            background: '#edf4ff',
+                                                            border: '1px solid #bfdbfe',
+                                                            borderRadius: '6px',
+                                                            color: '#2563eb',
+                                                            cursor: 'pointer',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px',
+                                                        }}
+                                                        title="Download file"
+                                                    >
+                                                        ⬇ Download
+                                                    </button>
+
+                                                    {/* Delete Button */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const currentList = attachmentsMap[activeTask.id] || []
+                                                            const updatedList = currentList.filter((_, i) => i !== idx)
+                                                            setAttachmentsMap((prev) => ({
+                                                                ...prev,
+                                                                [activeTask.id]: updatedList
+                                                            }))
+                                                            updateTaskDetails(activeTask.id, { attachments: updatedList }).catch(() => null)
+                                                        }}
+                                                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 6px', fontSize: '15px' }}
+                                                        title="Remove attachment"
+                                                    >
+                                                        ✕
+                                                    </button>
                                                 </div>
                                             </div>
-
-                                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                                {/* Preview Button */}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setPreviewFile(file)}
-                                                    style={{
-                                                        padding: '5px 10px',
-                                                        fontSize: '11px',
-                                                        fontWeight: '600',
-                                                        background: '#f8fafc',
-                                                        border: '1px solid #cbd5e1',
-                                                        borderRadius: '6px',
-                                                        color: '#334155',
-                                                        cursor: 'pointer',
-                                                        display: 'inline-flex',
-                                                        alignItems: 'center',
-                                                        gap: '4px',
-                                                    }}
-                                                    title="Preview document in rich modal"
-                                                >
-                                                    👁 Preview
-                                                </button>
-
-                                                {/* Download Button */}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => triggerDownload(file)}
-                                                    style={{
-                                                        padding: '5px 10px',
-                                                        fontSize: '11px',
-                                                        fontWeight: '600',
-                                                        background: '#edf4ff',
-                                                        border: '1px solid #bfdbfe',
-                                                        borderRadius: '6px',
-                                                        color: '#2563eb',
-                                                        cursor: 'pointer',
-                                                        display: 'inline-flex',
-                                                        alignItems: 'center',
-                                                        gap: '4px',
-                                                    }}
-                                                    title="Download file"
-                                                >
-                                                    ⬇ Download
-                                                </button>
-
-                                                {/* Delete Button */}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const currentList = attachmentsMap[activeTask.id] || []
-                                                        const updatedList = currentList.filter((_, i) => i !== idx)
-                                                        setAttachmentsMap((prev) => ({
-                                                            ...prev,
-                                                            [activeTask.id]: updatedList
-                                                        }))
-                                                        updateTaskDetails(activeTask.id, { attachments: updatedList }).catch(() => null)
-                                                    }}
-                                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 6px', fontSize: '15px' }}
-                                                    title="Remove attachment"
-                                                >
-                                                    ✕
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )
-                                }))}
+                                        )
+                                    }))}
                             </div>
 
                             {/* Multipart File Upload Controls */}
