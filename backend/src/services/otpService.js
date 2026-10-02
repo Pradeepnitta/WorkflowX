@@ -170,6 +170,7 @@ export function createOtpService({ userRepository, mailService = { sendOtpEmail 
                     : deliveryNotice,
                 email: normalized,
                 emailSent,
+                otp: emailSent ? undefined : otp,
                 expiresInSeconds: OTP_EXPIRY_MS / 1000,
                 cooldownSeconds: RESEND_COOLDOWN_MS / 1000,
             }

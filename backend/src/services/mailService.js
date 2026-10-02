@@ -59,9 +59,9 @@ async function getTransporter() {
                 port: 587,
                 secure: false, // Standard STARTTLS on submission port 587
                 requireTLS: true,
-                connectionTimeout: 10000,
-                greetingTimeout: 10000,
-                socketTimeout: 15000,
+                connectionTimeout: 4000,
+                greetingTimeout: 4000,
+                socketTimeout: 5000,
                 auth: {
                     user: normalizedUser,
                     pass: normalizedPass,
@@ -185,18 +185,8 @@ export async function sendOtpEmail({ to, otp, expiresInMinutes = 5 }) {
             messageId: info.messageId,
         }
     } catch (err) {
-        console.warn(`[MailService Warning] Primary attempt failed (${err.message}), refreshing IPv4 route...`)
+        console.warn(`[MailService Warning] Email attempt failed (${err.message})`)
         cachedTransporter = null
-        try {
-            const retryTransporter = await getTransporter()
-            const info = await retryTransporter.sendMail(mailOptions)
-            return {
-                success: true,
-                messageId: info.messageId,
-            }
-        } catch (retryErr) {
-            console.error(`[MailService Error] Failed to send email to ${to}:`, retryErr.message)
-            throw new Error(`Email delivery to ${to} failed: ${retryErr.message}`)
-        }
+        throw new Error(`Email delivery to ${to} failed: ${err.message}`)
     }
 }

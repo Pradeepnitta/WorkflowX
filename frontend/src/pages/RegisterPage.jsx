@@ -46,6 +46,8 @@ function RegisterPage() {
     // Realtime Email OTP Verification States
     const [otpSent, setOtpSent] = useState(false)
     const [otpCode, setOtpCode] = useState('')
+    const [fallbackOtp, setFallbackOtp] = useState('')
+    const [otpNotice, setOtpNotice] = useState('')
     const [isSendingOtp, setIsSendingOtp] = useState(false)
     const [isVerifyingOtp, setIsVerifyingOtp] = useState(false)
     const [isEmailVerified, setIsEmailVerified] = useState(false)
@@ -66,11 +68,13 @@ function RegisterPage() {
 
     function handleEmailChange(newEmail) {
         setEmail(newEmail)
-        if (isEmailVerified || otpSent || otpCode) {
+        if (isEmailVerified || otpSent || otpCode || fallbackOtp) {
             setIsEmailVerified(false)
             setVerificationToken('')
             setOtpSent(false)
             setOtpCode('')
+            setFallbackOtp('')
+            setOtpNotice('')
             setOtpError('')
         }
     }
@@ -84,11 +88,19 @@ function RegisterPage() {
 
         setOtpError('')
         setIsSendingOtp(true)
-        setOtpCode('') // Keep field empty so user manually enters their OTP
+        setOtpCode('')
+        setFallbackOtp('')
+        setOtpNotice('')
         try {
-            await sendOtp({ email: trimmedEmail, type: 'signup' })
+            const res = await sendOtp({ email: trimmedEmail, type: 'signup' })
             setOtpSent(true)
-            setOtpCooldown(60)
+            setOtpCooldown(res?.cooldownSeconds || 60)
+            if (res?.message) {
+                setOtpNotice(res.message)
+            }
+            if (res?.otp) {
+                setFallbackOtp(res.otp)
+            }
         } catch (err) {
             setOtpError(err.message || 'Failed to send OTP code. Please try again.')
         } finally {
@@ -407,9 +419,39 @@ function RegisterPage() {
                                             )}
                                         </div>
 
-                                        <div style={{ fontSize: '11.5px', color: '#475569', background: '#f8fafc', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', lineHeight: 1.4 }}>
-                                            ✉️ We sent a 6-digit verification code to <strong>{email.trim()}</strong>. Please check your inbox and enter it below.
-                                        </div>
+                                        {fallbackOtp ? (
+                                            <div style={{ fontSize: '12px', color: '#0369a1', background: '#f0f9ff', padding: '10px 12px', borderRadius: '8px', border: '1px solid #bae6fd', lineHeight: 1.5 }}>
+                                                <div>⚡ <strong>Cloud Direct Verification:</strong> Outbound SMTP is restricted on this cloud host.</div>
+                                                <div style={{ marginTop: '4px' }}>
+                                                    Your 6-digit code is: <strong style={{ letterSpacing: '2px', fontSize: '15px', color: '#0284c7', fontFamily: 'monospace' }}>{fallbackOtp}</strong>
+                                                </div>
+                                                <button
+                                                    id="auto-fill-otp-btn"
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setOtpCode(fallbackOtp)
+                                                        handleVerifyOtp(fallbackOtp)
+                                                    }}
+                                                    style={{
+                                                        marginTop: '6px',
+                                                        fontSize: '11px',
+                                                        background: '#0284c7',
+                                                        color: '#ffffff',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        padding: '4px 10px',
+                                                        cursor: 'pointer',
+                                                        fontWeight: 600,
+                                                    }}
+                                                >
+                                                    ⚡ Auto-fill & Verify Code
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div style={{ fontSize: '11.5px', color: '#475569', background: '#f8fafc', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', lineHeight: 1.4 }}>
+                                                ✉️ We sent a 6-digit verification code to <strong>{email.trim()}</strong>. Please check your inbox and enter it below.
+                                            </div>
+                                        )}
 
                                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                             <input
