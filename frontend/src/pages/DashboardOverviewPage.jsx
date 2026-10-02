@@ -773,7 +773,7 @@ export default function DashboardOverviewPage() {
                             <div style={{ display: 'flex', gap: '8px' }}>
                                 <button
                                     type="button"
-                                    onClick={() => navigate('/tasks')}
+                                    onClick={() => navigate(`/tasks?taskId=${activeTask.id}`)}
                                     className="primary-button"
                                     style={{ padding: '6px 14px', fontSize: '11.5px' }}
                                 >

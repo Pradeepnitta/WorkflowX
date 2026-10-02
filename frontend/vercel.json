@@ -1,15 +1,8 @@
 {
+  "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/health",
-      "destination": "/api/health"
-    },
-    {
-      "source": "/api/:path*",
-      "destination": "/api/entry"
-    },
-    {
-      "source": "/((?!api/).*)",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ]

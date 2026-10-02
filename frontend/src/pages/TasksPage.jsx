@@ -15,6 +15,7 @@ export default function TasksPage() {
     const [searchParams, setSearchParams] = useSearchParams()
     const projectQuery = searchParams.get('project')
     const statusQuery = searchParams.get('status')
+    const taskIdQuery = searchParams.get('taskId') || searchParams.get('task')
 
     const [tasks, setTasks] = useState([])
     const [organizations, setOrganizations] = useState([])
@@ -85,6 +86,17 @@ export default function TasksPage() {
             .catch((requestError) => setError(requestError.message))
             .finally(() => setIsLoading(false))
     }, [])
+
+    // Automatically open full task details when navigated with ?taskId=
+    useEffect(() => {
+        if (!taskIdQuery || tasks.length === 0) return
+        const matched = tasks.find((t) => String(t.id) === String(taskIdQuery))
+        if (matched) {
+            setActiveTask(matched)
+            setEditingTitleText(matched.title || '')
+            setIsEditingTitle(false)
+        }
+    }, [taskIdQuery, tasks])
 
     // Real-time Socket.IO Listeners
     useEffect(() => {
@@ -372,6 +384,19 @@ export default function TasksPage() {
         setActiveTask(task)
         setEditingTitleText(task.title || '')
         setIsEditingTitle(false)
+        const next = new URLSearchParams(searchParams)
+        next.set('taskId', task.id)
+        setSearchParams(next, { replace: true })
+    }
+
+    function closeTaskModal() {
+        setActiveTask(null)
+        if (searchParams.get('taskId') || searchParams.get('task')) {
+            const next = new URLSearchParams(searchParams)
+            next.delete('taskId')
+            next.delete('task')
+            setSearchParams(next, { replace: true })
+        }
     }
 
     async function handleDeleteTask(taskId, e) {
@@ -1443,7 +1468,7 @@ export default function TasksPage() {
 
             {/* Task Detail Modal: Status Execution, Comments & Physical File Attachments */}
             {activeTask && (
-                <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setActiveTask(null)}>
+                <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && closeTaskModal()}>
                     <div className="task-form" style={{ width: 'min(100%, 640px)', maxHeight: '90vh', overflowY: 'auto' }}>
                         <div className="modal-heading" style={{ marginBottom: '14px' }}>
                             <div style={{ width: '100%' }}>
@@ -1463,7 +1488,7 @@ export default function TasksPage() {
                                             ))}
                                         </select>
                                     </div>
-                                    <button type="button" className="close-button" onClick={() => setActiveTask(null)}>×</button>
+                                    <button type="button" className="close-button" onClick={closeTaskModal}>×</button>
                                 </div>
 
                                 {/* Editable Task Title */}
@@ -1827,7 +1852,7 @@ export default function TasksPage() {
                                     🗑 Delete Task
                                 </button>
                             ) : <div />}
-                            <button type="button" className="secondary-button" onClick={() => setActiveTask(null)}>
+                            <button type="button" className="secondary-button" onClick={closeTaskModal}>
                                 Close
                             </button>
                         </div>

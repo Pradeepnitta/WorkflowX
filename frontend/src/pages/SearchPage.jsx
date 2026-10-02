@@ -64,7 +64,15 @@ function SearchPage() {
                                         className="search-result"
                                         key={result.id}
                                         style={{ cursor: 'pointer' }}
-                                        onClick={() => navigate(path)}
+                                        onClick={() => {
+                                            if (key === 'tasks') {
+                                                navigate(`/tasks?taskId=${result.id}`)
+                                            } else if (key === 'comments') {
+                                                navigate(`/tasks?taskId=${result.taskId || result.id}`)
+                                            } else {
+                                                navigate(path)
+                                            }
+                                        }}
                                         title={`Go to ${label}`}
                                     >
                                         <strong>{result.name || result.title || result.content || result.email}</strong>

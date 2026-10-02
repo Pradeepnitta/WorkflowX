@@ -4,6 +4,26 @@ const statuses = new Set(['PLANNING', 'ACTIVE', 'ON_HOLD', 'COMPLETED', 'ARCHIVE
 const visibilities = new Set(['ORGANIZATION', 'MEMBERS_ONLY'])
 const priorities = new Set(['LOW', 'MEDIUM', 'HIGH', 'URGENT'])
 
+const statusAliases = {
+    'PLANNED': 'PLANNING',
+    'TODO': 'PLANNING',
+    'IN_PROGRESS': 'ACTIVE',
+    'INPROGRESS': 'ACTIVE',
+    'PAUSED': 'ON_HOLD',
+    'DONE': 'COMPLETED',
+}
+
+const priorityAliases = {
+    'CRITICAL': 'URGENT',
+    'NORMAL': 'MEDIUM',
+}
+
+const visibilityAliases = {
+    'PUBLIC': 'ORGANIZATION',
+    'WORKSPACE': 'ORGANIZATION',
+    'PRIVATE': 'MEMBERS_ONLY',
+}
+
 function serviceError(message, statusCode) {
     const error = new Error(message)
     error.statusCode = statusCode
@@ -31,15 +51,25 @@ export function createProjectService(projectRepository) {
             const name = typeof input.name === 'string' ? input.name.trim() : ''
             const description = typeof input.description === 'string' ? input.description.trim() : null
             const organizationId = typeof input.organizationId === 'string' ? input.organizationId.trim() : ''
-            const status = input.status || 'PLANNING'
-            const visibility = input.visibility || 'ORGANIZATION'
-            const priority = input.priority || 'MEDIUM'
-            const dueDate = input.dueDate ? new Date(input.dueDate) : null
+
+            const rawStatus = (input.status || 'PLANNING').toString().trim().toUpperCase().replace(/\s+/g, '_')
+            const status = statusAliases[rawStatus] || rawStatus
+
+            const rawVisibility = (input.visibility || 'ORGANIZATION').toString().trim().toUpperCase().replace(/\s+/g, '_')
+            const visibility = visibilityAliases[rawVisibility] || rawVisibility
+
+            const rawPriority = (input.priority || 'MEDIUM').toString().trim().toUpperCase()
+            const priority = priorityAliases[rawPriority] || rawPriority
+
+            let dueDate = null
+            if (input.dueDate !== undefined && input.dueDate !== null && input.dueDate !== '') {
+                dueDate = input.dueDate instanceof Date ? input.dueDate : new Date(input.dueDate)
+                if (Number.isNaN(dueDate.getTime())) throw serviceError('Due date must be valid', 400)
+            }
 
             if (name.length < 2) throw serviceError('Project name must be at least 2 characters', 400)
             if (!organizationId) throw serviceError('Organization is required', 400)
             if (!statuses.has(status) || !visibilities.has(visibility) || !priorities.has(priority)) throw serviceError('Invalid project options', 400)
-            if (dueDate && Number.isNaN(dueDate.getTime())) throw serviceError('Due date must be valid', 400)
             if (!userId) throw serviceError('Authentication required', 401)
 
             const project = presentProject(await projectRepository.createForMember({ name, description, organizationId, userId, status, visibility, priority, dueDate }))
@@ -73,20 +103,31 @@ export function createProjectService(projectRepository) {
             }
             if (input.description !== undefined) changes.description = typeof input.description === 'string' ? input.description.trim() : null
             if (input.status !== undefined) {
-                if (!statuses.has(input.status)) throw serviceError('Invalid project status', 400)
-                changes.status = input.status
+                const rawStatus = input.status.toString().trim().toUpperCase().replace(/\s+/g, '_')
+                const normalizedStatus = statusAliases[rawStatus] || rawStatus
+                if (!statuses.has(normalizedStatus)) throw serviceError('Invalid project status', 400)
+                changes.status = normalizedStatus
             }
             if (input.visibility !== undefined) {
-                if (!visibilities.has(input.visibility)) throw serviceError('Invalid project visibility', 400)
-                changes.visibility = input.visibility
+                const rawVis = input.visibility.toString().trim().toUpperCase().replace(/\s+/g, '_')
+                const normalizedVis = visibilityAliases[rawVis] || rawVis
+                if (!visibilities.has(normalizedVis)) throw serviceError('Invalid project visibility', 400)
+                changes.visibility = normalizedVis
             }
             if (input.priority !== undefined) {
-                if (!priorities.has(input.priority)) throw serviceError('Invalid project priority', 400)
-                changes.priority = input.priority
+                const rawPri = input.priority.toString().trim().toUpperCase()
+                const normalizedPri = priorityAliases[rawPri] || rawPri
+                if (!priorities.has(normalizedPri)) throw serviceError('Invalid project priority', 400)
+                changes.priority = normalizedPri
             }
             if (input.dueDate !== undefined) {
-                changes.dueDate = input.dueDate ? new Date(input.dueDate) : null
-                if (changes.dueDate && Number.isNaN(changes.dueDate.getTime())) throw serviceError('Due date must be valid', 400)
+                if (input.dueDate === null || input.dueDate === '') {
+                    changes.dueDate = null
+                } else {
+                    const parsed = input.dueDate instanceof Date ? input.dueDate : new Date(input.dueDate)
+                    if (Number.isNaN(parsed.getTime())) throw serviceError('Due date must be valid', 400)
+                    changes.dueDate = parsed
+                }
             }
             if (Object.keys(changes).length === 0) throw serviceError('At least one project field is required', 400)
 

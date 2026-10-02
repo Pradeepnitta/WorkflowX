@@ -370,16 +370,18 @@ export default function ProjectsPage() {
         const generatedKey = newProjectKey.trim() || newProjectName.trim().slice(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, '') || 'PROJ'
 
         try {
-            let created = null
-            if (organizationId) {
-                created = await createProject({
-                    name: newProjectName.trim(),
-                    description: newProjectDescription.trim() || 'No description provided.',
-                    organizationId,
-                    priority: newProjectPriority,
-                    status: newProjectStatus,
-                    dueDate: newProjectDueDate || null,
-                })
+            const effectiveOrgId = organizationId && organizationId !== 'org-default' ? organizationId : undefined
+            const created = await createProject({
+                name: newProjectName.trim(),
+                description: newProjectDescription.trim() || 'No description provided.',
+                organizationId: effectiveOrgId,
+                priority: newProjectPriority,
+                status: newProjectStatus,
+                dueDate: newProjectDueDate || null,
+            })
+
+            if (created?.organizationId && (!organizationId || organizationId === 'org-default')) {
+                setOrganizationId(created.organizationId)
             }
 
             const realId = created?.id || `proj-${Date.now()}`
