@@ -373,6 +373,7 @@ export default function ProjectsPage() {
             const effectiveOrgId = organizationId && organizationId !== 'org-default' ? organizationId : undefined
             const created = await createProject({
                 name: newProjectName.trim(),
+                key: generatedKey,
                 description: newProjectDescription.trim() || 'No description provided.',
                 organizationId: effectiveOrgId,
                 priority: newProjectPriority,
@@ -388,7 +389,7 @@ export default function ProjectsPage() {
             const realProject = {
                 id: realId,
                 name: created?.name || newProjectName.trim(),
-                key: generatedKey,
+                key: created?.key || generatedKey,
                 description: created?.description || newProjectDescription.trim() || 'No description provided.',
                 status: created?.status || newProjectStatus,
                 priority: created?.priority || newProjectPriority,

@@ -34,6 +34,7 @@ function presentProject(project) {
     return {
         id: project.id,
         name: project.name,
+        key: project.key || (project.name ? project.name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 5).toUpperCase() : 'PROJ'),
         description: project.description || null,
         status: project.status,
         visibility: project.visibility,
@@ -51,6 +52,8 @@ export function createProjectService(projectRepository) {
             const name = typeof input.name === 'string' ? input.name.trim() : ''
             const description = typeof input.description === 'string' ? input.description.trim() : null
             const organizationId = typeof input.organizationId === 'string' ? input.organizationId.trim() : ''
+            const rawKey = typeof input.key === 'string' ? input.key.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) : ''
+            const key = rawKey || (name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 5).toUpperCase() || 'PROJ')
 
             const rawStatus = (input.status || 'PLANNING').toString().trim().toUpperCase().replace(/\s+/g, '_')
             const status = statusAliases[rawStatus] || rawStatus
@@ -72,7 +75,7 @@ export function createProjectService(projectRepository) {
             if (!statuses.has(status) || !visibilities.has(visibility) || !priorities.has(priority)) throw serviceError('Invalid project options', 400)
             if (!userId) throw serviceError('Authentication required', 401)
 
-            const project = presentProject(await projectRepository.createForMember({ name, description, organizationId, userId, status, visibility, priority, dueDate }))
+            const project = presentProject(await projectRepository.createForMember({ name, key, description, organizationId, userId, status, visibility, priority, dueDate }))
             await cacheDel(`projects:${organizationId}:${userId}`)
             return project
         },
@@ -100,6 +103,10 @@ export function createProjectService(projectRepository) {
             if (input.name !== undefined) {
                 changes.name = typeof input.name === 'string' ? input.name.trim() : ''
                 if (changes.name.length < 2) throw serviceError('Project name must be at least 2 characters', 400)
+            }
+            if (input.key !== undefined) {
+                const key = typeof input.key === 'string' ? input.key.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) : ''
+                if (key) changes.key = key
             }
             if (input.description !== undefined) changes.description = typeof input.description === 'string' ? input.description.trim() : null
             if (input.status !== undefined) {

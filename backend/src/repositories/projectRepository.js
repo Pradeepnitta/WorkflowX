@@ -17,18 +17,22 @@ async function organizationMembership(client, organizationId, userId) {
     return res.rows[0] || null
 }
 
-export async function createForMember({ name, description, organizationId, userId, status = 'PLANNING', visibility = 'ORGANIZATION', priority = 'MEDIUM', dueDate }) {
+export async function createForMember({ name, key, description, organizationId, userId, status = 'PLANNING', visibility = 'ORGANIZATION', priority = 'MEDIUM', dueDate }) {
     return withTransaction(async (client) => {
         const membership = await organizationMembership(client, organizationId, userId)
         if (!membership || !['ADMIN', 'MANAGER'].includes(membership.role)) throw permissionError()
 
         const id = randomUUID()
         const now = new Date()
+        const projectKey = (typeof key === 'string' && key.trim().length > 0)
+            ? key.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10)
+            : ((name || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 5).toUpperCase() || 'PROJ')
+
         const projectRes = await client.query(
-            `INSERT INTO "Project" (id, name, description, "organizationId", "createdById", status, visibility, priority, "dueDate", "createdAt", "updatedAt")
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            `INSERT INTO "Project" (id, name, "key", description, "organizationId", "createdById", status, visibility, priority, "dueDate", "createdAt", "updatedAt")
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
              RETURNING *`,
-            [id, name, description || null, organizationId, userId, status, visibility, priority, dueDate || null, now, now]
+            [id, name, projectKey, description || null, organizationId, userId, status, visibility, priority, dueDate || null, now, now]
         )
         const project = projectRes.rows[0]
 

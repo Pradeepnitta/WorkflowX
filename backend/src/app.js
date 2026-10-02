@@ -146,6 +146,14 @@ export function createApp({
         searchService,
     })
 
+    // Support requests arriving with or without '/api' prefix (e.g. from Vercel service rewrites or proxies)
+    app.use((req, res, next) => {
+        if (!req.url.startsWith('/api') && req.url !== '/' && !req.url.startsWith('/socket.io') && !req.url.startsWith('/health') && !req.url.startsWith('/test') && !req.url.startsWith('/docs')) {
+            req.url = `/api${req.url}`
+        }
+        next()
+    })
+
     app.use(router)
 
     // 404 Route Not Found
