@@ -102,7 +102,12 @@ export default function AppLayout() {
         }
         getCurrentUser()
             .then(setUser)
-            .catch(() => setUser(null))
+            .catch((err) => {
+                setUser(null)
+                if (err?.statusCode === 401) {
+                    navigate('/login', { replace: true })
+                }
+            })
         getOrganizations()
             .then((orgs) => {
                 if ((orgs?.length || 0) > 0) setOrganization(orgs[0])

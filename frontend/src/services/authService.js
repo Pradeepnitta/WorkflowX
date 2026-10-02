@@ -93,14 +93,21 @@ export function getCurrentUser() {
     return authenticatedRequest('/api/auth/me').then((me) => {
         try {
             const cached = JSON.parse(window.localStorage.getItem('workflowx_user') || '{}')
-            return {
+            const merged = {
                 ...cached,
                 ...me,
                 name: me.name || cached.name || (me.email ? me.email.split('@')[0] : 'User'),
             }
+            window.localStorage.setItem('workflowx_user', JSON.stringify(merged))
+            return merged
         } catch {
             return me
         }
+    }).catch((err) => {
+        if (err.statusCode === 401) {
+            clearSession()
+        }
+        throw err
     })
 }
 
@@ -120,7 +127,12 @@ export async function updateProfile(input) {
 
 export function authenticatedRequest(url, options = {}) {
     return request(url, { ...options, headers: { ...withAccessToken(), ...options.headers } }).catch(async (error) => {
-        if (error.statusCode !== 401 || url.startsWith('/api/auth/')) throw error
+        if (error.statusCode !== 401) throw error
+
+        if (url === '/api/auth/logout' || url === '/api/auth/refresh') {
+            clearSession()
+            throw error
+        }
 
         try {
             await refresh()
