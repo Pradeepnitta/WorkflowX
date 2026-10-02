@@ -158,6 +158,33 @@ export async function sendOtpEmail({ to, otp, expiresInMinutes = 5 }) {
     </html>
     `
 
+    // 1. Resend HTTPS API (Bypasses cloud firewall port 587/465 blocking on Render Free Tier)
+    if (process.env.RESEND_API_KEY) {
+        const from = process.env.MAIL_FROM || 'WorkFlowX <onboarding@resend.dev>'
+        try {
+            const res = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${process.env.RESEND_API_KEY.trim()}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    from,
+                    to: [to],
+                    subject: `Your WorkFlowX Verification Code: ${otp}`,
+                    html: htmlContent,
+                }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.message || 'Resend delivery failed')
+            console.log(`[MailService] Successfully dispatched via Resend HTTPS API (${data.id}) to ${to}`)
+            return { success: true, messageId: data.id }
+        } catch (err) {
+            console.error('[MailService Error] Resend API failed:', err.message)
+            throw new Error(`Resend email delivery failed: ${err.message}`)
+        }
+    }
+
     // Direct SMTP Delivery (Gmail or standard SMTP host)
     let transporter = await getTransporter()
     const fromAddress = process.env.MAIL_FROM || process.env.GMAIL_USER || '"WorkFlowX Security" <noreply@workflowx.dev>'
