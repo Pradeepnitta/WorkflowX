@@ -4,6 +4,9 @@ import { query } from '../config/db.js'
 export function createTaskController({ projectTaskService, createTask, listTasks, updateTask, deleteTask, sendJson, readBody, getIO }) {
     return {
         async listProjectTasks(request, response, user, projectId) {
+            if (!projectId || projectId === 'undefined') {
+                return sendJson(response, 200, { data: [] })
+            }
             const data = await projectTaskService.list(projectId, user.sub)
             sendJson(response, 200, { data })
         },

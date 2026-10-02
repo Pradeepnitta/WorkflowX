@@ -1,6 +1,9 @@
 export function createProjectController({ projectService, projectMemberService, sendJson, readBody, getIO }) {
     return {
         async list(request, response, user, organizationId) {
+            if (!organizationId || organizationId === 'undefined') {
+                return sendJson(response, 200, { data: [] })
+            }
             const data = await projectService.list(organizationId, user.sub)
             sendJson(response, 200, { data })
         },

@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { getOverview } from '../services/analyticsService.js'
 import { getOrganizations, getOrganizationMembers } from '../services/organizationService.js'
 import { getTasks } from '../services/taskService.js'
@@ -33,7 +33,7 @@ export default function AnalyticsPage() {
         Promise.all([
             getOverview(organizationId).catch(() => null),
             getTasks().catch(() => []),
-            getProjects().catch(() => []),
+            getProjects(organizationId).catch(() => []),
             getOrganizationMembers(organizationId).catch(() => []),
         ])
             .then(([ov, loadedTasks, loadedProjects, loadedMembers]) => {

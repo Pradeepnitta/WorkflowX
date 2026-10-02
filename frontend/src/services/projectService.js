@@ -52,7 +52,7 @@ export async function removeProjectMember(projectId, userId) {
 }
 
 export async function getProjectTasks(projectId) {
-    if (!projectId) return []
+    if (!projectId || projectId === 'undefined') return []
     const params = new URLSearchParams({ projectId })
     const data = await authenticatedRequest(`/api/projects/tasks?${params}`)
     return Array.isArray(data) ? data : data?.data || []

@@ -1,6 +1,9 @@
 export function createTeamController({ teamService, sendJson, readBody }) {
     return {
         async list(request, response, user, organizationId) {
+            if (!organizationId || organizationId === 'undefined') {
+                return sendJson(response, 200, { data: [] })
+            }
             const data = await teamService.list(organizationId, user.sub)
             sendJson(response, 200, { data })
         },

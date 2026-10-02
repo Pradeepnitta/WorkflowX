@@ -1,6 +1,9 @@
 export function createAdminController({ organizationService, sendJson, readBody }) {
     return {
         async listMembers(request, response, user, organizationId) {
+            if (!organizationId || organizationId === 'undefined' || organizationId === 'org-default') {
+                return sendJson(response, 200, { data: [] })
+            }
             const data = await organizationService.listMembers(organizationId, user.sub)
             sendJson(response, 200, { data })
         },
