@@ -45,7 +45,7 @@ export async function createTask(input) {
         const task = payload?.data || payload
         if (task && task.id) {
             const cached = getCachedTasks()
-            setCachedTasks([task, ...cached.filter((t) => t.id !== task.id)])
+            setCachedTasks([task, ...cached.filter((t) => t.id !== task.id && String(t.id) !== String(task.id))])
         }
         return task
     } catch (err) {

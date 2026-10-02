@@ -138,11 +138,16 @@ export default function DashboardOverviewPage() {
         }
     }, [activeTask])
 
-    const activeOrg = organizations.find((o) => o.id === organizationId)
+    const activeOrg = organizations.find((o) => o.id === organizationId) || organizations[0]
+    const currentMembership = useMemo(() => {
+        if (!currentUser || !members) return null
+        return members.find((m) => m.email === currentUser.email || m.userId === currentUser.id)
+    }, [currentUser, members])
     const storedRole = (typeof window !== 'undefined' ? localStorage.getItem('workflowx_registered_role') || '' : '').toUpperCase()
-    const userRole = (activeOrg?.role || currentUser?.role || storedRole || 'MEMBER').toUpperCase()
-    const isDeveloper = userRole !== 'ADMIN' && userRole !== 'MANAGER'
-    const canCreateDirectTask = !isDeveloper
+    const userRole = (currentMembership?.role || activeOrg?.role || currentUser?.role || storedRole || 'MEMBER').toUpperCase()
+    const isManager = userRole === 'MANAGER' || userRole === 'ADMIN'
+    const isDeveloper = !isManager
+    const canCreateDirectTask = isManager
 
     // Filtered tasks memo
     const visibleTasks = useMemo(() => {
@@ -245,15 +250,23 @@ export default function DashboardOverviewPage() {
     // Delete task handler
     async function handleDeleteTask(taskId, e) {
         if (e) e.stopPropagation()
-        const target = tasks.find((t) => t.id === taskId)
+        const target = tasks.find((t) => t.id === taskId || String(t.id) === String(taskId))
         if (!window.confirm(`Delete "${target?.title || 'this task'}" permanently?`)) return
         try {
             await deleteTask(taskId)
-            setTasks((prev) => prev.filter((t) => t.id !== taskId))
-            if (activeTask && activeTask.id === taskId) {
+            setTasks((prev) => {
+                const next = prev.filter((t) => t.id !== taskId && String(t.id) !== String(taskId))
+                try {
+                    localStorage.setItem('workflowx_cached_tasks', JSON.stringify(next))
+                } catch {
+                    // ignore
+                }
+                return next
+            })
+            if (activeTask && (activeTask.id === taskId || String(activeTask.id) === String(taskId))) {
                 setActiveTask(null)
             }
-            setSuccessMessage('Task deleted.')
+            setSuccessMessage('Task deleted successfully.')
         } catch (err) {
             setError(err.message || 'Failed to delete task')
         }
@@ -271,10 +284,19 @@ export default function DashboardOverviewPage() {
                 priority: newPriority,
                 project: newProject || 'General',
                 assignee: newAssignee || 'Unassigned',
-                due: newDueDate ? new Date(newDueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Next week',
+                due: newDueDate ? new Date(newDueDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Next week',
                 status: 'Todo',
             })
-            setTasks((currentTasks) => [task, ...currentTasks])
+            const normalized = { ...task, status: normalizeStatus(task.status) }
+            setTasks((currentTasks) => {
+                const updated = [normalized, ...currentTasks.filter((t) => t.id !== normalized.id && String(t.id) !== String(normalized.id))]
+                try {
+                    localStorage.setItem('workflowx_cached_tasks', JSON.stringify(updated))
+                } catch {
+                    // ignore
+                }
+                return updated
+            })
             setShowTaskForm(false)
             setNewTitle('')
             setNewDueDate('')
@@ -699,7 +721,37 @@ export default function DashboardOverviewPage() {
                                                     <span className={`priority ${priority}`} style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px' }}>
                                                         {task.priority || 'Medium'}
                                                     </span>
-                                                    <span style={{ fontSize: '11px', color: '#94a3b8', cursor: 'grab' }}>⠿</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        {canCreateDirectTask && (
+                                                            <button
+                                                                type="button"
+                                                                className="card-quick-delete"
+                                                                onClick={(e) => handleDeleteTask(task.id, e)}
+                                                                title="Delete task"
+                                                                style={{
+                                                                    background: 'transparent',
+                                                                    border: 'none',
+                                                                    color: '#94a3b8',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '13px',
+                                                                    lineHeight: 1,
+                                                                    padding: '2px 4px',
+                                                                    borderRadius: '4px',
+                                                                }}
+                                                                onMouseEnter={(e) => {
+                                                                    e.currentTarget.style.color = '#ef4444'
+                                                                    e.currentTarget.style.background = '#fef2f2'
+                                                                }}
+                                                                onMouseLeave={(e) => {
+                                                                    e.currentTarget.style.color = '#94a3b8'
+                                                                    e.currentTarget.style.background = 'transparent'
+                                                                }}
+                                                            >
+                                                                ✕
+                                                            </button>
+                                                        )}
+                                                        <span style={{ fontSize: '11px', color: '#94a3b8', cursor: 'grab' }}>⠿</span>
+                                                    </div>
                                                 </div>
 
                                                 <h3 style={{ margin: '0 0 4px', fontSize: '13px', fontWeight: 600, color: '#0f172a', lineHeight: '1.35' }}>
@@ -961,9 +1013,14 @@ export default function DashboardOverviewPage() {
                                     style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
                                 >
                                     <option value="">-- Unassigned --</option>
+                                    {currentUser && !members.some((m) => m.email === currentUser.email) && (
+                                        <option value={currentUser.email}>
+                                            {currentUser.name || currentUser.email} (Me • {currentUser.email})
+                                        </option>
+                                    )}
                                     {members.map((m) => (
-                                        <option key={m.userId} value={m.email || m.name}>
-                                            {m.name} ({m.role} • {m.email})
+                                        <option key={m.userId || m.id || m.email} value={m.email || m.name}>
+                                            {m.name || m.email} ({m.role || 'Member'} • {m.email})
                                         </option>
                                     ))}
                                 </select>
