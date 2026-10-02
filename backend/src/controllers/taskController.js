@@ -2,12 +2,29 @@ import { createNotification } from '../repositories/notificationRepository.js'
 import { query } from '../config/db.js'
 import { readTasks } from '../repositories/taskRepository.js'
 
-function isUserAssignee(u, assignee) {
-    if (!assignee || assignee === 'Unassigned') return false
+function getAssigneeUser(userRows, assignee) {
+    if (!assignee || assignee === 'Unassigned') return null
     const a = String(assignee).trim().toLowerCase()
-    const name = String(u.name || '').trim().toLowerCase()
-    const email = String(u.email || '').trim().toLowerCase()
-    return a === name || a === email || a.includes(email) || (name && a.includes(name))
+
+    // 1. Direct email match
+    const emailMatch = userRows.find((u) => {
+        const email = String(u.email || '').trim().toLowerCase()
+        return a === email || a.includes(email)
+    })
+    if (emailMatch) return emailMatch
+
+    // 2. Match by name: if multiple users share the same name, prefer MEMBER/DEVELOPER
+    const nameMatches = userRows.filter((u) => {
+        const name = String(u.name || '').trim().toLowerCase()
+        return name && (a === name || a.includes(name))
+    })
+    if (nameMatches.length === 1) return nameMatches[0]
+    if (nameMatches.length > 1) {
+        const member = nameMatches.find((u) => (u.role || '').toUpperCase() === 'MEMBER')
+        if (member) return member
+        return nameMatches[0]
+    }
+    return null
 }
 
 async function dispatchTaskNotifications({ task, previousTask = null, actor = null, io = null }) {
@@ -18,10 +35,15 @@ async function dispatchTaskNotifications({ task, previousTask = null, actor = nu
             LEFT JOIN "OrganizationMember" om ON u.id = om."userId"
         `)).rows
 
+        const targetAssignee = getAssigneeUser(userRows, task.assignee)
+        const previousAssignee = previousTask ? getAssigneeUser(userRows, previousTask.assignee) : null
+        const suggester = (task.isSuggestion || task.approvalStatus === 'PENDING') ? getAssigneeUser(userRows, task.suggestedBy) : null
+
         for (const u of userRows) {
             const role = (u.role || 'MEMBER').toUpperCase()
-            const isAssignee = isUserAssignee(u, task.assignee)
-            const wasAssignee = previousTask ? isUserAssignee(u, previousTask.assignee) : false
+            const isAssignee = Boolean(targetAssignee && u.id === targetAssignee.id)
+            const wasAssignee = Boolean(previousAssignee && u.id === previousAssignee.id)
+            const isSuggester = Boolean(suggester && u.id === suggester.id)
 
             let type = null
             let message = null
@@ -32,7 +54,7 @@ async function dispatchTaskNotifications({ task, previousTask = null, actor = nu
                     if (role === 'MANAGER' || role === 'ADMIN') {
                         type = 'TASK_PROPOSAL'
                         message = `💡 New Task Proposal from ${task.suggestedBy || 'Developer'}: "${task.title}" submitted for review`
-                    } else if (isUserAssignee(u, task.suggestedBy)) {
+                    } else if (isSuggester) {
                         type = 'TASK_PROPOSAL'
                         message = `📤 Proposal Submitted: Your task proposal "${task.title}" was submitted for manager review`
                     }
