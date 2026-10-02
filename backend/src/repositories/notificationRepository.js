@@ -45,9 +45,25 @@ export async function removeNotification({ notificationId, userId }) {
     return { count: res.rowCount }
 }
 
+export async function markUnread({ notificationId, userId }) {
+    const res = await query(
+        `UPDATE "Notification" SET "isRead" = false WHERE id = $1 AND "userId" = $2`,
+        [notificationId, userId]
+    )
+    return { count: res.rowCount }
+}
+
 export async function clearAllForUser(userId) {
     const res = await query(
         `DELETE FROM "Notification" WHERE "userId" = $1`,
+        [userId]
+    )
+    return { count: res.rowCount }
+}
+
+export async function clearReadForUser(userId) {
+    const res = await query(
+        `DELETE FROM "Notification" WHERE "userId" = $1 AND "isRead" = true`,
         [userId]
     )
     return { count: res.rowCount }

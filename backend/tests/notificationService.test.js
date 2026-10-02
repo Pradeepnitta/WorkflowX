@@ -20,3 +20,27 @@ test('notification service lists and marks user notifications', async () => {
     assert.deepEqual(result, { id: 'notification-1', isRead: true })
     assert.deepEqual(calls.map(({ method }) => method), ['list', 'read'])
 })
+
+test('notification service supports markUnread and clearRead', async () => {
+    const calls = []
+    const service = createNotificationService({
+        async markUnread(input) {
+            calls.push({ method: 'unread', ...input })
+        },
+        async clearReadForUser(userId) {
+            calls.push({ method: 'clearRead', userId })
+        },
+    })
+
+    const unreadResult = await service.markUnread('notification-1', 'user-1')
+    assert.deepEqual(unreadResult, { id: 'notification-1', isRead: false })
+
+    const clearResult = await service.clearRead('user-1')
+    assert.deepEqual(clearResult, { cleared: true })
+
+    assert.deepEqual(calls, [
+        { method: 'unread', notificationId: 'notification-1', userId: 'user-1' },
+        { method: 'clearRead', userId: 'user-1' },
+    ])
+})
+

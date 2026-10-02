@@ -16,6 +16,16 @@ export function registerNotificationRoutes({ router, notificationController }) {
         await notificationController.markRead(req, res, user, req.params.notificationId)
     })
 
+    router.patch('/api/notifications/:notificationId/unread', async (req, res) => {
+        const user = authenticateRequest(req)
+        await notificationController.markUnread(req, res, user, req.params.notificationId)
+    })
+
+    router.delete('/api/notifications/read', async (req, res) => {
+        const user = authenticateRequest(req)
+        await notificationController.clearRead(req, res, user)
+    })
+
     router.delete('/api/notifications', async (req, res) => {
         const user = authenticateRequest(req)
         await notificationController.clearAll(req, res, user)

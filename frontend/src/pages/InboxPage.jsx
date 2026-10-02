@@ -3,14 +3,16 @@ import { useNavigate } from 'react-router-dom'
 import {
     getNotifications,
     markNotificationRead,
+    markNotificationUnread,
     markAllNotificationsRead,
     deleteNotification,
+    clearReadNotifications,
     clearAllNotifications,
 } from '../services/notificationService.js'
 import { getCurrentUser } from '../services/authService.js'
 import { getOrganizations } from '../services/organizationService.js'
 import { getSocket } from '../services/socketService.js'
-import { getTasks } from '../services/taskService.js'
+import { getTasks, updateTaskStatus } from '../services/taskService.js'
 import { isTaskAssignedToUser } from './TasksPage.jsx'
 import '../App.css'
 import './InboxPage.css'
@@ -68,6 +70,7 @@ export default function InboxPage() {
     const [userRole, setUserRole] = useState('MEMBER')
     const [loading, setLoading] = useState(true)
     const [filter, setFilter] = useState('ALL')
+    const [readFilter, setReadFilter] = useState('ALL') // 'ALL' | 'UNREAD' | 'READ'
     const [q, setQ] = useState('')
     const [sel, setSel] = useState(null)
     const [toast, setToast] = useState('')
@@ -101,7 +104,7 @@ export default function InboxPage() {
                 const rawTasks = Array.isArray(loadedTasks) ? loadedTasks : loadedTasks?.data || []
                 setAssignedTasks(rawTasks)
 
-                // If developer has assigned tasks, default view to Assigned
+                // If developer has assigned tasks or unread assigned notifications, focus on Assigned tab
                 if (activeRole === 'MEMBER' && (list.some(n => getCat(n) === 'ASSIGNED' && !n.isRead) || rawTasks.some(t => isTaskAssignedToUser(t, userData)))) {
                     setFilter('ASSIGNED')
                 } else if (activeRole === 'MANAGER' && list.some(n => getCat(n) === 'REVIEW' && !n.isRead)) {
@@ -169,6 +172,20 @@ export default function InboxPage() {
         window.dispatchEvent(new CustomEvent('notification:read'))
     }
 
+    async function toggleRead(n, e) {
+        e?.stopPropagation()
+        if (n.isRead) {
+            await markNotificationUnread(n.id).catch(() => null)
+            setItems(p => p.map(x => x.id === n.id ? { ...x, isRead: false } : x))
+            flash('Notification marked as unread.')
+        } else {
+            await markNotificationRead(n.id).catch(() => null)
+            setItems(p => p.map(x => x.id === n.id ? { ...x, isRead: true } : x))
+            flash('Notification marked as read.')
+        }
+        window.dispatchEvent(new CustomEvent('notification:read'))
+    }
+
     async function markAll() {
         await markAllNotificationsRead().catch(() => null)
         setItems(p => p.map(n => ({ ...n, isRead: true })))
@@ -181,7 +198,14 @@ export default function InboxPage() {
         await deleteNotification(id).catch(() => null)
         setItems(p => p.filter(n => n.id !== id))
         if (sel === id) setSel(null)
-        flash('Message removed.')
+        flash('Notification deleted.')
+    }
+
+    async function clearRead() {
+        await clearReadNotifications().catch(() => null)
+        setItems(p => p.filter(n => !n.isRead))
+        if (selItem && selItem.isRead) setSel(null)
+        flash('Read notifications removed.')
     }
 
     async function clearAll() {
@@ -192,6 +216,29 @@ export default function InboxPage() {
         flash('Inbox cleared.')
     }
 
+    // Direct developer task action from Inbox
+    async function handleStartTask(taskId, e) {
+        e?.stopPropagation()
+        try {
+            await updateTaskStatus(taskId, 'In progress')
+            setAssignedTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'In progress' } : t))
+            flash('⚡ Task moved to In Progress!')
+        } catch (taskErr) {
+            flash(`Unable to update task: ${taskErr.message}`)
+        }
+    }
+
+    async function handleSubmitReview(taskId, e) {
+        e?.stopPropagation()
+        try {
+            await updateTaskStatus(taskId, 'Review')
+            setAssignedTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'Review' } : t))
+            flash('🔍 Task submitted for Review!')
+        } catch (taskErr) {
+            flash(`Unable to update task: ${taskErr.message}`)
+        }
+    }
+
     function open(n) {
         if (!n.isRead) markRead(n.id)
         setSel(sel === n.id ? null : n.id)
@@ -199,6 +246,16 @@ export default function InboxPage() {
 
     function goTo(n) {
         const t = ((n.type || '') + ' ' + (n.message || '')).toLowerCase()
+        const titleMatch = n.message && n.message.match(/"([^"]+)"/)
+        if (titleMatch && titleMatch[1]) {
+            const taskTitle = titleMatch[1].trim().toLowerCase()
+            const found = assignedTasks.find((at) => (at.title || '').trim().toLowerCase() === taskTitle)
+            if (found) {
+                nav(`/tasks?taskId=${found.id}`)
+                return
+            }
+        }
+
         if (t.includes('project') || t.includes('milestone')) {
             nav('/projects')
         } else if (t.includes('proposal')) {
@@ -208,7 +265,7 @@ export default function InboxPage() {
         } else if (t.includes('team') || t.includes('squad') || t.includes('roster')) {
             nav('/teams')
         } else {
-            nav('/tasks')
+            nav('/tasks?filter=mine')
         }
     }
 
@@ -233,11 +290,31 @@ export default function InboxPage() {
         const mf = filter === 'ALL'
             || (filter === 'UNREAD' && !n.isRead)
             || filter === cat
-        const mq = !q.trim() || (n.message || '').toLowerCase().includes(q.trim().toLowerCase())
-        return mf && mq
-    }), [items, filter, q])
+
+        const mrf = readFilter === 'ALL'
+            || (readFilter === 'UNREAD' && !n.isRead)
+            || (readFilter === 'READ' && n.isRead)
+
+        const term = q.trim().toLowerCase()
+        const mq = !term || (
+            (n.message || '').toLowerCase().includes(term) ||
+            (n.type || '').toLowerCase().includes(term) ||
+            cat.toLowerCase().includes(term)
+        )
+        return mf && mrf && mq
+    }), [items, filter, readFilter, q])
 
     const selItem = items.find(n => n.id === sel) || null
+
+    const matchedTaskForSel = useMemo(() => {
+        if (!selItem || !selItem.message) return null
+        const titleMatch = selItem.message.match(/"([^"]+)"/)
+        if (titleMatch && titleMatch[1]) {
+            const tTitle = titleMatch[1].trim().toLowerCase()
+            return assignedTasks.find((t) => (t.title || '').trim().toLowerCase() === tTitle) || null
+        }
+        return null
+    }, [selItem, assignedTasks])
 
     // Tailored Tabs by User Role
     const TABS = useMemo(() => {
@@ -276,7 +353,7 @@ export default function InboxPage() {
         <div className="inbox-root">
             {toast && <div className="inbox-toast" role="status">{toast}</div>}
 
-            {/* Header with Role Badge */}
+            {/* Header with Role Badge & Global Actions */}
             <div className="inbox-header">
                 <div>
                     {userRole === 'ADMIN' ? (
@@ -296,8 +373,30 @@ export default function InboxPage() {
                     </p>
                 </div>
                 <div className="inbox-header-actions">
-                    <button className="inbox-btn" onClick={markAll} disabled={counts.unread === 0}>✓ Mark All Read</button>
-                    <button className="inbox-btn inbox-btn--danger" onClick={clearAll} disabled={items.length === 0}>🗑 Clear All</button>
+                    <button
+                        className="inbox-btn"
+                        onClick={markAll}
+                        disabled={counts.unread === 0}
+                        title="Mark all notifications as read"
+                    >
+                        ✓ Mark All Read
+                    </button>
+                    <button
+                        className="inbox-btn"
+                        onClick={clearRead}
+                        disabled={items.filter(n => n.isRead).length === 0}
+                        title="Remove all read notifications from inbox"
+                    >
+                        🧹 Clean Read
+                    </button>
+                    <button
+                        className="inbox-btn inbox-btn--danger"
+                        onClick={clearAll}
+                        disabled={items.length === 0}
+                        title="Clear entire inbox history"
+                    >
+                        🗑 Clear All
+                    </button>
                 </div>
             </div>
 
@@ -351,18 +450,42 @@ export default function InboxPage() {
             <div className="inbox-body">
                 {/* List Column */}
                 <div className="inbox-list-col">
-                    {/* Search */}
-                    <div className="inbox-search">
-                        <span className="inbox-search-ico">⌕</span>
-                        <input
-                            ref={searchRef}
-                            type="text"
-                            placeholder="Filter updates, task titles, projects…"
-                            value={q}
-                            onChange={e => setQ(e.target.value)}
-                            className="inbox-search-inp"
-                        />
-                        {q && <button className="inbox-search-clr" onClick={() => { setQ(''); searchRef.current?.focus() }}>✕</button>}
+                    {/* Search & Quick Filter Controls */}
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '12px' }}>
+                        <div className="inbox-search" style={{ flex: 1, margin: 0 }}>
+                            <span className="inbox-search-ico">⌕</span>
+                            <input
+                                ref={searchRef}
+                                type="text"
+                                placeholder="Filter updates, task titles, projects…"
+                                value={q}
+                                onChange={e => setQ(e.target.value)}
+                                className="inbox-search-inp"
+                            />
+                            {q && <button className="inbox-search-clr" onClick={() => { setQ(''); searchRef.current?.focus() }}>✕</button>}
+                        </div>
+
+                        {/* Read/Unread Filter Dropdown */}
+                        <select
+                            value={readFilter}
+                            onChange={(e) => setReadFilter(e.target.value)}
+                            style={{
+                                padding: '8px 12px',
+                                fontSize: '12px',
+                                borderRadius: '8px',
+                                border: '1px solid #cbd5e1',
+                                background: readFilter !== 'ALL' ? '#eff6ff' : '#fff',
+                                color: readFilter !== 'ALL' ? '#1d4ed8' : '#334151',
+                                fontWeight: readFilter !== 'ALL' ? 700 : '500',
+                                outline: 'none',
+                                cursor: 'pointer',
+                            }}
+                            title="Filter by read status"
+                        >
+                            <option value="ALL">All Statuses</option>
+                            <option value="UNREAD">🔴 Unread Only ({counts.unread})</option>
+                            <option value="READ">✓ Read Only ({items.length - counts.unread})</option>
+                        </select>
                     </div>
 
                     {/* Tabs */}
@@ -438,6 +561,49 @@ export default function InboxPage() {
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                                                 <span style={{ fontSize: '11px', color: '#64748b' }}>Due: {t.due || 'Next week'}</span>
+                                                {t.status === 'Todo' ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => handleStartTask(t.id, e)}
+                                                        style={{
+                                                            padding: '4px 9px',
+                                                            fontSize: '11px',
+                                                            fontWeight: 700,
+                                                            background: '#eff6ff',
+                                                            color: '#1d4ed8',
+                                                            border: '1px solid #bfdbfe',
+                                                            borderRadius: '6px',
+                                                            cursor: 'pointer',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '3px',
+                                                        }}
+                                                        title="Start working on this task"
+                                                    >
+                                                        ⚡ Start
+                                                    </button>
+                                                ) : t.status === 'In progress' ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => handleSubmitReview(t.id, e)}
+                                                        style={{
+                                                            padding: '4px 9px',
+                                                            fontSize: '11px',
+                                                            fontWeight: 700,
+                                                            background: '#faf5ff',
+                                                            color: '#7c3aed',
+                                                            border: '1px solid #ddd6fe',
+                                                            borderRadius: '6px',
+                                                            cursor: 'pointer',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '3px',
+                                                        }}
+                                                        title="Submit task for review"
+                                                    >
+                                                        🔍 Review
+                                                    </button>
+                                                ) : null}
                                                 <span style={{ fontSize: '11.5px', color: '#059669', fontWeight: 700 }}>Open ➔</span>
                                             </div>
                                         </div>
@@ -492,15 +658,12 @@ export default function InboxPage() {
                                     <div className="inbox-row-acts" onClick={e => e.stopPropagation()}>
                                         <button
                                             className="inbox-row-act"
-                                            onClick={() => {
-                                                n.isRead ? setItems(p => p.map(x => x.id === n.id ? { ...x, isRead: false } : x)) : markRead(n.id)
-                                                flash(n.isRead ? 'Marked unread' : 'Marked read')
-                                            }}
-                                            title={n.isRead ? 'Mark unread' : 'Mark read'}
+                                            onClick={(e) => toggleRead(n, e)}
+                                            title={n.isRead ? 'Mark as unread' : 'Mark as read'}
                                         >
                                             {n.isRead ? '◎' : '●'}
                                         </button>
-                                        <button className="inbox-row-act del" onClick={e => del(n.id, e)} title="Delete">✕</button>
+                                        <button className="inbox-row-act del" onClick={e => del(n.id, e)} title="Delete notification">✕</button>
                                     </div>
                                 </div>
                             )
@@ -529,6 +692,54 @@ export default function InboxPage() {
                                 </div>
                                 <div className="inbox-detail-body">
                                     <p className="inbox-detail-msg">{selItem.message}</p>
+
+                                    {/* Rich matched task card if notification relates to an active task */}
+                                    {matchedTaskForSel && (
+                                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 14px', margin: '14px 0' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                                <span style={{ fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                    Associated Workspace Task
+                                                </span>
+                                                <span style={{ fontSize: '11px', padding: '2px 7px', borderRadius: '4px', background: '#eff6ff', color: '#1d4ed8', fontWeight: 700 }}>
+                                                    {matchedTaskForSel.status || 'Todo'}
+                                                </span>
+                                            </div>
+                                            <h4 style={{ margin: '0 0 6px', fontSize: '14px', color: '#0f172a' }}>{matchedTaskForSel.title}</h4>
+                                            <div style={{ display: 'flex', gap: '12px', fontSize: '12px', color: '#64748b', flexWrap: 'wrap', marginBottom: '10px' }}>
+                                                <span>📁 Project: <strong>{matchedTaskForSel.project || 'General'}</strong></span>
+                                                <span>⚡ Priority: <strong>{matchedTaskForSel.priority || 'Medium'}</strong></span>
+                                                <span>📅 Due: <strong>{matchedTaskForSel.due || 'Next week'}</strong></span>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                {matchedTaskForSel.status === 'Todo' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => handleStartTask(matchedTaskForSel.id, e)}
+                                                        style={{ padding: '6px 12px', fontSize: '11.5px', fontWeight: 700, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: '6px', cursor: 'pointer' }}
+                                                    >
+                                                        ⚡ Start Working
+                                                    </button>
+                                                )}
+                                                {matchedTaskForSel.status === 'In progress' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => handleSubmitReview(matchedTaskForSel.id, e)}
+                                                        style={{ padding: '6px 12px', fontSize: '11.5px', fontWeight: 700, background: '#faf5ff', color: '#7c3aed', border: '1px solid #ddd6fe', borderRadius: '6px', cursor: 'pointer' }}
+                                                    >
+                                                        🔍 Submit for Review
+                                                    </button>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => nav(`/tasks?taskId=${matchedTaskForSel.id}`)}
+                                                    style={{ padding: '6px 12px', fontSize: '11.5px', fontWeight: 700, background: '#f1f5f9', color: '#334151', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer' }}
+                                                >
+                                                    View on Signboard ➔
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     <div className="inbox-detail-grid">
                                         <div className="inbox-detail-row">
                                             <span className="inbox-detail-lbl">Update Category</span>
@@ -568,13 +779,9 @@ export default function InboxPage() {
                                     </button>
                                     <button
                                         className="inbox-detail-act"
-                                        onClick={() => {
-                                            selItem.isRead
-                                                ? setItems(p => p.map(x => x.id === selItem.id ? { ...x, isRead: false } : x))
-                                                : markRead(selItem.id)
-                                        }}
+                                        onClick={(e) => toggleRead(selItem, e)}
                                     >
-                                        {selItem.isRead ? 'Mark Unread' : 'Mark Read'}
+                                        {selItem.isRead ? 'Mark as Unread' : 'Mark as Read'}
                                     </button>
                                     <button className="inbox-detail-act danger" onClick={e => del(selItem.id, e)}>
                                         Delete

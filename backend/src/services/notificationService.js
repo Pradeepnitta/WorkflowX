@@ -23,6 +23,13 @@ export function createNotificationService(notificationRepository) {
             return { id: notificationId, isRead: true }
         },
 
+        async markUnread(notificationId, userId) {
+            if (!notificationId) throw serviceError('Notification is required', 400)
+            if (!userId) throw serviceError('Authentication required', 401)
+            await notificationRepository.markUnread({ notificationId, userId })
+            return { id: notificationId, isRead: false }
+        },
+
         async markAllRead(userId) {
             if (!userId) throw serviceError('Authentication required', 401)
             await notificationRepository.markAllRead(userId)
@@ -39,6 +46,12 @@ export function createNotificationService(notificationRepository) {
         async clearAll(userId) {
             if (!userId) throw serviceError('Authentication required', 401)
             await notificationRepository.clearAllForUser(userId)
+            return { cleared: true }
+        },
+
+        async clearRead(userId) {
+            if (!userId) throw serviceError('Authentication required', 401)
+            await notificationRepository.clearReadForUser(userId)
             return { cleared: true }
         },
     }
