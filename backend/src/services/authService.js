@@ -28,7 +28,11 @@ function validateCredentials(input) {
 }
 
 function publicUser(user) {
-    return { id: user.id, name: user.name, email: user.email, avatarUrl: user.avatarUrl || null }
+    let avatarUrl = user.avatarUrl || null
+    if (typeof avatarUrl === 'string' && avatarUrl.includes('images.unsplash.com')) {
+        avatarUrl = null
+    }
+    return { id: user.id, name: user.name, email: user.email, avatarUrl }
 }
 
 export function createAuthService(userRepository, refreshTokenRepository, otpService) {
