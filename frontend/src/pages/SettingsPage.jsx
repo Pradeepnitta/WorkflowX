@@ -217,11 +217,11 @@ export default function SettingsPage() {
     }
 
     async function handleLogout() {
-        if (window.confirm('Are you sure you want to sign out of WorkFlowX?')) {
-            try {
-                await logout().catch(() => null)
-            } finally {
-                navigate('/login')
+        try {
+            await logout().catch(() => null)
+        } finally {
+            if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+                window.location.href = '/login'
             }
         }
     }
@@ -1052,6 +1052,7 @@ export default function SettingsPage() {
 
                                 <div style={{ marginTop: '20px', display: 'flex', gap: '12px', alignItems: 'center' }}>
                                     <button
+                                        id="settings-signout-btn"
                                         type="button"
                                         onClick={handleLogout}
                                         style={{

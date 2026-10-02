@@ -51,8 +51,13 @@ function ProfilePage() {
     }
 
     async function handleLogout() {
-        await logout().catch(() => null)
-        navigate('/login')
+        try {
+            await logout().catch(() => null)
+        } finally {
+            if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+                window.location.href = '/login'
+            }
+        }
     }
 
     return (

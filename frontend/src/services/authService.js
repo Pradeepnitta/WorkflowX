@@ -72,13 +72,18 @@ export async function refresh() {
 
 export async function logout() {
     const refreshToken = getRefreshToken()
-    if (refreshToken) {
-        await request('/api/auth/logout', {
-            method: 'POST',
-            body: JSON.stringify({ refreshToken }),
-        })
-    }
     clearSession()
+
+    if (refreshToken) {
+        try {
+            await request('/api/auth/logout', {
+                method: 'POST',
+                body: JSON.stringify({ refreshToken }),
+            })
+        } catch {
+            // Silently ignore server error - client is already cleared
+        }
+    }
 }
 
 export function getCurrentUser() {
@@ -164,7 +169,7 @@ function saveSession(session) {
     }
 }
 
-function clearSession() {
+export function clearSession() {
     try {
         window.localStorage.removeItem(accessTokenKey)
         window.sessionStorage.removeItem(accessTokenKey)
@@ -176,13 +181,15 @@ function clearSession() {
         window.sessionStorage.removeItem('workflowx_active_role')
         window.localStorage.removeItem('workflowx_user')
         window.sessionStorage.removeItem('workflowx_user')
+        window.localStorage.removeItem('workflowx_cached_tasks')
+        window.sessionStorage.removeItem('workflowx_cached_tasks')
         window.dispatchEvent(new Event('auth-change'))
-
-        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
-            window.location.replace('/login')
-        }
     } catch {
         // storage fallback
+    }
+
+    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
+        window.location.href = '/login'
     }
 }
 

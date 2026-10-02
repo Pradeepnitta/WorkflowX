@@ -121,8 +121,13 @@ export default function AppLayout() {
     async function handleSignOut() {
         setUser(null)
         setOrganization(null)
-        await logout().catch(() => undefined)
-        navigate('/login', { replace: true })
+        try {
+            await logout().catch(() => null)
+        } finally {
+            if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+                window.location.href = '/login'
+            }
+        }
     }
 
     const currentRole = (organization?.role || localStorage.getItem('workflowx_registered_role') || 'MEMBER').toUpperCase()
@@ -234,6 +239,7 @@ export default function AppLayout() {
                     </div>
                     <button
                         id="sidebar-signout-btn"
+                        type="button"
                         className="signout-button"
                         onClick={handleSignOut}
                         style={{
@@ -249,8 +255,8 @@ export default function AppLayout() {
                             alignItems: 'center',
                             gap: '4px',
                         }}
-                        aria-label="Sign out"
-                        title="Sign out of current role"
+                        aria-label="Exit"
+                        title="Exit workspace and return to sign in"
                     >
                         <span>↪</span> Exit
                     </button>

@@ -31,7 +31,12 @@ export function createAuthController({ authService, sendJson, readBody }) {
         },
 
         async logout(request, response) {
-            const input = await readBody(request)
+            let input = {}
+            try {
+                input = (await readBody(request)) || {}
+            } catch {
+                input = {}
+            }
             const result = await authService.logout(input)
             sendJson(response, 200, { data: result })
         },
