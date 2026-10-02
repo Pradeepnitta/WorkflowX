@@ -22,14 +22,32 @@ export function registerTaskRoutes({ router, taskController }) {
     })
 
     router.post('/api/tasks', async (req, res) => {
-        await taskController.createGeneralTask(req, res)
+        let user = null
+        try {
+            user = authenticateRequest(req)
+        } catch {
+            // Optional auth fallback
+        }
+        await taskController.createGeneralTask(req, res, user)
     })
 
     router.patch('/api/tasks/:taskId', async (req, res) => {
-        await taskController.updateGeneralTask(req, res, req.params.taskId)
+        let user = null
+        try {
+            user = authenticateRequest(req)
+        } catch {
+            // Optional auth fallback
+        }
+        await taskController.updateGeneralTask(req, res, req.params.taskId, user)
     })
 
     router.delete('/api/tasks/:taskId', async (req, res) => {
-        await taskController.deleteGeneralTask(req, res, req.params.taskId)
+        let user = null
+        try {
+            user = authenticateRequest(req)
+        } catch {
+            // Optional auth fallback
+        }
+        await taskController.deleteGeneralTask(req, res, req.params.taskId, user)
     })
 }

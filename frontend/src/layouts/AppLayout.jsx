@@ -53,22 +53,15 @@ export default function AppLayout() {
         const socket = connectSocket(token)
         if (!socket) return
 
-        function handleTaskCreated(newTask) {
+        function handleNotificationNew(notif) {
+            if (!notif) return
+            // If targeted to a specific user, verify it matches the current user
+            if (notif.userId && user?.id && notif.userId !== user.id) return
             addToast({
                 id: Date.now() + Math.random(),
-                icon: '✨',
-                title: 'New Task Created',
-                message: `"${newTask.title}" added to ${newTask.project || 'workspace'}.`,
-            })
-            setUnreadCount((c) => c + 1)
-        }
-
-        function handleTaskUpdated(task) {
-            addToast({
-                id: Date.now() + Math.random(),
-                icon: '⚡',
-                title: 'Task Status Updated',
-                message: `"${task.title}" moved to ${task.status || 'updated'}.`,
+                icon: notif.type === 'TASK_ASSIGNED' ? '🎯' : notif.type === 'TASK_PROPOSAL' ? '💡' : '🔔',
+                title: notif.type === 'TASK_ASSIGNED' ? 'Task Assigned to You' : notif.type === 'TASK_PROPOSAL' ? 'Task Proposal' : 'Workspace Update',
+                message: notif.message,
             })
             setUnreadCount((c) => c + 1)
         }
@@ -83,16 +76,14 @@ export default function AppLayout() {
             setUnreadCount((c) => c + 1)
         }
 
-        socket.on('task:created', handleTaskCreated)
-        socket.on('task:updated', handleTaskUpdated)
+        socket.on('notification:new', handleNotificationNew)
         socket.on('comment:created', handleCommentCreated)
 
         return () => {
-            socket.off('task:created', handleTaskCreated)
-            socket.off('task:updated', handleTaskUpdated)
+            socket.off('notification:new', handleNotificationNew)
             socket.off('comment:created', handleCommentCreated)
         }
-    }, [authVersion])
+    }, [authVersion, user?.id])
 
     useEffect(() => {
         const token = getAccessToken()
