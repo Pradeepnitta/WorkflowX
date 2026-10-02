@@ -1,10 +1,7 @@
 const accessTokenKey = 'workflowx.accessToken'
 const refreshTokenKey = 'workflowx.refreshToken'
 
-const API_BASE = import.meta.env.VITE_API_URL || 
-    (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' 
-        ? 'https://workflowx-bcu9.onrender.com' 
-        : '')
+const API_BASE = import.meta.env.VITE_API_URL || ''
 
 async function request(url, options = {}) {
     const targetUrl = url.startsWith('http') ? url : `${API_BASE}${url}`

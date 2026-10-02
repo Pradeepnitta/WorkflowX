@@ -2,10 +2,6 @@
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "https://workflowx-bcu9.onrender.com/api/$1"
-    },
-    {
       "source": "/((?!assets/).*)",
       "destination": "/index.html"
     },
