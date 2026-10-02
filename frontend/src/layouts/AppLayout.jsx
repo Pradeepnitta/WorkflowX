@@ -4,6 +4,7 @@ import { getAccessToken, getCurrentUser, logout } from '../services/authService.
 import { getOrganizations } from '../services/organizationService.js'
 import { connectSocket, disconnectSocket } from '../services/socketService.js'
 import { getNotifications } from '../services/notificationService.js'
+import { getUserInitials } from '../constants/avatarOptions.js'
 import '../App.css'
 
 export default function AppLayout() {
@@ -156,9 +157,7 @@ export default function AppLayout() {
     const currentTitle = pathNameMap[currentPath] || 'Workspace'
 
     const displayName = user?.name || (user?.email ? user.email.split('@')[0] : 'Workspace User')
-    const userInitials = displayName
-        ? displayName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
-        : 'WU'
+    const userInitials = getUserInitials(displayName, 'WU')
 
     return (
         <div className="app-shell">

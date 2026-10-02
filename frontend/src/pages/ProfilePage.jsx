@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getCurrentUser, updateProfile, logout } from '../services/authService.js'
 import { getOrganizations } from '../services/organizationService.js'
-import { AVATAR_OPTIONS } from '../constants/avatarOptions.js'
+import { AVATAR_OPTIONS, getUserInitials } from '../constants/avatarOptions.js'
 import '../App.css'
 
 function ProfilePage() {
@@ -104,7 +104,7 @@ function ProfilePage() {
         }
     }
 
-    const initials = name?.trim() ? name.trim().slice(0, 2).toUpperCase() : profile?.name?.slice(0, 2).toUpperCase() || 'WX'
+    const initials = getUserInitials(name || profile?.name, 'WX')
 
     return (
         <main className="feature-page">

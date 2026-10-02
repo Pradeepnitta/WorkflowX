@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getCurrentUser, updateProfile, logout } from '../services/authService.js'
 import { getOrganizations } from '../services/organizationService.js'
-import { AVATAR_OPTIONS } from '../constants/avatarOptions.js'
+import { AVATAR_OPTIONS, getUserInitials } from '../constants/avatarOptions.js'
 import '../App.css'
 
 function playTestChime() {
@@ -532,7 +532,7 @@ export default function SettingsPage() {
                                         />
                                     ) : (
                                         <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#ee785e', color: '#fff', display: 'grid', placeItems: 'center', fontSize: '28px', fontWeight: '700', boxShadow: '0 4px 12px rgba(238, 120, 94, 0.25)' }}>
-                                            {name?.slice(0, 2).toUpperCase() || 'WX'}
+                                            {getUserInitials(name || user?.name || user?.email, 'WX')}
                                         </div>
                                     )}
                                     <div>

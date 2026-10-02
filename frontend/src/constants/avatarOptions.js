@@ -40,3 +40,14 @@ export const AVATAR_OPTIONS = [
         url: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=200&q=80',
     },
 ]
+
+export function getUserInitials(name, fallback = 'WX') {
+    if (!name || typeof name !== 'string') return fallback
+    const trimmed = name.trim()
+    if (!trimmed) return fallback
+    const parts = trimmed.split(/\s+/).filter(Boolean)
+    if (parts.length === 1) {
+        return parts[0].slice(0, 2).toUpperCase()
+    }
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}

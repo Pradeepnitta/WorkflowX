@@ -9,6 +9,7 @@ import {
 import { getProjects, createProject } from '../services/projectService.js'
 import { getTeams, createTeam } from '../services/teamService.js'
 import { authenticatedRequest } from '../services/authService.js'
+import { getUserInitials } from '../constants/avatarOptions.js'
 import '../App.css'
 
 const ROLES = ['ADMIN', 'MANAGER', 'MEMBER', 'VIEWER']
@@ -685,7 +686,7 @@ export default function AdminPage() {
                                                 }}
                                                 title="Click to view user profile details"
                                             >
-                                                {(m.name || m.email).slice(0, 2).toUpperCase()}
+                                                {getUserInitials(m.name || m.email, 'MB')}
                                             </div>
 
                                             <div>
@@ -1204,7 +1205,7 @@ export default function AdminPage() {
                                     fontWeight: 700,
                                 }}
                             >
-                                {(selectedUser.name || selectedUser.email).slice(0, 2).toUpperCase()}
+                                {getUserInitials(selectedUser.name || selectedUser.email, 'MB')}
                             </div>
                             <div>
                                 <strong style={{ fontSize: '16px', color: '#20222b' }}>
