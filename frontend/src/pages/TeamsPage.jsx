@@ -117,7 +117,7 @@ function inferDepartment(name, dept) {
                     const managerMember = (t.members || []).find((m) => m.user?.role === 'MANAGER' || m.user?.role === 'ADMIN')
                     const detectedLead = t.lead && t.lead !== 'Unassigned'
                         ? t.lead
-                        : (managerMember?.user?.name ? `${managerMember.user.name} (${managerMember.user.role})` : (t.members?.[0]?.user?.name || 'Rahul Sharma (Manager)'))
+                        : (managerMember?.user?.name ? `${managerMember.user.name} (${managerMember.user.role})` : (t.members?.[0]?.user?.name || 'Unassigned'))
 
                     const squadProjects = t.projects && t.projects.length > 0
                         ? t.projects
@@ -738,7 +738,7 @@ function inferDepartment(name, dept) {
                                         <span style={{ fontSize: '13px' }}>👑</span>
                                         <span style={{ color: '#6b7280' }}>Team Lead:</span>
                                         <strong style={{ color: '#111827' }}>
-                                            {highlightMatch(team.lead || 'Rahul Sharma (Manager)', searchQuery)}
+                                            {highlightMatch(team.lead || 'Unassigned', searchQuery)}
                                         </strong>
                                     </div>
 
@@ -959,7 +959,7 @@ function inferDepartment(name, dept) {
                                             </td>
 
                                             <td style={{ padding: '14px 14px', color: '#111827', fontWeight: 500 }}>
-                                                {highlightMatch(team.lead || 'Rahul Sharma (Manager)', searchQuery)}
+                                                {highlightMatch(team.lead || 'Unassigned', searchQuery)}
                                             </td>
 
                                             <td style={{ padding: '14px 14px' }}>
@@ -1365,7 +1365,7 @@ function inferDepartment(name, dept) {
                                         {detailTeam.department || 'Engineering'}
                                     </span>
                                     <span style={{ fontSize: '11px', fontWeight: 600, background: '#f3f4f6', color: '#4b5563', padding: '2px 8px', borderRadius: '12px' }}>
-                                        👑 Lead: {detailTeam.lead || 'Rahul Sharma (Manager)'}
+                                        👑 Lead: {detailTeam.lead || 'Unassigned'}
                                     </span>
                                 </div>
                                 <h2 style={{ margin: 0, fontSize: '22px', color: '#111827' }}>

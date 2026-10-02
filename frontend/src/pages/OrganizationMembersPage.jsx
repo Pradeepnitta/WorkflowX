@@ -119,6 +119,10 @@ function OrganizationMembersPage() {
             await inviteOrganizationMember(organizationId, { email, role })
             setInviteSuccess(`Invitation sent to ${email} as ${role}`)
             event.currentTarget.reset()
+            const refreshed = await getOrganizationMembers(organizationId).catch(() => null)
+            if (Array.isArray(refreshed) && refreshed.length > 0) {
+                setMembers(refreshed)
+            }
         } catch (requestError) {
             setError(requestError.message)
         } finally {

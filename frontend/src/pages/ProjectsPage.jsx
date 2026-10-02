@@ -231,12 +231,26 @@ export default function ProjectsPage() {
             if (delId) setAllTasks((prev) => prev.filter((t) => t.id !== delId && String(t.id) !== String(delId)))
         }
 
+        function handleMemberAdded(payload) {
+            if (payload?.member) {
+                const newM = payload.member
+                setOrgMembers((prev) => {
+                    if (prev.some((m) => m.userId === newM.userId || (newM.email && m.email === newM.email))) {
+                        return prev
+                    }
+                    return [...prev, newM]
+                })
+            }
+        }
+
         socket.on('project:created', handleProjectCreated)
         socket.on('project:updated', handleProjectUpdated)
         socket.on('project:deleted', handleProjectDeleted)
         socket.on('task:created', handleTaskCreated)
         socket.on('task:updated', handleTaskUpdated)
         socket.on('task:deleted', handleTaskDeleted)
+        socket.on('organization:member-added', handleMemberAdded)
+        socket.on('member:added', handleMemberAdded)
 
         return () => {
             socket.off('project:created', handleProjectCreated)
@@ -245,8 +259,21 @@ export default function ProjectsPage() {
             socket.off('task:created', handleTaskCreated)
             socket.off('task:updated', handleTaskUpdated)
             socket.off('task:deleted', handleTaskDeleted)
+            socket.off('organization:member-added', handleMemberAdded)
+            socket.off('member:added', handleMemberAdded)
         }
     }, [])
+
+    function handleOpenCreateModal() {
+        if (organizationId) {
+            getOrganizationMembers(organizationId)
+                .then((mems) => {
+                    if (Array.isArray(mems)) setOrgMembers(mems)
+                })
+                .catch(() => null)
+        }
+        setShowCreateModal(true)
+    }
 
     // Real-time task breakdown map grouped by project name
     const projectTasksMap = useMemo(() => {
@@ -638,7 +665,7 @@ export default function ProjectsPage() {
                             id="open-create-project-btn"
                             className="primary-button"
                             type="button"
-                            onClick={() => setShowCreateModal(true)}
+                            onClick={handleOpenCreateModal}
                             style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                         >
                             <span>+</span> Create Project
@@ -1466,10 +1493,6 @@ export default function ProjectsPage() {
                                             {m.name || m.email} ({m.role})
                                         </option>
                                     ))}
-                                    <option value="Rahul Sharma">Rahul Sharma (Manager)</option>
-                                    <option value="Pradeep Kumar">Pradeep Kumar (Developer)</option>
-                                    <option value="Sneha Patel">Sneha Patel (DevOps)</option>
-                                    <option value="Anil Verma">Anil Verma (Designer)</option>
                                 </select>
                             </label>
 
@@ -1658,10 +1681,6 @@ export default function ProjectsPage() {
                                             {m.name || m.email} ({m.role})
                                         </option>
                                     ))}
-                                    <option value="Rahul Sharma">Rahul Sharma (Manager)</option>
-                                    <option value="Pradeep Kumar">Pradeep Kumar (Developer)</option>
-                                    <option value="Sneha Patel">Sneha Patel (DevOps)</option>
-                                    <option value="Anil Verma">Anil Verma (Designer)</option>
                                 </select>
                             </label>
 

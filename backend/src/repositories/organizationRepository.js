@@ -47,7 +47,7 @@ export async function findMembers(organizationId) {
          ORDER BY om."joinedAt" ASC`,
         [organizationId]
     )
-    return res.rows.map((r) => ({
+    const members = res.rows.map((r) => ({
         organizationId: r.organizationId,
         userId: r.userId,
         role: r.role,
@@ -59,6 +59,38 @@ export async function findMembers(organizationId) {
             avatarUrl: r.u_avatarUrl,
         },
     }))
+
+    // Also include any pending invitations that haven't been accepted yet
+    try {
+        const invRes = await query(
+            `SELECT i.id, i.email, i.role, i."createdAt" as "joinedAt", i."organizationId"
+             FROM "Invitation" i
+             WHERE i."organizationId" = $1 AND i.status = 'PENDING'`,
+            [organizationId]
+        )
+        const existingEmails = new Set(members.map((m) => (m.user?.email || '').toLowerCase()))
+        for (const inv of invRes.rows) {
+            if (inv.email && !existingEmails.has(inv.email.toLowerCase())) {
+                existingEmails.add(inv.email.toLowerCase())
+                members.push({
+                    organizationId: inv.organizationId,
+                    userId: inv.id,
+                    role: inv.role,
+                    joinedAt: inv.joinedAt,
+                    user: {
+                        id: inv.id,
+                        name: inv.email.split('@')[0],
+                        email: inv.email,
+                        avatarUrl: null,
+                    },
+                })
+            }
+        }
+    } catch {
+        // ignore if Invitation query fails
+    }
+
+    return members
 }
 
 export async function updateMemberRole({ organizationId, targetUserId, role, adminUserId }) {
