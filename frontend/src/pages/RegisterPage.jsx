@@ -100,6 +100,10 @@ function RegisterPage() {
             }
             if (res?.otp) {
                 setFallbackOtp(res.otp)
+                setOtpCode(res.otp)
+                setTimeout(() => {
+                    handleVerifyOtp(res.otp)
+                }, 200)
             }
         } catch (err) {
             setOtpError(err.message || 'Failed to send OTP code. Please try again.')
