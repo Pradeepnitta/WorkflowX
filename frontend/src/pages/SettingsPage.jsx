@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getCurrentUser, updateProfile, logout } from '../services/authService.js'
 import { getOrganizations } from '../services/organizationService.js'
@@ -66,6 +66,48 @@ export default function SettingsPage() {
     const [name, setName] = useState('')
     const [avatarUrl, setAvatarUrl] = useState('')
     const [userRole, setUserRole] = useState('MEMBER')
+    const fileInputRef = useRef(null)
+
+    function handleFileChange(event) {
+        const file = event.target.files?.[0]
+        if (!file) return
+
+        if (!file.type.startsWith('image/')) {
+            setError('Please select an image file (PNG, JPG, WebP, etc.).')
+            return
+        }
+
+        setError('')
+        const reader = new FileReader()
+        reader.onload = (e) => {
+            const img = new Image()
+            img.onload = () => {
+                const canvas = document.createElement('canvas')
+                const maxDim = 400
+                let width = img.width
+                let height = img.height
+                if (width > height) {
+                    if (width > maxDim) {
+                        height = Math.round((height * maxDim) / width)
+                        width = maxDim
+                    }
+                } else {
+                    if (height > maxDim) {
+                        width = Math.round((width * maxDim) / height)
+                        height = maxDim
+                    }
+                }
+                canvas.width = width
+                canvas.height = height
+                const ctx = canvas.getContext('2d')
+                ctx.drawImage(img, 0, 0, width, height)
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.88)
+                setAvatarUrl(dataUrl)
+            }
+            img.src = e.target.result
+        }
+        reader.readAsDataURL(file)
+    }
 
     // App Preferences
     const [theme, setTheme] = useState(() => localStorage.getItem('workflowx_theme') || 'light')
@@ -378,14 +420,40 @@ export default function SettingsPage() {
 
                                     <div>
                                         <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
-                                            Avatar Image URL
-                                            <input
-                                                type="url"
-                                                value={avatarUrl}
-                                                onChange={(e) => setAvatarUrl(e.target.value)}
-                                                placeholder="https://images.unsplash.com/..."
-                                                style={{ padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px' }}
-                                            />
+                                            Profile Picture
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                <input
+                                                    type="text"
+                                                    value={avatarUrl}
+                                                    onChange={(e) => setAvatarUrl(e.target.value)}
+                                                    placeholder="https://... or upload photo from device"
+                                                    style={{ flex: 1, padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px' }}
+                                                />
+                                                <input
+                                                    ref={fileInputRef}
+                                                    type="file"
+                                                    accept="image/*"
+                                                    onChange={handleFileChange}
+                                                    style={{ display: 'none' }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => fileInputRef.current?.click()}
+                                                    style={{
+                                                        padding: '10px 14px',
+                                                        borderRadius: '6px',
+                                                        background: '#f1f5f9',
+                                                        border: '1px solid #cbd5e1',
+                                                        color: '#1e293b',
+                                                        fontSize: '13px',
+                                                        fontWeight: '600',
+                                                        cursor: 'pointer',
+                                                        whiteSpace: 'nowrap',
+                                                    }}
+                                                >
+                                                    📁 Upload Photo
+                                                </button>
+                                            </div>
                                         </label>
 
                                         {/* Avatar Quick Presets */}

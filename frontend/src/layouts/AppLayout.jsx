@@ -220,8 +220,23 @@ export default function AppLayout() {
                 </nav>
 
                 <div className="sidebar-footer" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 14px' }}>
-                    <div className="user-avatar" style={{ cursor: 'pointer' }} onClick={() => navigate('/profile')}>
-                        {userInitials}
+                    <div
+                        className="user-avatar"
+                        style={{ cursor: 'pointer', overflow: 'hidden', padding: 0, display: 'grid', placeItems: 'center' }}
+                        onClick={() => navigate('/profile')}
+                    >
+                        {user?.avatarUrl ? (
+                            <img
+                                src={user.avatarUrl}
+                                alt={displayName}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
+                                onError={(e) => {
+                                    e.target.style.display = 'none'
+                                }}
+                            />
+                        ) : (
+                            userInitials
+                        )}
                     </div>
                     <div style={{ cursor: 'pointer', flex: 1, minWidth: 0 }} onClick={() => navigate('/profile')}>
                         <strong style={{ display: 'block', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>

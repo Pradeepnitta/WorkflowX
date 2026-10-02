@@ -42,7 +42,20 @@ export function createAuthController({ authService, sendJson, readBody }) {
         },
 
         async me(request, response, user) {
-            sendJson(response, 200, { data: { id: user.sub, email: user.email } })
+            let profile = null
+            try {
+                if (authService.me) {
+                    profile = await authService.me(user.sub).catch(() => null)
+                }
+            } catch {
+                profile = null
+            }
+
+            if (profile) {
+                sendJson(response, 200, { data: profile })
+            } else {
+                sendJson(response, 200, { data: { id: user.sub, email: user.email } })
+            }
         },
 
         async updateProfile(request, response, user) {

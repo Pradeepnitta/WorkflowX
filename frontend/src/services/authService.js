@@ -116,6 +116,7 @@ export async function updateProfile(input) {
     try {
         const cached = JSON.parse(window.localStorage.getItem('workflowx_user') || '{}')
         window.localStorage.setItem('workflowx_user', JSON.stringify({ ...cached, ...updated }))
+        window.dispatchEvent(new Event('auth-change'))
     } catch {
         // fallback
     }

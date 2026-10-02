@@ -155,6 +155,12 @@ export function createAuthService(userRepository, refreshTokenRepository, otpSer
             return publicUser(user)
         },
 
+        async me(userId) {
+            const user = await userRepository.findById(userId)
+            if (!user) throw serviceError('User not found', 404)
+            return publicUser(user)
+        },
+
         async refresh(input) {
             if (!refreshTokenRepository || typeof input.refreshToken !== 'string') {
                 throw serviceError('Refresh token is required', 400)
