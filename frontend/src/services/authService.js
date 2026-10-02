@@ -187,10 +187,6 @@ export function clearSession() {
     } catch {
         // storage fallback
     }
-
-    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
-        window.location.href = '/login'
-    }
 }
 
 function withAccessToken() {

@@ -124,9 +124,7 @@ export default function AppLayout() {
         try {
             await logout().catch(() => null)
         } finally {
-            if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-                window.location.href = '/login'
-            }
+            navigate('/login', { replace: true })
         }
     }
 
