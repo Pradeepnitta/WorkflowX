@@ -48,11 +48,11 @@ export async function createWithAdmin({ name, description, userId, role = 'ADMIN
 
 export async function findForUser(userId) {
     const res = await query(
-        `SELECT o.*, om.role
+        `SELECT DISTINCT ON (LOWER(TRIM(o.name))) o.*, om.role
          FROM "OrganizationMember" om
          JOIN "Organization" o ON om."organizationId" = o.id
          WHERE om."userId" = $1
-         ORDER BY om."joinedAt" ASC`,
+         ORDER BY LOWER(TRIM(o.name)), om."joinedAt" ASC`,
         [userId]
     )
     return res.rows
@@ -60,12 +60,15 @@ export async function findForUser(userId) {
 
 export async function findMembers(organizationId) {
     const res = await query(
-        `SELECT om."organizationId", om."userId", om.role, om."joinedAt",
+        `SELECT DISTINCT ON (u.id)
+                om."organizationId", om."userId", om.role, om."joinedAt",
                 u.id as "u_id", u.name as "u_name", u.email as "u_email", u."avatarUrl" as "u_avatarUrl"
          FROM "OrganizationMember" om
          JOIN "User" u ON om."userId" = u.id
+         JOIN "Organization" o ON om."organizationId" = o.id
          WHERE om."organizationId" = $1
-         ORDER BY om."joinedAt" ASC`,
+            OR LOWER(TRIM(o.name)) IN (SELECT LOWER(TRIM(name)) FROM "Organization" WHERE id = $1)
+         ORDER BY u.id, om."joinedAt" ASC`,
         [organizationId]
     )
     const members = res.rows.map((r) => ({
