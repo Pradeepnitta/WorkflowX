@@ -8,6 +8,36 @@ const defaultDataFile = join(dirname(fileURLToPath(import.meta.url)), '..', 'dat
 const tmpDataFile = join(tmpdir(), 'workflowx-tasks.json')
 
 let inMemoryTasks = null
+let tableEnsured = false
+
+export async function ensureGeneralTaskTable() {
+    if (tableEnsured) return
+    try {
+        await query(`
+            CREATE TABLE IF NOT EXISTS "GeneralTask" (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                project TEXT DEFAULT 'General',
+                status TEXT DEFAULT 'Todo',
+                priority TEXT DEFAULT 'Medium',
+                assignee TEXT DEFAULT 'Unassigned',
+                due TEXT DEFAULT 'No deadline',
+                tags TEXT[] DEFAULT '{}',
+                "estimatedHours" TEXT,
+                "isSuggestion" BOOLEAN DEFAULT FALSE,
+                "approvalStatus" TEXT DEFAULT 'APPROVED',
+                "suggestedBy" TEXT,
+                "suggestionReason" TEXT,
+                "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        `)
+        tableEnsured = true
+    } catch (err) {
+        console.warn('[taskRepository] ensureGeneralTaskTable failed:', err.message)
+    }
+}
 
 async function getPreferredDataFile() {
     if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
@@ -17,11 +47,9 @@ async function getPreferredDataFile() {
 }
 
 export async function readTasks() {
-    if (inMemoryTasks) {
-        return [...inMemoryTasks]
-    }
+    await ensureGeneralTaskTable()
 
-    // 1. Try PostgreSQL persistent store on cold start
+    // 1. Query PostgreSQL persistent store first so all serverless instances have identical state
     try {
         const res = await query(`
             SELECT 
@@ -99,8 +127,8 @@ export async function readTasks() {
             inMemoryTasks = dbTasks
             return [...dbTasks]
         }
-    } catch {
-        // Fallback to in-memory / file if DB is not reachable
+    } catch (dbErr) {
+        console.warn('[taskRepository] DB query failed, falling back:', dbErr.message)
     }
 
     if (inMemoryTasks) {
@@ -126,6 +154,7 @@ export async function readTasks() {
 }
 
 export async function saveTasks(tasks) {
+    await ensureGeneralTaskTable()
     inMemoryTasks = Array.isArray(tasks) ? [...tasks] : []
     const targetFile = await getPreferredDataFile()
 
@@ -201,38 +230,43 @@ export async function saveTasks(tasks) {
 }
 
 export async function deleteTaskFromRepository(id) {
+    await ensureGeneralTaskTable()
     const targetId = String(id)
-    const tasks = await readTasks()
-    inMemoryTasks = tasks.filter((t) => String(t.id) !== targetId)
 
-    // 1. Update file cache
-    const targetFile = await getPreferredDataFile()
-    try {
-        await mkdir(dirname(targetFile), { recursive: true })
-        await writeFile(targetFile, `${JSON.stringify(inMemoryTasks, null, 2)}\n`)
-    } catch (err) {
-        if (targetFile !== tmpDataFile) {
-            try {
-                await mkdir(dirname(tmpDataFile), { recursive: true })
-                await writeFile(tmpDataFile, `${JSON.stringify(inMemoryTasks, null, 2)}\n`)
-            } catch {}
-        }
-    }
-
-    // 2. Direct PostgreSQL deletion from GeneralTask
+    // 1. Direct PostgreSQL deletion from GeneralTask
     try {
         await query(`DELETE FROM "GeneralTask" WHERE id = $1`, [targetId])
     } catch (err) {
         console.warn('[taskRepository] DELETE from GeneralTask error:', err.message)
     }
 
-    // 3. Direct PostgreSQL deletion from Task if UUID
+    // 2. Direct PostgreSQL deletion from Task if UUID
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId)
     if (isUuid) {
         try {
             await query(`DELETE FROM "Task" WHERE id = $1`, [targetId])
         } catch (err) {
             console.warn('[taskRepository] DELETE from Task error:', err.message)
+        }
+    }
+
+    // 3. Invalidate/update in-memory cache
+    if (inMemoryTasks) {
+        inMemoryTasks = inMemoryTasks.filter((t) => String(t.id) !== targetId)
+    }
+
+    // 4. Update file cache
+    const targetFile = await getPreferredDataFile()
+    try {
+        const remaining = inMemoryTasks || []
+        await mkdir(dirname(targetFile), { recursive: true })
+        await writeFile(targetFile, `${JSON.stringify(remaining, null, 2)}\n`)
+    } catch (err) {
+        if (targetFile !== tmpDataFile) {
+            try {
+                await mkdir(dirname(tmpDataFile), { recursive: true })
+                await writeFile(tmpDataFile, `${JSON.stringify(inMemoryTasks || [], null, 2)}\n`)
+            } catch {}
         }
     }
 

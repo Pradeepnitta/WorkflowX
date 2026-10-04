@@ -472,20 +472,37 @@ export default function TasksPage() {
     }
 
     async function handleDeleteTask(taskId, e) {
-        if (e) e.stopPropagation()
+        if (e) {
+            e.stopPropagation()
+            e.preventDefault()
+        }
         const target = tasks.find((t) => t.id === taskId || String(t.id) === String(taskId))
         const taskTitle = target?.title || 'this task'
         if (!window.confirm(`Are you sure you want to permanently delete "${taskTitle}"?`)) return
         setError('')
+
+        const previousTasks = [...tasks]
+        setTasks((prev) => {
+            const next = prev.filter((t) => t.id !== taskId && String(t.id) !== String(taskId))
+            try {
+                localStorage.setItem('workflowx_cached_tasks', JSON.stringify(next))
+            } catch {}
+            return next
+        })
+        if (activeTask && (activeTask.id === taskId || String(activeTask.id) === String(taskId))) {
+            setActiveTask(null)
+        }
+        setSuccessMessage(`✓ Task "${taskTitle}" was deleted successfully.`)
+
         try {
             await deleteTask(taskId)
-            setTasks((prev) => prev.filter((t) => t.id !== taskId && String(t.id) !== String(taskId)))
-            if (activeTask && (activeTask.id === taskId || String(activeTask.id) === String(taskId))) {
-                setActiveTask(null)
-            }
-            setSuccessMessage(`✓ Task "${taskTitle}" was deleted successfully.`)
         } catch (err) {
+            setTasks(previousTasks)
+            try {
+                localStorage.setItem('workflowx_cached_tasks', JSON.stringify(previousTasks))
+            } catch {}
             setError(err.message || 'Failed to delete task')
+            setSuccessMessage('')
         }
     }
 
