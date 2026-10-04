@@ -43,7 +43,8 @@ export async function listTasks(searchParams) {
 
 export async function createTask(input) {
     const title = typeof input.title === 'string' ? input.title.trim() : ''
-    const priority = input.priority || 'Medium'
+    const rawPriority = input.priority || 'Medium'
+    const priority = rawPriority.charAt(0).toUpperCase() + rawPriority.slice(1).toLowerCase()
 
     if (!title) {
         const error = new Error('Task title is required')
@@ -51,7 +52,7 @@ export async function createTask(input) {
         throw error
     }
     if (!allowedPriorities.has(priority)) {
-        const error = new Error('Priority must be Low, Medium, or High')
+        const error = new Error('Priority must be Low, Medium, High, or Critical')
         error.statusCode = 400
         throw error
     }
@@ -81,7 +82,18 @@ export async function createTask(input) {
 export async function updateTask(id, input) {
     const tasks = await readTasks()
     const targetId = String(id)
-    const index = tasks.findIndex((t) => String(t.id) === targetId)
+    let index = tasks.findIndex((t) => String(t.id) === targetId)
+
+    if (index === -1) {
+        try {
+            const res = await query(`SELECT * FROM "GeneralTask" WHERE id = $1`, [targetId])
+            if (res && res.rows && res.rows[0]) {
+                tasks.unshift(res.rows[0])
+                index = 0
+            }
+        } catch {}
+    }
+
     if (index === -1) {
         const error = new Error('Task not found')
         error.statusCode = 404
@@ -106,6 +118,44 @@ export async function updateTask(id, input) {
     }
     tasks[index] = updated
     await saveTasks(tasks)
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId)
+    if (isUuid) {
+        try {
+            const statusMap = { 'Todo': 'TODO', 'In progress': 'IN_PROGRESS', 'Review': 'IN_REVIEW', 'Done': 'COMPLETED' }
+            const priorityMap = { 'Low': 'LOW', 'Medium': 'MEDIUM', 'High': 'HIGH', 'Critical': 'URGENT' }
+            const pgStatus = statusMap[input.status] || input.status
+            const pgPriority = priorityMap[input.priority] || input.priority
+
+            const updates = []
+            const values = []
+            let paramIdx = 1
+
+            if (input.status) {
+                updates.push(`status = $${paramIdx++}`)
+                values.push(pgStatus)
+            }
+            if (input.title) {
+                updates.push(`title = $${paramIdx++}`)
+                values.push(input.title)
+            }
+            if (input.description !== undefined) {
+                updates.push(`description = $${paramIdx++}`)
+                values.push(input.description)
+            }
+            if (input.priority) {
+                updates.push(`priority = $${paramIdx++}`)
+                values.push(pgPriority)
+            }
+            if (updates.length > 0) {
+                values.push(targetId)
+                await query(`UPDATE "Task" SET ${updates.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = $${paramIdx}`, values)
+            }
+        } catch {
+            // ignore
+        }
+    }
+
     return updated
 }
 
@@ -120,10 +170,20 @@ export async function deleteTask(id) {
 
     let pgDeleted = false
     try {
-        const res = await query(`DELETE FROM "Task" WHERE id = $1`, [targetId])
+        const res = await query(`DELETE FROM "GeneralTask" WHERE id = $1`, [targetId])
         if (res && res.rowCount > 0) pgDeleted = true
     } catch {
-        // Ignore if Task table is not accessible
+        // Ignore if GeneralTask query fails
+    }
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId)
+    if (isUuid) {
+        try {
+            const res = await query(`DELETE FROM "Task" WHERE id = $1`, [targetId])
+            if (res && res.rowCount > 0) pgDeleted = true
+        } catch {
+            // Ignore if Task table delete fails
+        }
     }
 
     if (!foundInRepo && !pgDeleted) {

@@ -113,22 +113,49 @@ export default function DashboardOverviewPage() {
             function handleTaskCreated(newTask) {
                 if (!newTask) return
                 const normalized = { ...newTask, status: normalizeStatus(newTask.status) }
-                setTasks((prev) => [normalized, ...prev.filter((t) => t.id !== normalized.id)])
+                setTasks((prev) => {
+                    const next = [normalized, ...prev.filter((t) => t.id !== normalized.id && String(t.id) !== String(normalized.id))]
+                    try {
+                        localStorage.setItem('workflowx_cached_tasks', JSON.stringify(next))
+                    } catch {}
+                    return next
+                })
             }
             function handleTaskUpdated(updatedTask) {
                 if (!updatedTask) return
                 const normalized = { ...updatedTask, status: normalizeStatus(updatedTask.status) }
-                setTasks((prev) => prev.map((t) => (t.id === normalized.id ? { ...t, ...normalized } : t)))
-                if (activeTask && activeTask.id === normalized.id) {
-                    setActiveTask((prev) => ({ ...prev, ...normalized }))
-                }
+                setTasks((prev) => {
+                    const next = prev.map((t) => ((t.id === normalized.id || String(t.id) === String(normalized.id)) ? { ...t, ...normalized } : t))
+                    try {
+                        localStorage.setItem('workflowx_cached_tasks', JSON.stringify(next))
+                    } catch {}
+                    return next
+                })
+                setActiveTask((prevActive) => {
+                    if (!prevActive) return null
+                    if (prevActive.id === normalized.id || String(prevActive.id) === String(normalized.id)) {
+                        return { ...prevActive, ...normalized }
+                    }
+                    return prevActive
+                })
             }
             function handleTaskDeleted(payload) {
                 const delId = payload?.id || payload?.taskId
-                setTasks((prev) => prev.filter((t) => t.id !== delId && String(t.id) !== String(delId)))
-                if (activeTask && (activeTask.id === delId || String(activeTask.id) === String(delId))) {
-                    setActiveTask(null)
-                }
+                if (!delId) return
+                setTasks((prev) => {
+                    const next = prev.filter((t) => t.id !== delId && String(t.id) !== String(delId))
+                    try {
+                        localStorage.setItem('workflowx_cached_tasks', JSON.stringify(next))
+                    } catch {}
+                    return next
+                })
+                setActiveTask((prevActive) => {
+                    if (!prevActive) return null
+                    if (prevActive.id === delId || String(prevActive.id) === String(delId)) {
+                        return null
+                    }
+                    return prevActive
+                })
             }
 
             socket.on('task:created', handleTaskCreated)
@@ -141,7 +168,7 @@ export default function DashboardOverviewPage() {
                 socket.off('task:deleted', handleTaskDeleted)
             }
         }
-    }, [activeTask])
+    }, [])
 
     const activeOrg = organizations.find((o) => o.id === organizationId) || organizations[0]
     const currentMembership = useMemo(() => {
@@ -204,24 +231,36 @@ export default function DashboardOverviewPage() {
     }, [baseTasks, completedTasksCount])
 
     // HTML5 Drag-and-Drop Drop Handler
-    async function handleDropOnColumn(targetColumn) {
-        if (!draggedTaskId) return
-        const currentTask = tasks.find((t) => t.id === draggedTaskId)
-        if (!currentTask || currentTask.status === targetColumn) {
+    async function handleDropOnColumn(targetColumn, dropId) {
+        const taskId = dropId || draggedTaskId
+        if (!taskId) return
+        const currentTask = tasks.find((t) => t.id === taskId || String(t.id) === String(taskId))
+        if (!currentTask || normalizeStatus(currentTask.status) === targetColumn) {
             setDraggedTaskId(null)
             setDragOverColumn(null)
             return
         }
 
-        // Optimistic UI update
-        setTasks((prev) =>
-            prev.map((t) => (t.id === draggedTaskId ? { ...t, status: targetColumn } : t))
-        )
-        if (activeTask && activeTask.id === draggedTaskId) {
-            setActiveTask((prev) => ({ ...prev, status: targetColumn }))
-        }
+        const prevStatus = currentTask.status
 
-        const taskId = draggedTaskId
+        // Optimistic UI update
+        setTasks((prev) => {
+            const next = prev.map((t) =>
+                (t.id === taskId || String(t.id) === String(taskId)) ? { ...t, status: targetColumn } : t
+            )
+            try {
+                localStorage.setItem('workflowx_cached_tasks', JSON.stringify(next))
+            } catch {}
+            return next
+        })
+        setActiveTask((prev) => {
+            if (!prev) return null
+            if (prev.id === taskId || String(prev.id) === String(taskId)) {
+                return { ...prev, status: targetColumn }
+            }
+            return prev
+        })
+
         setDraggedTaskId(null)
         setDragOverColumn(null)
         setSuccessMessage(`Moved "${currentTask.title}" to ${targetColumn}.`)
@@ -230,31 +269,65 @@ export default function DashboardOverviewPage() {
             await updateTaskStatus(taskId, targetColumn)
         } catch {
             // Rollback on failure
-            setTasks((prev) =>
-                prev.map((t) => (t.id === taskId ? { ...t, status: currentTask.status } : t))
-            )
+            setTasks((prev) => {
+                const rollback = prev.map((t) =>
+                    (t.id === taskId || String(t.id) === String(taskId)) ? { ...t, status: prevStatus } : t
+                )
+                try {
+                    localStorage.setItem('workflowx_cached_tasks', JSON.stringify(rollback))
+                } catch {}
+                return rollback
+            })
+            setError(`Failed to move "${currentTask.title}". Reverted back.`)
         }
     }
 
     // Quick status change helper
     async function handleStatusChange(taskId, nextStatus) {
-        setTasks((prev) =>
-            prev.map((t) => (t.id === taskId ? { ...t, status: nextStatus } : t))
-        )
-        if (activeTask && activeTask.id === taskId) {
-            setActiveTask((prev) => ({ ...prev, status: nextStatus }))
-        }
+        const currentTask = tasks.find((t) => t.id === taskId || String(t.id) === String(taskId))
+        const prevStatus = currentTask?.status
+
+        setTasks((prev) => {
+            const next = prev.map((t) =>
+                (t.id === taskId || String(t.id) === String(taskId)) ? { ...t, status: nextStatus } : t
+            )
+            try {
+                localStorage.setItem('workflowx_cached_tasks', JSON.stringify(next))
+            } catch {}
+            return next
+        })
+        setActiveTask((prev) => {
+            if (!prev) return null
+            if (prev.id === taskId || String(prev.id) === String(taskId)) {
+                return { ...prev, status: nextStatus }
+            }
+            return prev
+        })
         setSuccessMessage(`Task updated to ${nextStatus}.`)
         try {
             await updateTaskStatus(taskId, nextStatus)
         } catch {
-            // silent rollback
+            if (prevStatus) {
+                setTasks((prev) => {
+                    const rollback = prev.map((t) =>
+                        (t.id === taskId || String(t.id) === String(taskId)) ? { ...t, status: prevStatus } : t
+                    )
+                    try {
+                        localStorage.setItem('workflowx_cached_tasks', JSON.stringify(rollback))
+                    } catch {}
+                    return rollback
+                })
+            }
+            setError(`Failed to update task to ${nextStatus}.`)
         }
     }
 
     // Delete task handler
     async function handleDeleteTask(taskId, e) {
-        if (e) e.stopPropagation()
+        if (e) {
+            e.stopPropagation()
+            e.preventDefault()
+        }
         const target = tasks.find((t) => t.id === taskId || String(t.id) === String(taskId))
         if (!window.confirm(`Delete "${target?.title || 'this task'}" permanently?`)) return
         try {
@@ -268,10 +341,14 @@ export default function DashboardOverviewPage() {
                 }
                 return next
             })
-            if (activeTask && (activeTask.id === taskId || String(activeTask.id) === String(taskId))) {
-                setActiveTask(null)
-            }
-            setSuccessMessage('Task deleted successfully.')
+            setActiveTask((prev) => {
+                if (!prev) return null
+                if (prev.id === taskId || String(prev.id) === String(taskId)) {
+                    return null
+                }
+                return prev
+            })
+            setSuccessMessage(`Task "${target?.title || 'item'}" deleted successfully.`)
         } catch (err) {
             setError(err.message || 'Failed to delete task')
         }
@@ -305,6 +382,11 @@ export default function DashboardOverviewPage() {
                 }
                 return updated
             })
+            // Reset status and project filters if needed so new task is immediately visible
+            setFilter('All tasks')
+            if (projectFilter !== 'ALL' && normalized.project && !normalized.project.toLowerCase().includes(projectFilter.toLowerCase())) {
+                setProjectFilter('ALL')
+            }
             setShowTaskForm(false)
             setNewTitle('')
             setNewDescription('')
@@ -674,6 +756,9 @@ export default function DashboardOverviewPage() {
                                     className={`kanban-column ${isDragOver ? 'drag-over' : ''}`}
                                     onDragOver={(e) => {
                                         e.preventDefault()
+                                        if (e.dataTransfer) {
+                                            e.dataTransfer.dropEffect = 'move'
+                                        }
                                         if (dragOverColumn !== column) setDragOverColumn(column)
                                     }}
                                     onDragLeave={() => {
@@ -681,7 +766,8 @@ export default function DashboardOverviewPage() {
                                     }}
                                     onDrop={(e) => {
                                         e.preventDefault()
-                                        handleDropOnColumn(column)
+                                        const droppedId = e.dataTransfer?.getData('text/plain') || draggedTaskId
+                                        handleDropOnColumn(column, droppedId)
                                     }}
                                     style={{
                                         background: isDragOver ? 'rgba(238, 120, 94, 0.08)' : '#f8fafc',
@@ -702,15 +788,22 @@ export default function DashboardOverviewPage() {
                                     </div>
 
                                     {colTasks.map((task) => {
-                                        const isDragging = draggedTaskId === task.id
+                                        const isDragging = draggedTaskId === task.id || String(draggedTaskId) === String(task.id)
                                         const priority = (task.priority || 'medium').toLowerCase()
-                                        const nextStatus = nextStatusMap[task.status]
+                                        const taskNormalizedStatus = normalizeStatus(task.status)
+                                        const nextStatus = nextStatusMap[taskNormalizedStatus]
 
                                         return (
                                             <article
                                                 key={task.id}
                                                 draggable
-                                                onDragStart={() => setDraggedTaskId(task.id)}
+                                                onDragStart={(e) => {
+                                                    setDraggedTaskId(task.id)
+                                                    if (e.dataTransfer) {
+                                                        e.dataTransfer.setData('text/plain', String(task.id))
+                                                        e.dataTransfer.effectAllowed = 'move'
+                                                    }
+                                                }}
                                                 onDragEnd={() => {
                                                     setDraggedTaskId(null)
                                                     setDragOverColumn(null)
@@ -807,17 +900,21 @@ export default function DashboardOverviewPage() {
                                                             type="button"
                                                             onClick={(e) => {
                                                                 e.stopPropagation()
+                                                                e.preventDefault()
                                                                 handleStatusChange(task.id, nextStatus)
                                                             }}
                                                             style={{
-                                                                background: '#f8fafc',
-                                                                border: '1px solid #e2e8f0',
+                                                                background: '#eff6ff',
+                                                                border: '1px solid #bfdbfe',
                                                                 borderRadius: '4px',
-                                                                padding: '1px 5px',
-                                                                fontSize: '10px',
+                                                                padding: '2px 7px',
+                                                                fontSize: '11px',
                                                                 cursor: 'pointer',
-                                                                color: '#475569',
-                                                                fontWeight: 600,
+                                                                color: '#1d4ed8',
+                                                                fontWeight: 700,
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: '3px',
                                                             }}
                                                             title={`Advance to ${nextStatus}`}
                                                         >
@@ -948,10 +1045,10 @@ export default function DashboardOverviewPage() {
                                         style={{
                                             padding: '6px 12px',
                                             fontSize: '11.5px',
-                                            fontWeight: activeTask.status === st ? '700' : '500',
-                                            background: activeTask.status === st ? '#ee785e' : '#ffffff',
-                                            color: activeTask.status === st ? '#ffffff' : '#374151',
-                                            border: activeTask.status === st ? '1px solid #ee785e' : '1px solid #cbd5e1',
+                                            fontWeight: normalizeStatus(activeTask.status) === st ? '700' : '500',
+                                            background: normalizeStatus(activeTask.status) === st ? '#ee785e' : '#ffffff',
+                                            color: normalizeStatus(activeTask.status) === st ? '#ffffff' : '#374151',
+                                            border: normalizeStatus(activeTask.status) === st ? '1px solid #ee785e' : '1px solid #cbd5e1',
                                             borderRadius: '6px',
                                             cursor: 'pointer',
                                         }}

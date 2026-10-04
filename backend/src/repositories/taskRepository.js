@@ -25,8 +25,8 @@ export async function readTasks() {
     try {
         const res = await query(`
             SELECT 
-                id, title, project, status, priority, assignee, due,
-                "isSuggestion", "approvalStatus", "suggestedBy", "suggestionReason",
+                id, title, description, project, status, priority, assignee, due,
+                tags, "estimatedHours", "isSuggestion", "approvalStatus", "suggestedBy", "suggestionReason",
                 "createdAt", "updatedAt"
             FROM "GeneralTask"
             ORDER BY "createdAt" DESC
@@ -35,11 +35,14 @@ export async function readTasks() {
             const dbTasks = res.rows.map((row) => ({
                 id: isNaN(Number(row.id)) ? row.id : Number(row.id),
                 title: row.title,
+                description: row.description || '',
                 project: row.project || 'General',
                 status: row.status || 'Todo',
                 priority: row.priority || 'Medium',
                 assignee: row.assignee || 'Unassigned',
-                due: row.due || 'Next week',
+                due: row.due || 'No deadline',
+                tags: Array.isArray(row.tags) ? row.tags : [],
+                estimatedHours: row.estimatedHours || null,
                 isSuggestion: Boolean(row.isSuggestion),
                 approvalStatus: row.approvalStatus || 'APPROVED',
                 suggestedBy: row.suggestedBy || null,
@@ -75,11 +78,14 @@ export async function readTasks() {
                             dbTasks.push({
                                 id: pt.id,
                                 title: pt.title,
+                                description: pt.description || '',
                                 project: pt.projectName || 'General',
                                 status: statusMap[pt.status] || 'Todo',
                                 priority: priorityMap[pt.priority] || 'Medium',
                                 assignee: pt.assigneeName || 'Unassigned',
-                                due: pt.dueDate ? new Date(pt.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Next week',
+                                due: pt.dueDate ? new Date(pt.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'No deadline',
+                                tags: [],
+                                estimatedHours: null,
                                 isSuggestion: false,
                                 approvalStatus: 'APPROVED',
                             })
@@ -152,17 +158,20 @@ export async function saveTasks(tasks) {
         for (const t of inMemoryTasks) {
             await query(
                 `INSERT INTO "GeneralTask" (
-                    id, title, project, status, priority, assignee, due,
+                    id, title, description, project, status, priority, assignee, due, tags, "estimatedHours",
                     "isSuggestion", "approvalStatus", "suggestedBy", "suggestionReason",
                     "updatedAt"
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, CURRENT_TIMESTAMP)
                 ON CONFLICT (id) DO UPDATE SET
                     title = EXCLUDED.title,
+                    description = EXCLUDED.description,
                     project = EXCLUDED.project,
                     status = EXCLUDED.status,
                     priority = EXCLUDED.priority,
                     assignee = EXCLUDED.assignee,
                     due = EXCLUDED.due,
+                    tags = EXCLUDED.tags,
+                    "estimatedHours" = EXCLUDED."estimatedHours",
                     "isSuggestion" = EXCLUDED."isSuggestion",
                     "approvalStatus" = EXCLUDED."approvalStatus",
                     "suggestedBy" = EXCLUDED."suggestedBy",
@@ -171,11 +180,14 @@ export async function saveTasks(tasks) {
                 [
                     String(t.id),
                     t.title || 'Untitled Task',
+                    t.description || '',
                     t.project || 'General',
                     t.status || 'Todo',
                     t.priority || 'Medium',
                     t.assignee || 'Unassigned',
-                    t.due || 'Next week',
+                    t.due || 'No deadline',
+                    Array.isArray(t.tags) ? t.tags : [],
+                    t.estimatedHours || null,
                     Boolean(t.isSuggestion),
                     t.approvalStatus || 'APPROVED',
                     t.suggestedBy || null,
