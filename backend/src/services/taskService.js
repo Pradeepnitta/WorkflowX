@@ -1,4 +1,4 @@
-import { readTasks, saveTasks } from '../repositories/taskRepository.js'
+import { readTasks, saveTasks, deleteTaskFromRepository } from '../repositories/taskRepository.js'
 import { query } from '../config/db.js'
 
 const allowedPriorities = new Set(['Low', 'Medium', 'High', 'Critical'])
@@ -160,37 +160,7 @@ export async function updateTask(id, input) {
 }
 
 export async function deleteTask(id) {
-    const tasks = await readTasks()
     const targetId = String(id)
-    const filtered = tasks.filter((t) => String(t.id) !== targetId)
-    const foundInRepo = filtered.length !== tasks.length
-    if (foundInRepo) {
-        await saveTasks(filtered)
-    }
-
-    let pgDeleted = false
-    try {
-        const res = await query(`DELETE FROM "GeneralTask" WHERE id = $1`, [targetId])
-        if (res && res.rowCount > 0) pgDeleted = true
-    } catch {
-        // Ignore if GeneralTask query fails
-    }
-
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId)
-    if (isUuid) {
-        try {
-            const res = await query(`DELETE FROM "Task" WHERE id = $1`, [targetId])
-            if (res && res.rowCount > 0) pgDeleted = true
-        } catch {
-            // Ignore if Task table delete fails
-        }
-    }
-
-    if (!foundInRepo && !pgDeleted) {
-        const error = new Error('Task not found')
-        error.statusCode = 404
-        throw error
-    }
-    return { success: true, id: targetId }
+    return await deleteTaskFromRepository(targetId)
 }
 

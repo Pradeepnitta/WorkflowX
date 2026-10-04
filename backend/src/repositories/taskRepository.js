@@ -199,3 +199,42 @@ export async function saveTasks(tasks) {
         console.warn('[taskRepository] DB sync warning:', dbErr.message)
     }
 }
+
+export async function deleteTaskFromRepository(id) {
+    const targetId = String(id)
+    const tasks = await readTasks()
+    inMemoryTasks = tasks.filter((t) => String(t.id) !== targetId)
+
+    // 1. Update file cache
+    const targetFile = await getPreferredDataFile()
+    try {
+        await mkdir(dirname(targetFile), { recursive: true })
+        await writeFile(targetFile, `${JSON.stringify(inMemoryTasks, null, 2)}\n`)
+    } catch (err) {
+        if (targetFile !== tmpDataFile) {
+            try {
+                await mkdir(dirname(tmpDataFile), { recursive: true })
+                await writeFile(tmpDataFile, `${JSON.stringify(inMemoryTasks, null, 2)}\n`)
+            } catch {}
+        }
+    }
+
+    // 2. Direct PostgreSQL deletion from GeneralTask
+    try {
+        await query(`DELETE FROM "GeneralTask" WHERE id = $1`, [targetId])
+    } catch (err) {
+        console.warn('[taskRepository] DELETE from GeneralTask error:', err.message)
+    }
+
+    // 3. Direct PostgreSQL deletion from Task if UUID
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId)
+    if (isUuid) {
+        try {
+            await query(`DELETE FROM "Task" WHERE id = $1`, [targetId])
+        } catch (err) {
+            console.warn('[taskRepository] DELETE from Task error:', err.message)
+        }
+    }
+
+    return { success: true, id: targetId }
+}

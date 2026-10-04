@@ -329,28 +329,39 @@ export default function DashboardOverviewPage() {
             e.preventDefault()
         }
         const target = tasks.find((t) => t.id === taskId || String(t.id) === String(taskId))
-        if (!window.confirm(`Delete "${target?.title || 'this task'}" permanently?`)) return
+        const taskTitle = target?.title || 'this task'
+        if (!window.confirm(`Delete "${taskTitle}" permanently?`)) return
+
+        const previousTasks = [...tasks]
+
+        // 1. Optimistic UI update: Immediately remove from board and cache
+        setTasks((prev) => {
+            const next = prev.filter((t) => t.id !== taskId && String(t.id) !== String(taskId))
+            try {
+                localStorage.setItem('workflowx_cached_tasks', JSON.stringify(next))
+            } catch {}
+            return next
+        })
+        setActiveTask((prev) => {
+            if (!prev) return null
+            if (prev.id === taskId || String(prev.id) === String(taskId)) {
+                return null
+            }
+            return prev
+        })
+        setSuccessMessage(`Task "${taskTitle}" deleted.`)
+
+        // 2. Persist delete on backend
         try {
             await deleteTask(taskId)
-            setTasks((prev) => {
-                const next = prev.filter((t) => t.id !== taskId && String(t.id) !== String(taskId))
-                try {
-                    localStorage.setItem('workflowx_cached_tasks', JSON.stringify(next))
-                } catch {
-                    // ignore
-                }
-                return next
-            })
-            setActiveTask((prev) => {
-                if (!prev) return null
-                if (prev.id === taskId || String(prev.id) === String(taskId)) {
-                    return null
-                }
-                return prev
-            })
-            setSuccessMessage(`Task "${target?.title || 'item'}" deleted successfully.`)
         } catch (err) {
-            setError(err.message || 'Failed to delete task')
+            // Rollback on failure
+            setTasks(previousTasks)
+            try {
+                localStorage.setItem('workflowx_cached_tasks', JSON.stringify(previousTasks))
+            } catch {}
+            setError(err.message || 'Failed to delete task. Reverted.')
+            setSuccessMessage('')
         }
     }
 
@@ -833,6 +844,8 @@ export default function DashboardOverviewPage() {
                                                                 type="button"
                                                                 className="card-quick-delete"
                                                                 onClick={(e) => handleDeleteTask(task.id, e)}
+                                                                onMouseDown={(e) => e.stopPropagation()}
+                                                                onMouseUp={(e) => e.stopPropagation()}
                                                                 title="Delete task"
                                                                 style={{
                                                                     background: 'transparent',

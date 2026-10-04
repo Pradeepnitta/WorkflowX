@@ -23,13 +23,8 @@ export async function getTasks() {
     try {
         const payload = await authenticatedRequest('/api/tasks')
         const tasks = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : []
-        if (tasks && tasks.length > 0) {
-            setCachedTasks(tasks)
-            return tasks
-        }
-        // If server returns empty list, also check if cached tasks exist to avoid flickering
-        const cached = getCachedTasks()
-        return cached.length > 0 ? cached : tasks
+        setCachedTasks(tasks)
+        return tasks
     } catch (err) {
         console.warn('[TaskService] getTasks error, using cached fallback:', err.message)
         return getCachedTasks()
