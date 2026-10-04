@@ -48,12 +48,17 @@ export default function DashboardOverviewPage() {
     const [activeTask, setActiveTask] = useState(null)
     const [isCreating, setIsCreating] = useState(false)
 
-    // Form inputs for new task modal
+    // Form inputs for new task modal (full options)
     const [newTitle, setNewTitle] = useState('')
+    const [newDescription, setNewDescription] = useState('')
     const [newProject, setNewProject] = useState('General')
+    const [newStatus, setNewStatus] = useState('Todo')
     const [newPriority, setNewPriority] = useState('High')
     const [newAssignee, setNewAssignee] = useState('')
     const [newDueDate, setNewDueDate] = useState('')
+    const [noDeadline, setNoDeadline] = useState(true)
+    const [newTags, setNewTags] = useState('')
+    const [newEstimatedHours, setNewEstimatedHours] = useState('')
 
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState('')
@@ -281,11 +286,14 @@ export default function DashboardOverviewPage() {
         try {
             const task = await createTaskRequest({
                 title: newTitle.trim(),
+                description: newDescription.trim(),
                 priority: newPriority,
+                status: newStatus || 'Todo',
                 project: newProject || 'General',
                 assignee: newAssignee || 'Unassigned',
-                due: newDueDate ? new Date(newDueDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Next week',
-                status: 'Todo',
+                due: (!noDeadline && newDueDate) ? new Date(newDueDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'No deadline',
+                tags: newTags ? newTags.split(',').map((t) => t.trim()).filter(Boolean) : [],
+                estimatedHours: newEstimatedHours.trim() || null,
             })
             const normalized = { ...task, status: normalizeStatus(task.status) }
             setTasks((currentTasks) => {
@@ -299,7 +307,12 @@ export default function DashboardOverviewPage() {
             })
             setShowTaskForm(false)
             setNewTitle('')
+            setNewDescription('')
             setNewDueDate('')
+            setNoDeadline(true)
+            setNewStatus('Todo')
+            setNewTags('')
+            setNewEstimatedHours('')
             setSuccessMessage(`✓ Task "${task.title}" created successfully!`)
         } catch (err) {
             setError(err.message || 'Failed to create task. Please try again.')
@@ -758,16 +771,35 @@ export default function DashboardOverviewPage() {
                                                     {task.title}
                                                 </h3>
 
-                                                <p className="task-project" style={{ margin: '0 0 8px', fontSize: '11px', color: '#64748b' }}>
-                                                    📁 {task.project || 'General'}
-                                                </p>
+                                                {task.description && (
+                                                    <p style={{ margin: '0 0 6px', fontSize: '11.5px', color: '#64748b', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: '1.35' }}>
+                                                        {task.description}
+                                                    </p>
+                                                )}
+
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                                                    <p className="task-project" style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>
+                                                        📁 {task.project || 'General'}
+                                                    </p>
+                                                    {task.tags && task.tags.length > 0 && (
+                                                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                                            {task.tags.map((tg, i) => (
+                                                                <span key={i} style={{ fontSize: '9px', background: '#f1f5f9', color: '#475569', padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
+                                                                    #{tg}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
 
                                                 <div className="task-meta" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '6px', borderTop: '1px solid #f1f5f9', fontSize: '10.5px' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                                                         <span className="mini-avatar" style={{ fontSize: '9.5px', padding: '2px 5px', background: '#eff6ff', color: '#1d4ed8', borderRadius: '4px', fontWeight: 700 }}>
                                                             {task.assignee ? task.assignee.slice(0, 2).toUpperCase() : 'ME'}
                                                         </span>
-                                                        <span style={{ color: '#94a3b8' }}>{task.due || 'Next week'}</span>
+                                                        <span style={{ color: task.due && task.due !== 'No deadline' ? '#475569' : '#94a3b8', fontSize: '10px' }}>
+                                                            {task.due && task.due !== 'No deadline' ? `📅 ${task.due}` : '📅 No deadline'}
+                                                        </span>
                                                     </div>
 
                                                     {nextStatus && (
@@ -845,7 +877,7 @@ export default function DashboardOverviewPage() {
                                             {task.status}
                                         </span>
                                         <small style={{ display: 'block', color: '#94a3b8', fontSize: '10.5px', marginTop: '2px' }}>
-                                            Project: {task.project || 'General'} • Due: {task.due || 'Next week'}
+                                            Project: {task.project || 'General'} • Due: {task.due && task.due !== 'No deadline' ? task.due : 'No deadline'}
                                         </small>
                                     </p>
                                 </div>
@@ -879,11 +911,28 @@ export default function DashboardOverviewPage() {
                                 </span>
                                 <h2 style={{ margin: '6px 0 0', fontSize: '18px' }}>{activeTask.title}</h2>
                                 <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>
-                                    Project: <b>{activeTask.project || 'General'}</b> • Assignee: <b>{activeTask.assignee || 'Unassigned'}</b>
+                                    Project: <b>{activeTask.project || 'General'}</b> • Assignee: <b>{activeTask.assignee || 'Unassigned'}</b> • Due: <b>{activeTask.due && activeTask.due !== 'No deadline' ? activeTask.due : 'No deadline'}</b>
                                 </p>
                             </div>
                             <button type="button" className="close-button" onClick={() => setActiveTask(null)}>×</button>
                         </div>
+
+                        {activeTask.description && (
+                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 14px', marginBottom: '14px', fontSize: '12.5px', color: '#334155', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                                <strong style={{ fontSize: '10.5px', textTransform: 'uppercase', color: '#64748b', display: 'block', marginBottom: '4px' }}>Description & Scope</strong>
+                                {activeTask.description}
+                            </div>
+                        )}
+
+                        {activeTask.tags && activeTask.tags.length > 0 && (
+                            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                                {activeTask.tags.map((tg, i) => (
+                                    <span key={i} style={{ fontSize: '10px', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                                        #{tg}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
 
                         {/* Status advancement buttons */}
                         <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', marginBottom: '16px' }}>
@@ -941,18 +990,20 @@ export default function DashboardOverviewPage() {
                 </div>
             )}
 
-            {/* Modal: Full-Featured Task Creation */}
+            {/* Modal: Full-Featured Task Creation (Manager Command Center) */}
             {showTaskForm && (
                 <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setShowTaskForm(false)}>
-                    <form className="task-form" onSubmit={handleCreateTask} style={{ width: 'min(100%, 520px)' }}>
-                        <div className="modal-heading">
+                    <form className="task-form" onSubmit={handleCreateTask} style={{ width: 'min(100%, 580px)', maxHeight: '90vh', overflowY: 'auto' }}>
+                        <div className="modal-heading" style={{ marginBottom: '16px' }}>
                             <div>
-                                <p className="eyebrow" style={{ color: '#ee785e' }}>Quick Add</p>
-                                <h2 style={{ margin: '4px 0 0', fontSize: '18px' }}>Create New Task</h2>
+                                <p className="eyebrow" style={{ color: '#ee785e', margin: 0 }}>Manager Planning</p>
+                                <h2 style={{ margin: '4px 0 0', fontSize: '18px', color: '#0f172a' }}>Create & Assign Task</h2>
+                                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>Configure complete initiative details with full scheduling and workflow parameters.</p>
                             </div>
                             <button type="button" className="close-button" onClick={() => setShowTaskForm(false)} aria-label="Close">×</button>
                         </div>
 
+                        {/* Title */}
                         <div className="task-field-group" style={{ marginBottom: '14px' }}>
                             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
                                 Task Title <span style={{ color: '#ee785e' }}>*</span>
@@ -961,13 +1012,28 @@ export default function DashboardOverviewPage() {
                                 value={newTitle}
                                 onChange={(e) => setNewTitle(e.target.value)}
                                 required
-                                placeholder="e.g. Set up OAuth2 Authentication"
+                                placeholder="e.g. Set up OAuth2 Authentication & Session Flow"
                                 autoFocus
-                                style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                                style={{ width: '100%', padding: '9px 12px', borderRadius: '7px', border: '1px solid #cbd5e1', fontSize: '13px' }}
                             />
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '14px' }}>
+                        {/* Description */}
+                        <div className="task-field-group" style={{ marginBottom: '14px' }}>
+                            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                                Description & Technical Scope <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 400 }}>(Optional)</span>
+                            </label>
+                            <textarea
+                                value={newDescription}
+                                onChange={(e) => setNewDescription(e.target.value)}
+                                rows={3}
+                                placeholder="Outline functional requirements, acceptance criteria, or implementation guidance..."
+                                style={{ width: '100%', padding: '8px 12px', borderRadius: '7px', border: '1px solid #cbd5e1', fontSize: '12.5px', resize: 'vertical', fontFamily: 'inherit' }}
+                            />
+                        </div>
+
+                        {/* Project, Stage, and Priority Row */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginBottom: '14px' }}>
                             <div className="task-field-group">
                                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
                                     Project Workspace
@@ -981,6 +1047,22 @@ export default function DashboardOverviewPage() {
                                     {projects.map((p) => (
                                         <option key={p.id || p.name} value={p.name}>{p.name}</option>
                                     ))}
+                                </select>
+                            </div>
+
+                            <div className="task-field-group">
+                                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                                    Initial Stage
+                                </label>
+                                <select
+                                    value={newStatus}
+                                    onChange={(e) => setNewStatus(e.target.value)}
+                                    style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+                                >
+                                    <option value="Todo">◌ Todo</option>
+                                    <option value="In progress">⚡ In progress</option>
+                                    <option value="Review">◎ Review</option>
+                                    <option value="Done">✓ Completed</option>
                                 </select>
                             </div>
 
@@ -1002,7 +1084,8 @@ export default function DashboardOverviewPage() {
                             </div>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '18px' }}>
+                        {/* Assignee and Deadline Row */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '14px' }}>
                             <div className="task-field-group">
                                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
                                     Assignee
@@ -1027,20 +1110,122 @@ export default function DashboardOverviewPage() {
                             </div>
 
                             <div className="task-field-group">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                    <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>
+                                        Deadline
+                                    </label>
+                                    <label style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: noDeadline ? '#2563eb' : '#64748b', fontWeight: noDeadline ? 600 : 400 }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={noDeadline}
+                                            onChange={(e) => {
+                                                const checked = e.target.checked
+                                                setNoDeadline(checked)
+                                                if (checked) setNewDueDate('')
+                                            }}
+                                            style={{ cursor: 'pointer' }}
+                                        />
+                                        No deadline
+                                    </label>
+                                </div>
+                                {noDeadline ? (
+                                    <div
+                                        onClick={() => setNoDeadline(false)}
+                                        style={{
+                                            padding: '7px 10px',
+                                            borderRadius: '6px',
+                                            border: '1px dashed #cbd5e1',
+                                            background: '#f8fafc',
+                                            fontSize: '12px',
+                                            color: '#64748b',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                        }}
+                                        title="Click to set a target deadline"
+                                    >
+                                        <span>📅 No deadline assigned</span>
+                                        <span style={{ fontSize: '11px', color: '#2563eb', fontWeight: 600 }}>+ Add date</span>
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                        <input
+                                            type="date"
+                                            value={newDueDate}
+                                            min={new Date().toISOString().split('T')[0]}
+                                            onChange={(e) => setNewDueDate(e.target.value)}
+                                            style={{ flex: 1, padding: '7px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setNoDeadline(true)
+                                                setNewDueDate('')
+                                            }}
+                                            style={{ padding: '6px 8px', fontSize: '11px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', color: '#64748b' }}
+                                            title="Clear deadline"
+                                        >
+                                            Clear
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Tags and Effort Estimation Row */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '18px' }}>
+                            <div className="task-field-group">
                                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
-                                    Due Date
+                                    Tags / Category
                                 </label>
                                 <input
-                                    type="date"
-                                    value={newDueDate}
-                                    min={new Date().toISOString().split('T')[0]}
-                                    onChange={(e) => setNewDueDate(e.target.value)}
+                                    value={newTags}
+                                    onChange={(e) => setNewTags(e.target.value)}
+                                    placeholder="e.g. Frontend, Auth, Security"
+                                    style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+                                />
+                                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '5px' }}>
+                                    {['Frontend', 'Backend', 'Bug', 'Feature', 'API', 'UI/UX'].map((tag) => (
+                                        <button
+                                            key={tag}
+                                            type="button"
+                                            onClick={() => {
+                                                const existing = newTags ? newTags.split(',').map((t) => t.trim()) : []
+                                                if (!existing.includes(tag)) {
+                                                    setNewTags(existing.length > 0 ? `${newTags}, ${tag}` : tag)
+                                                }
+                                            }}
+                                            style={{
+                                                fontSize: '10px',
+                                                padding: '1px 6px',
+                                                borderRadius: '10px',
+                                                border: '1px solid #e2e8f0',
+                                                background: '#f8fafc',
+                                                color: '#475569',
+                                                cursor: 'pointer',
+                                            }}
+                                        >
+                                            +{tag}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="task-field-group">
+                                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                                    Estimated Effort
+                                </label>
+                                <input
+                                    value={newEstimatedHours}
+                                    onChange={(e) => setNewEstimatedHours(e.target.value)}
+                                    placeholder="e.g. 4 hrs, 2 days, 3 pts"
                                     style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
                                 />
                             </div>
                         </div>
 
-                        <div className="form-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                        <div className="form-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
                             <button type="button" className="secondary-button" onClick={() => setShowTaskForm(false)}>
                                 Cancel
                             </button>
