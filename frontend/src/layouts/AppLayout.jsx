@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { getAccessToken, getCurrentUser, logout } from '../services/authService.js'
 import { getOrganizations } from '../services/organizationService.js'
-import { connectSocket, disconnectSocket } from '../services/socketService.js'
+import { connectSocket } from '../services/socketService.js'
 import { getNotifications } from '../services/notificationService.js'
 import { getUserInitials } from '../constants/avatarOptions.js'
 import '../App.css'
@@ -426,4 +426,3 @@ export default function AppLayout() {
         </div>
     )
 }
-
