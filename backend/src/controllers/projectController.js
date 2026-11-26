@@ -24,7 +24,12 @@ export function createProjectController({ projectService, projectMemberService, 
             }
             const data = await projectService.create(input, user.sub)
             const io = getIO ? getIO() : null
-            if (io) io.emit('project:created', data)
+            if (io) {
+                const room = data.visibility === 'MEMBERS_ONLY'
+                    ? `user:${user.sub}`
+                    : `organization:${data.organizationId}`
+                io.to(room).emit('project:created', data)
+            }
             sendJson(response, 201, { data })
         },
 
@@ -32,14 +37,14 @@ export function createProjectController({ projectService, projectMemberService, 
             const input = await readBody(request)
             const data = await projectService.update(projectId, input, user.sub)
             const io = getIO ? getIO() : null
-            if (io) io.emit('project:updated', data)
+            if (io) io.to(`project:${projectId}`).emit('project:updated', data)
             sendJson(response, 200, { data })
         },
 
         async remove(request, response, user, projectId) {
             const data = await projectService.remove(projectId, user.sub)
             const io = getIO ? getIO() : null
-            if (io) io.emit('project:deleted', { id: projectId })
+            if (io) io.to(`project:${projectId}`).emit('project:deleted', { id: projectId })
             sendJson(response, 200, { data })
         },
 
@@ -52,14 +57,20 @@ export function createProjectController({ projectService, projectMemberService, 
             const input = await readBody(request)
             const data = await projectMemberService.add(projectId, input.userId, user.sub)
             const io = getIO ? getIO() : null
-            if (io) io.emit('project:member_added', { projectId, member: data })
+            if (io) {
+                io.to(`project:${projectId}`).emit('project:member_added', { projectId, member: data })
+                io.to(`user:${data.userId}`).emit('project:member_added', { projectId, member: data })
+            }
             sendJson(response, 201, { data })
         },
 
         async removeMember(request, response, user, projectId, userId) {
             const data = await projectMemberService.remove(projectId, userId, user.sub)
             const io = getIO ? getIO() : null
-            if (io) io.emit('project:member_removed', { projectId, userId })
+            if (io) {
+                io.to(`project:${projectId}`).emit('project:member_removed', { projectId, userId })
+                io.to(`user:${userId}`).emit('project:member_removed', { projectId, userId })
+            }
             sendJson(response, 200, { data })
         },
     }

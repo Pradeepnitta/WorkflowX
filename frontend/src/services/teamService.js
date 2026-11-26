@@ -15,6 +15,14 @@ export async function createTeam(input) {
     return data?.data || data
 }
 
+export async function updateTeam(teamId, input) {
+    const data = await authenticatedRequest(`/api/teams/${teamId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+    })
+    return data?.data || data
+}
+
 export async function addTeamMember(teamId, userId) {
     const data = await authenticatedRequest(`/api/teams/${teamId}/members`, {
         method: 'POST',

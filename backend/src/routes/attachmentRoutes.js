@@ -8,13 +8,13 @@ export function registerAttachmentRoutes({ router, attachmentController, comment
         })
 
         router.get('/api/projects/tasks/:taskId/attachments', async (req, res) => {
-            authenticateRequest(req)
-            await attachmentController.listAttachments(req, res, req.params.taskId)
+            const user = authenticateRequest(req)
+            await attachmentController.listAttachments(req, res, user, req.params.taskId)
         })
 
         router.delete('/api/attachments/:attachmentId', async (req, res) => {
-            authenticateRequest(req)
-            await attachmentController.removeAttachment(req, res, req.params.attachmentId)
+            const user = authenticateRequest(req)
+            await attachmentController.removeAttachment(req, res, user, req.params.attachmentId)
         })
     }
 

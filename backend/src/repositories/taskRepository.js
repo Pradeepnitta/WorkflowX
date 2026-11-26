@@ -77,53 +77,6 @@ export async function readTasks() {
                 suggestionReason: row.suggestionReason || null,
             }))
 
-            // Also join any tasks from the "Task" table if present
-            try {
-                const projectTasksRes = await query(`
-                    SELECT 
-                        t.id, t.title, t.description, t.status, t.priority,
-                        t."dueDate", p.name as "projectName", u.name as "assigneeName"
-                    FROM "Task" t
-                    LEFT JOIN "Project" p ON t."projectId" = p.id
-                    LEFT JOIN "User" u ON t."assigneeId" = u.id
-                    ORDER BY t."createdAt" DESC
-                `)
-                if (projectTasksRes && projectTasksRes.rows) {
-                    const statusMap = {
-                        TODO: 'Todo',
-                        IN_PROGRESS: 'In progress',
-                        IN_REVIEW: 'Review',
-                        COMPLETED: 'Done',
-                    }
-                    const priorityMap = {
-                        LOW: 'Low',
-                        MEDIUM: 'Medium',
-                        HIGH: 'High',
-                        URGENT: 'Critical',
-                    }
-                    for (const pt of projectTasksRes.rows) {
-                        if (!dbTasks.some((t) => String(t.id) === String(pt.id))) {
-                            dbTasks.push({
-                                id: pt.id,
-                                title: pt.title,
-                                description: pt.description || '',
-                                project: pt.projectName || 'General',
-                                status: statusMap[pt.status] || 'Todo',
-                                priority: priorityMap[pt.priority] || 'Medium',
-                                assignee: pt.assigneeName || 'Unassigned',
-                                due: pt.dueDate ? new Date(pt.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'No deadline',
-                                tags: [],
-                                estimatedHours: null,
-                                isSuggestion: false,
-                                approvalStatus: 'APPROVED',
-                            })
-                        }
-                    }
-                }
-            } catch {
-                // Ignore Project Task join if table is empty or different
-            }
-
             inMemoryTasks = dbTasks
             return [...dbTasks]
         }
@@ -240,17 +193,7 @@ export async function deleteTaskFromRepository(id) {
         console.warn('[taskRepository] DELETE from GeneralTask error:', err.message)
     }
 
-    // 2. Direct PostgreSQL deletion from Task if UUID
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId)
-    if (isUuid) {
-        try {
-            await query(`DELETE FROM "Task" WHERE id = $1`, [targetId])
-        } catch (err) {
-            console.warn('[taskRepository] DELETE from Task error:', err.message)
-        }
-    }
-
-    // 3. Invalidate/update in-memory cache
+    // Invalidate/update in-memory cache
     if (inMemoryTasks) {
         inMemoryTasks = inMemoryTasks.filter((t) => String(t.id) !== targetId)
     }

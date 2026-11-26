@@ -14,6 +14,12 @@ export function createTeamController({ teamService, sendJson, readBody }) {
             sendJson(response, 201, { data })
         },
 
+        async update(request, response, user, teamId) {
+            const input = await readBody(request)
+            const data = await teamService.update(teamId, input, user.sub)
+            sendJson(response, 200, { data })
+        },
+
         async addMember(request, response, user, teamId) {
             const input = await readBody(request)
             const data = await teamService.addMember(teamId, input.userId, user.sub)

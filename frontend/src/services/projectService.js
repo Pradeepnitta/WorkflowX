@@ -74,3 +74,49 @@ export async function updateProjectTask(taskId, input) {
     return data?.data || data
 }
 
+export async function deleteProjectTask(taskId) {
+    const data = await authenticatedRequest(`/api/projects/tasks/${taskId}`, {
+        method: 'DELETE',
+    })
+    return data?.data || data
+}
+
+export async function submitProjectTaskForReview(taskId, submissionDetails) {
+    const data = await authenticatedRequest(`/api/projects/tasks/${taskId}/review`, {
+        method: 'POST',
+        body: JSON.stringify({ submissionDetails }),
+    })
+    return data?.data || data
+}
+
+export async function reviewProjectTask(taskId, action, feedback) {
+    const data = await authenticatedRequest(`/api/projects/tasks/${taskId}/reviews`, {
+        method: 'POST',
+        body: JSON.stringify({ action, feedback }),
+    })
+    return data?.data || data
+}
+
+export async function getProjectTaskReviews(taskId) {
+    const data = await authenticatedRequest(`/api/projects/tasks/${taskId}/reviews`)
+    return Array.isArray(data) ? data : data?.data || []
+}
+
+export async function getProjectTaskComments(taskId) {
+    const data = await authenticatedRequest(`/api/projects/tasks/${taskId}/comments`)
+    return Array.isArray(data) ? data : data?.data || []
+}
+
+export async function createProjectTaskComment(taskId, content, parentId) {
+    const data = await authenticatedRequest(`/api/projects/tasks/${taskId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ content, parentId }),
+    })
+    return data?.data || data
+}
+
+export async function getProjectTaskAttachments(taskId) {
+    const data = await authenticatedRequest(`/api/projects/tasks/${taskId}/attachments`)
+    return Array.isArray(data) ? data : data?.data || []
+}
+

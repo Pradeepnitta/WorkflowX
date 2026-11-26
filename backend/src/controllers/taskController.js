@@ -2,6 +2,24 @@ import { createNotification } from '../repositories/notificationRepository.js'
 import { query } from '../config/db.js'
 import { readTasks } from '../repositories/taskRepository.js'
 
+function taskOwnerEmail(user) {
+    const email = typeof user?.email === 'string' ? user.email.trim().toLowerCase() : ''
+    if (!user?.sub || !email) {
+        const error = new Error('Authenticated user email is required')
+        error.statusCode = 401
+        throw error
+    }
+    return email
+}
+
+function assertTaskOwner(task, email) {
+    if (!task || String(task.assignee || '').trim().toLowerCase() !== email) {
+        const error = new Error('Task not found')
+        error.statusCode = 404
+        throw error
+    }
+}
+
 function getAssigneeUser(userRows, assignee) {
     if (!assignee || assignee === 'Unassigned') return null
     const a = String(assignee).trim().toLowerCase()
@@ -142,7 +160,7 @@ async function dispatchTaskNotifications({ task, previousTask = null, actor = nu
                         message,
                     })
                     if (io) {
-                        io.emit('notification:new', notif)
+                        io.to(`user:${u.id}`).emit('notification:new', notif)
                     }
                 } catch {
                     // Skip single user failure safely
@@ -167,55 +185,84 @@ export function createTaskController({ projectTaskService, createTask, listTasks
         async createProjectTask(request, response, user) {
             const input = await readBody(request)
             const data = await projectTaskService.create(input, user.sub)
-            const io = getIO ? getIO() : null
-            if (io) io.emit('task:created', data)
-
-            await dispatchTaskNotifications({ task: data, actor: user, io })
             sendJson(response, 201, { data })
         },
 
         async updateProjectTask(request, response, user, taskId) {
             const input = await readBody(request)
             const data = await projectTaskService.update(taskId, input, user.sub)
-            const io = getIO ? getIO() : null
-            if (io) io.emit('task:updated', data)
-
-            await dispatchTaskNotifications({ task: data, actor: user, io })
             sendJson(response, 200, { data })
         },
 
-        async listGeneralTasks(request, response, searchParams) {
-            const data = await listTasks(searchParams)
+        async deleteProjectTask(request, response, user, taskId) {
+            const data = await projectTaskService.remove(taskId, user.sub)
+            sendJson(response, 200, { data })
+        },
+
+        async submitProjectTaskForReview(request, response, user, taskId) {
+            const input = await readBody(request)
+            const data = await projectTaskService.submitForReview(taskId, input, user.sub)
+            sendJson(response, 200, { data })
+        },
+
+        async reviewProjectTask(request, response, user, taskId) {
+            const input = await readBody(request)
+            const data = await projectTaskService.review(taskId, input, user.sub)
+            sendJson(response, 200, { data })
+        },
+
+        async listProjectTaskReviews(request, response, user, taskId) {
+            const data = await projectTaskService.reviews(taskId, user.sub)
+            sendJson(response, 200, { data })
+        },
+
+        async listGeneralTasks(request, response, searchParams, user) {
+            const email = taskOwnerEmail(user)
+            const data = await listTasks(searchParams, email)
             sendJson(response, 200, data)
         },
 
-        async createGeneralTask(request, response, user = null) {
+        async createGeneralTask(request, response, user) {
+            const email = taskOwnerEmail(user)
             const input = await readBody(request)
-            const data = await createTask(input)
+            const requestedAssignee = String(input.assignee || '').trim().toLowerCase()
+            if (requestedAssignee && requestedAssignee !== 'unassigned' && requestedAssignee !== email) {
+                const error = new Error('General tasks can only be assigned to the authenticated user')
+                error.statusCode = 403
+                throw error
+            }
+            const data = await createTask({ ...input, assignee: email })
             const io = getIO ? getIO() : null
-            if (io) io.emit('task:created', data)
-
-            await dispatchTaskNotifications({ task: data, actor: user, io })
+            if (io) io.to(`user:${user.sub}`).emit('task:created', data)
             sendJson(response, 201, { data })
         },
 
-        async updateGeneralTask(request, response, taskId, user = null) {
+        async updateGeneralTask(request, response, taskId, user) {
+            const email = taskOwnerEmail(user)
             const input = await readBody(request)
-            const tasksList = await readTasks().catch(() => [])
-            const previousTask = tasksList.find((t) => String(t.id) === String(taskId)) || null
+            const tasksList = await readTasks()
+            const previousTask = tasksList.find((task) => String(task.id) === String(taskId))
+            assertTaskOwner(previousTask, email)
+            if (input.assignee !== undefined && String(input.assignee).trim().toLowerCase() !== email) {
+                const error = new Error('General tasks cannot be reassigned through this endpoint')
+                error.statusCode = 403
+                throw error
+            }
 
             const data = await updateTask(taskId, input)
             const io = getIO ? getIO() : null
-            if (io) io.emit('task:updated', data)
-
-            await dispatchTaskNotifications({ task: data, previousTask, actor: user, io })
+            if (io) io.to(`user:${user.sub}`).emit('task:updated', data)
             sendJson(response, 200, { data })
         },
 
-        async deleteGeneralTask(request, response, taskId, user = null) {
+        async deleteGeneralTask(request, response, taskId, user) {
+            const email = taskOwnerEmail(user)
+            const tasksList = await readTasks()
+            const task = tasksList.find((currentTask) => String(currentTask.id) === String(taskId))
+            assertTaskOwner(task, email)
             const data = await deleteTask(taskId)
             const io = getIO ? getIO() : null
-            if (io) io.emit('task:deleted', { id: taskId })
+            if (io) io.to(`user:${user.sub}`).emit('task:deleted', { id: taskId })
             sendJson(response, 200, { data })
         },
     }

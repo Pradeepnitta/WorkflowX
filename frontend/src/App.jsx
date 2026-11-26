@@ -14,6 +14,9 @@ import SearchPage from './pages/SearchPage.jsx'
 import ProfilePage from './pages/ProfilePage.jsx'
 import SettingsPage from './pages/SettingsPage.jsx'
 import AdminPage from './pages/AdminPage.jsx'
+import SystemAdminPage from './pages/SystemAdminPage.jsx'
+import ManagerDashboardPage from './pages/ManagerDashboardPage.jsx'
+import DeveloperDashboardPage from './pages/DeveloperDashboardPage.jsx'
 import './App.css'
 
 function App() {
@@ -42,11 +45,20 @@ function App() {
                 <Route element={<ProtectedRoute />}>
                     <Route element={<AppLayout />}>
                         <Route path="/" element={<DashboardOverviewPage />} />
+                        <Route path="/manager" element={<ManagerDashboardPage />} />
+                        <Route path="/manager/reviews" element={<ManagerDashboardPage view="reviews" />} />
+                        <Route path="/developer" element={<DeveloperDashboardPage view="overview" />} />
+                        <Route path="/developer/tasks" element={<DeveloperDashboardPage view="tasks" />} />
+                        <Route path="/developer/projects" element={<DeveloperDashboardPage view="projects" />} />
+                        <Route path="/developer/team" element={<DeveloperDashboardPage view="team" />} />
+                        <Route path="/developer/submissions" element={<DeveloperDashboardPage view="submissions" />} />
+                        <Route path="/developer/performance" element={<DeveloperDashboardPage view="performance" />} />
                         <Route path="/tasks" element={<TasksPage />} />
                         <Route path="/projects" element={<ProjectsPage />} />
                         <Route path="/teams" element={<TeamsPage />} />
                         <Route path="/members" element={<OrganizationMembersPage />} />
                         <Route path="/admin" element={<AdminPage />} />
+                        <Route path="/system-admin" element={<SystemAdminPage />} />
                         <Route path="/analytics" element={<AnalyticsPage />} />
                         <Route path="/notifications" element={<InboxPage />} />
                         <Route path="/search" element={<SearchPage />} />

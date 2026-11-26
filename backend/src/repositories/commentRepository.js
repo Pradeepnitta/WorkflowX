@@ -1,45 +1,15 @@
 import { query, withTransaction } from '../config/db.js'
 import { randomUUID } from 'node:crypto'
+import { assertTaskAccess } from './projectTaskRepository.js'
 
-function accessError() {
-    const error = new Error('Project membership required')
-    error.statusCode = 403
-    return error
-}
-
-async function getTaskAccess(client, taskId, userId) {
-    const taskRes = await client.query(`SELECT * FROM "Task" WHERE id = $1`, [taskId])
-    const task = taskRes.rows[0]
-    if (!task) {
-        const error = new Error('Task not found')
-        error.statusCode = 404
-        throw error
-    }
-
-    const projectRes = await client.query(`SELECT * FROM "Project" WHERE id = $1`, [task.projectId])
-    const project = projectRes.rows[0]
-
-    const orgMemRes = await client.query(
-        `SELECT * FROM "OrganizationMember" WHERE "organizationId" = $1 AND "userId" = $2`,
-        [project.organizationId, userId]
-    )
-    const organizationMembership = orgMemRes.rows[0]
-
-    const projMemRes = await client.query(
-        `SELECT * FROM "ProjectMember" WHERE "projectId" = $1 AND "userId" = $2`,
-        [task.projectId, userId]
-    )
-    const projectMembership = projMemRes.rows[0]
-
-    if (!organizationMembership || (!projectMembership && project.visibility === 'MEMBERS_ONLY')) {
-        throw accessError()
-    }
+async function getTaskAccess(client, taskId, userId, write = false) {
+    const { task } = await assertTaskAccess(client, taskId, userId, { write })
     return task
 }
 
 export async function createForTask({ taskId, userId, content, parentId }) {
     return withTransaction(async (client) => {
-        const task = await getTaskAccess(client, taskId, userId)
+        const task = await getTaskAccess(client, taskId, userId, true)
         if (parentId) {
             const parentRes = await client.query(`SELECT * FROM "Comment" WHERE id = $1`, [parentId])
             const parent = parentRes.rows[0]
@@ -62,6 +32,7 @@ export async function createForTask({ taskId, userId, content, parentId }) {
 
         const userRes = await client.query(`SELECT * FROM "User" WHERE id = $1`, [userId])
         comment.author = userRes.rows[0]
+        comment.projectId = task.projectId
         return comment
     })
 }
@@ -105,7 +76,7 @@ async function getOwnedComment(client, commentId, userId) {
         error.statusCode = 404
         throw error
     }
-    await getTaskAccess(client, comment.taskId, userId)
+    await getTaskAccess(client, comment.taskId, userId, true)
     if (comment.authorId !== userId) {
         const error = new Error('Only the comment author can modify it')
         error.statusCode = 403

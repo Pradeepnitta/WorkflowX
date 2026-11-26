@@ -13,7 +13,7 @@ export function createInvitationService(invitationRepository) {
     return {
         async create(organizationId, input, userId) {
             const email = typeof input.email === 'string' ? input.email.trim().toLowerCase() : ''
-            const role = input.role || 'MEMBER'
+            const role = typeof input.role === 'string' ? input.role.trim().toUpperCase() : 'MEMBER'
             if (!organizationId) throw serviceError('Organization is required', 400)
             if (!email.includes('@')) throw serviceError('A valid email is required', 400)
             if (!roles.has(role)) throw serviceError('Invalid organization role', 400)

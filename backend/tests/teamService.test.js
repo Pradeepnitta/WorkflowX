@@ -13,14 +13,23 @@ test('team service creates and lists organization teams', async () => {
         async findForMember({ organizationId, userId }) {
             assert.equal(organizationId, 'organization-1')
             assert.equal(userId, 'user-1')
-            return teams
+            return teams.map((team) => ({ ...team, canManage: true }))
         },
     })
 
     const created = await service.create({ name: ' Product ', description: ' Core team ', organizationId: 'organization-1', memberUserIds: ['user-2', 'user-3'] }, 'user-1')
     const listed = await service.list('organization-1', 'user-1')
 
-    assert.deepEqual(created, { id: 'team-1', name: 'Product', description: 'Core team', organizationId: 'organization-1', members: [] })
+    assert.deepEqual(created, {
+        id: 'team-1',
+        name: 'Product',
+        description: 'Core team',
+        organizationId: 'organization-1',
+        createdById: null,
+        canManage: true,
+        projects: [],
+        members: [],
+    })
     assert.deepEqual(listed, [created])
     assert.deepEqual(teams[0].memberUserIds, ['user-2', 'user-3'])
 })

@@ -11,6 +11,11 @@ export function registerTeamRoutes({ router, teamController }) {
         await teamController.list(req, res, user, req.query.organizationId)
     })
 
+    router.patch('/api/teams/:teamId', async (req, res) => {
+        const user = authenticateRequest(req)
+        await teamController.update(req, res, user, req.params.teamId)
+    })
+
     router.post('/api/teams/:teamId/members', async (req, res) => {
         const user = authenticateRequest(req)
         await teamController.addMember(req, res, user, req.params.teamId)

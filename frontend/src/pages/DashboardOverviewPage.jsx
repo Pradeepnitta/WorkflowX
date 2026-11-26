@@ -423,7 +423,7 @@ export default function DashboardOverviewPage() {
     const greetingName = currentUser?.name || currentUser?.email?.split('@')[0] || 'Team'
 
     return (
-        <main className="feature-page">
+        <main className="feature-page dashboard-overview">
             {/* Header: Personalized Greeting & Primary Action */}
             <section className="page-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
                 <div>
@@ -601,7 +601,7 @@ export default function DashboardOverviewPage() {
             </div>
 
             {/* Quick Workspace Navigation Launchpad */}
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px 16px', marginBottom: '22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+            <div className="dashboard-quick-links" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px 16px', marginBottom: '22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     🚀 Quick Launchpad:
                 </span>
@@ -791,7 +791,7 @@ export default function DashboardOverviewPage() {
                                 >
                                     <div className="column-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                                         <span style={{ fontWeight: 700, fontSize: '12px', color: '#334155' }}>
-                                            {column === 'Todo' ? '◌ TODO' : column === 'In progress' ? '⚡ IN PROGRESS' : column === 'Review' ? '◎ IN REVIEW' : '✓ DONE'}
+                                            {column === 'Todo' ? '◌ TODO' : column === 'In progress' ? '⚡ IN PROGRESS' : column === 'Review' ? '◎ IN REVIEW' : '✓ COMPLETED'}
                                         </span>
                                         <b style={{ background: '#e2e8f0', color: '#475569', padding: '1px 6px', borderRadius: '10px', fontSize: '11px' }}>
                                             {colTasks.length}

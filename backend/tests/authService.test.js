@@ -77,6 +77,8 @@ test('auth service updates profile fields without exposing credentials', async (
         name: 'Jordan Updated',
         email: 'jordan@example.com',
         avatarUrl: null,
+        systemRole: 'USER',
+        accountStatus: 'ACTIVE',
     })
     await assert.rejects(auth.updateProfile({}, 'user-1'), (error) => error.statusCode === 400)
 })
@@ -157,6 +159,8 @@ test('auth service requires and validates adminKey for admin signup and signin',
         adminKey: 'test-master-admin-key',
     })
     assert.equal(adminReg.user.email, 'admin@workflowx.com')
+    assert.equal(adminReg.user.systemRole, 'ADMIN')
+    assert.equal(adminReg.user.accountStatus, 'ACTIVE')
 
     // Mark user with admin membership in repository
     const userInDb = repository.users.find((u) => u.email === 'admin@workflowx.com')
@@ -181,4 +185,54 @@ test('auth service requires and validates adminKey for admin signup and signin',
         adminKey: 'test-master-admin-key',
     })
     assert.equal(adminLogin.user.email, 'admin@workflowx.com')
+})
+
+test('auth service rejects Admin sign-in attempts by ordinary users and disabled accounts', async () => {
+    process.env.ADMIN_SECRET_KEY = 'test-master-admin-key'
+    const repository = createRepository()
+    const auth = createAuthService(repository)
+    await auth.register({ name: 'Regular User', email: 'regular@example.com', password: 'password123' })
+
+    await assert.rejects(
+        auth.login({
+            email: 'regular@example.com',
+            password: 'password123',
+            role: 'ADMIN',
+            adminKey: 'test-master-admin-key',
+        }),
+        (error) => error.statusCode === 403 && error.message === 'Administrator account required',
+    )
+
+    repository.users[0].accountStatus = 'SUSPENDED'
+    await assert.rejects(
+        auth.login({ email: 'regular@example.com', password: 'password123' }),
+        (error) => error.statusCode === 403 && error.message === 'This account is not active',
+    )
+})
+
+test('auth service permits only the first active account to use Admin bootstrap', async () => {
+    process.env.ADMIN_SECRET_KEY = 'test-master-admin-key'
+    const repository = {
+        async findByEmail() {
+            return null
+        },
+        async countActiveSystemAdmins() {
+            return 1
+        },
+        async create() {
+            assert.fail('A second system Admin must not be bootstrapped')
+        },
+    }
+    const auth = createAuthService(repository)
+
+    await assert.rejects(
+        auth.register({
+            name: 'Second Admin',
+            email: 'second-admin@example.com',
+            password: 'password123',
+            role: 'ADMIN',
+            adminKey: 'test-master-admin-key',
+        }),
+        (error) => error.statusCode === 409 && error.message === 'Global Admin bootstrap is already complete',
+    )
 })

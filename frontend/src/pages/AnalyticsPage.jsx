@@ -1,17 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getOverview } from '../services/analyticsService.js'
-import { getOrganizations, getOrganizationMembers } from '../services/organizationService.js'
-import { getTasks } from '../services/taskService.js'
-import { getProjects } from '../services/projectService.js'
+import { getOrganizations } from '../services/organizationService.js'
 import '../App.css'
 
 export default function AnalyticsPage() {
     const [organizations, setOrganizations] = useState([])
     const [organizationId, setOrganizationId] = useState('')
     const [overview, setOverview] = useState(null)
-    const [tasks, setTasks] = useState([])
-    const [projects, setProjects] = useState([])
-    const [members, setMembers] = useState([])
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState('')
     const [hoveredStatus, setHoveredStatus] = useState(null)
@@ -22,26 +17,22 @@ export default function AnalyticsPage() {
             .then((loadedOrganizations) => {
                 const orgs = Array.isArray(loadedOrganizations) ? loadedOrganizations : []
                 setOrganizations(orgs)
-                if (orgs.length > 0) setOrganizationId(orgs[0].id)
+                if (orgs.length > 0) {
+                    setOrganizationId(orgs[0].id)
+                } else {
+                    setIsLoading(false)
+                }
             })
-            .catch((requestError) => setError(requestError.message))
+            .catch((requestError) => {
+                setError(requestError.message)
+                setIsLoading(false)
+            })
     }, [])
 
     useEffect(() => {
-        if (!organizationId) { setOverview(null); return }
-        setIsLoading(true)
-        Promise.all([
-            getOverview(organizationId).catch(() => null),
-            getTasks().catch(() => []),
-            getProjects(organizationId).catch(() => []),
-            getOrganizationMembers(organizationId).catch(() => []),
-        ])
-            .then(([ov, loadedTasks, loadedProjects, loadedMembers]) => {
-                setOverview(ov)
-                setTasks(Array.isArray(loadedTasks) ? loadedTasks : [])
-                setProjects(Array.isArray(loadedProjects) ? loadedProjects : [])
-                setMembers(Array.isArray(loadedMembers) ? loadedMembers : [])
-            })
+        if (!organizationId) return
+        getOverview(organizationId)
+            .then(setOverview)
             .catch((requestError) => setError(requestError.message))
             .finally(() => setIsLoading(false))
     }, [organizationId])
@@ -50,49 +41,50 @@ export default function AnalyticsPage() {
     const inProgress = overview?.inProgressTasks || 0
     const todo = overview?.todoTasks || 0
     const overdue = overview?.overdueTasks || 0
-    const total = completed + inProgress + todo
+    const review = overview?.tasksUnderReview || 0
+    const total = overview?.tasks || (completed + inProgress + todo + review)
     const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0
 
     const priorityCounts = useMemo(() => {
         const counts = { Critical: 0, High: 0, Medium: 0, Low: 0 }
-        tasks.forEach(t => {
-            const p = t.priority || 'Medium'
-            if (counts[p] !== undefined) counts[p]++
-            else counts.Medium++
+        const distribution = overview?.priorityDistribution || []
+        distribution.forEach(({ priority, count }) => {
+            const label = priority === 'URGENT' ? 'Critical' : priority
+            if (counts[label] !== undefined) counts[label] = Number(count)
         })
         return counts
-    }, [tasks])
-    const totalPriority = tasks.length || 1
+    }, [overview])
+    const totalPriority = total || 1
 
     const memberStats = useMemo(() => {
-        return members.slice(0, 6).map(m => {
+        return (overview?.developerWorkload || []).slice(0, 6).map(m => {
             const name = m.name || m.email || 'Member'
-            const mTasks = tasks.filter(t => t.assignee === name || t.assignee === m.email || t.assignedTo === m.userId)
             return {
-                name, role: m.role || 'MEMBER',
-                total: mTasks.length,
-                done: mTasks.filter(t => t.status === 'Done').length,
-                inProgress: mTasks.filter(t => t.status === 'In progress').length,
-                review: mTasks.filter(t => t.status === 'Review').length,
+                name,
+                role: 'MEMBER',
+                total: Number(m.totalTasks) || 0,
+                done: Number(m.completedTasks) || 0,
+                inProgress: Number(m.inProgressTasks) || 0,
+                review: Number(m.reviewTasks) || 0,
                 initials: name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
             }
         })
-    }, [members, tasks])
+    }, [overview])
 
     const projectStats = useMemo(() => {
-        return projects.slice(0, 6).map(p => {
-            const pt = tasks.filter(t => t.project === p.name || t.projectId === p.id)
-            const done = pt.filter(t => t.status === 'Done').length
-            const ptTotal = pt.length
-            return { ...p, taskCount: ptTotal, doneCount: done, completion: ptTotal > 0 ? Math.round((done / ptTotal) * 100) : 0 }
-        })
-    }, [projects, tasks])
+        return (overview?.projectStats || []).slice(0, 6).map(project => ({
+            ...project,
+            taskCount: Number(project.taskCount) || 0,
+            doneCount: Number(project.completedTasks) || 0,
+            completion: Number(project.progress) || 0,
+        }))
+    }, [overview])
 
     const statusData = [
         { label: 'Completed', value: completed, color: '#10b981', bg: '#d1fae5' },
         { label: 'In Progress', value: inProgress, color: '#f59e0b', bg: '#fef3c7' },
         { label: 'Todo', value: todo, color: '#3b82f6', bg: '#dbeafe' },
-        { label: 'Overdue', value: overdue, color: '#ef4444', bg: '#fee2e2' },
+        { label: 'Review', value: review, color: '#8b5cf6', bg: '#ede9fe' },
     ].filter(d => d.value > 0)
 
     const DONUT_R = 70, DONUT_CX = 100, DONUT_CY = 100, STROKE_W = 26
@@ -124,7 +116,12 @@ export default function AnalyticsPage() {
                 {(organizations?.length || 0) > 0 && (
                     <label className="organization-select">
                         Organization
-                        <select value={organizationId} onChange={(event) => setOrganizationId(event.target.value)}>
+                        <select value={organizationId} onChange={(event) => {
+                            setIsLoading(true)
+                            setError('')
+                            setOverview(null)
+                            setOrganizationId(event.target.value)
+                        }}>
                             {organizations.map((org) => (
                                 <option key={org.id} value={org.id}>{org.name}</option>
                             ))}
@@ -172,8 +169,8 @@ export default function AnalyticsPage() {
                     <div><p>Todo / Backlog</p><strong>{todo}</strong><small className="neutral">Ready to pick up</small></div>
                 </div>
                 <div className="stat-card">
-                    <span className="stat-icon coral">âš </span>
-                    <div><p>Overdue</p><strong style={{ color: '#e96f59' }}>{overdue}</strong><small style={{ color: '#e96f59' }}>{overdue > 0 ? 'Needs follow-up' : 'None overdue âœ“'}</small></div>
+                    <span className="stat-icon coral">!</span>
+                    <div><p>Overdue</p><strong style={{ color: '#e96f59' }}>{overdue}</strong><small style={{ color: '#e96f59' }}>{overdue > 0 ? 'Needs follow-up' : 'No overdue tasks'}</small></div>
                 </div>
             </section>
 
@@ -222,8 +219,8 @@ export default function AnalyticsPage() {
 
                 <div className="panel" style={{ padding: '24px', background: '#fff', border: '1px solid #ebe9e5', borderRadius: '10px' }}>
                     <h2 style={{ margin: '0 0 4px', font: "700 16px 'Space Grotesk'" }}>Priority Distribution</h2>
-                    <p style={{ margin: '0 0 20px', fontSize: '13px', color: '#858996' }}>Priority allocation across {tasks.length} live tasks.</p>
-                    {tasks.length === 0 ? (
+                    <p style={{ margin: '0 0 20px', fontSize: '13px', color: '#858996' }}>Priority allocation across {total} live tasks.</p>
+                    {total === 0 ? (
                         <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
                             <div style={{ fontSize: 40, marginBottom: 8 }}>ðŸ“‹</div>No tasks yet.
                         </div>
@@ -253,7 +250,7 @@ export default function AnalyticsPage() {
             <section className="panel" style={{ marginBottom: '24px', padding: '24px', background: '#fff', border: '1px solid #ebe9e5', borderRadius: '10px' }}>
                 <h2 style={{ margin: '0 0 4px', font: "700 18px 'Space Grotesk'" }}>Project Completion Tracker</h2>
                 <p style={{ margin: '0 0 20px', fontSize: '13px', color: '#858996' }}>Live delivery progress per project.</p>
-                {projects.length === 0 ? (
+                {(overview?.projectStats || []).length === 0 ? (
                     <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
                         <div style={{ fontSize: 40, marginBottom: 8 }}>ðŸš€</div>
                         No projects found. Create projects to track their progress here.
@@ -285,7 +282,7 @@ export default function AnalyticsPage() {
             <section className="panel" style={{ marginBottom: '24px', padding: '24px', background: '#fff', border: '1px solid #ebe9e5', borderRadius: '10px' }}>
                 <h2 style={{ margin: '0 0 4px', font: "700 18px 'Space Grotesk'" }}>Team Member Velocity Breakdown</h2>
                 <p style={{ margin: '0 0 20px', fontSize: '13px', color: '#858996' }}>Individual task ownership and delivery throughput from live data.</p>
-                {members.length === 0 ? (
+                {(overview?.developerWorkload || []).length === 0 ? (
                     <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
                         <div style={{ fontSize: 40, marginBottom: 8 }}>ðŸ‘¥</div>No members found in this organization.
                     </div>
@@ -310,11 +307,77 @@ export default function AnalyticsPage() {
                 )}
             </section>
 
+            <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+                <div className="panel" style={{ padding: '24px', background: '#fff', border: '1px solid #ebe9e5', borderRadius: '10px' }}>
+                    <h2 style={{ margin: '0 0 4px', font: "700 18px 'Space Grotesk'" }}>Weekly Task Completion</h2>
+                    <p style={{ margin: '0 0 20px', fontSize: '13px', color: '#858996' }}>Tasks completed over the last seven days.</p>
+                    <div style={{ display: 'flex', alignItems: 'end', gap: '10px', height: '150px' }}>
+                        {(overview?.weeklyTaskCompletion || []).map(day => {
+                            const weekly = overview?.weeklyTaskCompletion || []
+                            const max = Math.max(1, ...weekly.map(item => Number(item.completed) || 0))
+                            const value = Number(day.completed) || 0
+                            return (
+                                <div key={day.date} title={`${value} completed`} style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'end', alignItems: 'center', gap: '7px' }}>
+                                    <strong style={{ color: '#64748b', fontSize: '10px' }}>{value}</strong>
+                                    <div style={{ width: '100%', maxWidth: '34px', height: `${Math.max(4, value / max * 100)}%`, borderRadius: '5px 5px 2px 2px', background: '#5b4beb' }} />
+                                    <small style={{ color: '#64748b', fontSize: '10px' }}>{new Date(`${day.date}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short' })}</small>
+                                </div>
+                            )
+                        })}
+                        {!(overview?.weeklyTaskCompletion || []).length && <p style={{ color: '#64748b', fontSize: '12px' }}>No weekly completion data yet.</p>}
+                    </div>
+                </div>
+                <div className="panel" style={{ padding: '24px', background: '#fff', border: '1px solid #ebe9e5', borderRadius: '10px' }}>
+                    <h2 style={{ margin: '0 0 4px', font: "700 18px 'Space Grotesk'" }}>Team Productivity</h2>
+                    <p style={{ margin: '0 0 20px', fontSize: '13px', color: '#858996' }}>Assigned work and delivery by managed team.</p>
+                    {(overview?.teamStats || []).length === 0 ? (
+                        <p style={{ color: '#64748b', fontSize: '12px' }}>No team productivity data available.</p>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '13px' }}>
+                            {overview.teamStats.slice(0, 6).map(team => {
+                                const activeCount = Number(team.activeTasks) || 0
+                                const doneCount = Number(team.completedTasks) || 0
+                                const delivery = activeCount ? Math.round(doneCount / activeCount * 100) : 0
+                                return (
+                                    <div key={team.id}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '12px', marginBottom: '5px' }}>
+                                            <strong>{team.name}</strong>
+                                            <span style={{ color: '#64748b' }}>{doneCount} completed - {team.developers} developers</span>
+                                        </div>
+                                        <div style={{ height: '7px', background: '#f1f5f9', borderRadius: '5px', overflow: 'hidden' }}>
+                                            <div style={{ height: '100%', width: `${delivery}%`, background: '#22c55e' }} />
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
+                </div>
+            </section>
+
+            <section className="panel" style={{ marginBottom: '24px', padding: '24px', background: '#fff', border: '1px solid #ebe9e5', borderRadius: '10px' }}>
+                <h2 style={{ margin: '0 0 4px', font: "700 18px 'Space Grotesk'" }}>Upcoming Project Deadlines</h2>
+                <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#858996' }}>Open tasks due within the next two weeks.</p>
+                {(overview?.deadlineTracking || []).length === 0 ? (
+                    <p style={{ color: '#64748b', fontSize: '12px' }}>No upcoming deadlines.</p>
+                ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '10px' }}>
+                        {overview.deadlineTracking.map(item => (
+                            <div key={item.id} style={{ padding: '12px', border: '1px solid #edf0f5', borderRadius: '8px' }}>
+                                <strong style={{ color: '#1e293b', fontSize: '13px' }}>{item.title}</strong>
+                                <div style={{ marginTop: '5px', color: '#64748b', fontSize: '11px' }}>{item.projectName} - {item.assigneeName || 'Unassigned'}</div>
+                                <div style={{ marginTop: '8px', color: '#b45309', fontSize: '11px', fontWeight: 700 }}>{new Date(item.dueDate).toLocaleDateString()}</div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </section>
+
             {/* Summary Stats Footer */}
             <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '24px' }}>
                 {[
-                    { label: 'ACTIVE PROJECTS', value: projects.length, color: '#1e293b' },
-                    { label: 'TEAM MEMBERS', value: members.length, color: '#1e293b' },
+                    { label: 'ACTIVE PROJECTS', value: overview?.activeProjects || 0, color: '#1e293b' },
+                    { label: 'TEAM MEMBERS', value: overview?.totalDevelopers || 0, color: '#1e293b' },
                     { label: 'TOTAL TASKS', value: total, color: '#1e293b' },
                     { label: 'OVERDUE TASKS', value: overdue, color: overdue > 0 ? '#ef4444' : '#10b981' },
                 ].map(s => (

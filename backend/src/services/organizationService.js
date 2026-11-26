@@ -27,12 +27,7 @@ export function createOrganizationService(organizationRepository) {
             if (name.length < 2) throw serviceError('Organization name must be at least 2 characters', 400)
             if (!userId) throw serviceError('Authentication required', 401)
 
-            const payload = { name, description, userId }
-            if (typeof input.role === 'string') {
-                payload.role = input.role.trim().toUpperCase()
-            }
-
-            const organization = await organizationRepository.createWithAdmin(payload)
+            const organization = await organizationRepository.createWithAdmin({ name, description, userId })
             return { id: organization.id, name: organization.name, description: organization.description || null }
         },
 
@@ -40,6 +35,8 @@ export function createOrganizationService(organizationRepository) {
             if (!organizationId) throw serviceError('Organization ID is required', 400)
             if (!userId) throw serviceError('Authentication required', 401)
 
+            const role = await organizationRepository.findMembershipRole(organizationId, userId)
+            if (!role) throw serviceError('Organization membership required', 403)
             const members = await organizationRepository.findMembers(organizationId)
             return members.map((m) => ({
                 userId: m.user.id,

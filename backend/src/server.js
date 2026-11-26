@@ -21,10 +21,7 @@ try {
 }
 
 if (!process.env.AUTH_ACCESS_TOKEN_SECRET) {
-    process.env.AUTH_ACCESS_TOKEN_SECRET = 'workflowx-development-access-token-secret-key-2026'
-}
-if (!process.env.ADMIN_SECRET_KEY) {
-    process.env.ADMIN_SECRET_KEY = 'workflowx-admin-key-2026'
+    throw new Error('AUTH_ACCESS_TOKEN_SECRET must be configured before starting the API')
 }
 
 const port = Number(process.env.PORT || 3001)

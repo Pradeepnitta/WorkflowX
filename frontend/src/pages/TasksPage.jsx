@@ -62,6 +62,7 @@ export default function TasksPage() {
     // Drag-and-Drop state
     const [draggedTaskId, setDraggedTaskId] = useState(null)
     const [dragOverCol, setDragOverCol] = useState(null)
+    const [taskMenuId, setTaskMenuId] = useState(null)
 
     // Filter & search
     const [filter, setFilter] = useState(statusQuery || 'All tasks')
@@ -101,6 +102,7 @@ export default function TasksPage() {
 
     const [isLoading, setIsLoading] = useState(true)
     const [isCreating, setIsCreating] = useState(false)
+    const [showCreateModal, setShowCreateModal] = useState(false)
     const [error, setError] = useState('')
     const [successMessage, setSuccessMessage] = useState('')
 
@@ -168,7 +170,7 @@ export default function TasksPage() {
             if (activeTask && String(activeTask.id) === String(payload?.taskId)) {
                 const newCmt = {
                     id: payload.comment?.id || Date.now(),
-                    author: payload.user?.email || 'Team Member',
+                    author: payload.comment?.author?.email || 'Team Member',
                     text: payload.comment?.content || payload.comment?.text || '',
                     time: 'Just now',
                 }
@@ -340,6 +342,7 @@ export default function TasksPage() {
                 setInitialStatus('Todo')
                 setTags('')
                 setEstimatedHours('')
+                setShowCreateModal(false)
                 setSuccessMessage(`✓ Official task created and assigned to ${selectedAssignee || 'Unassigned'} with ${priority} priority.`)
             } else {
                 const task = await createTask({
@@ -362,6 +365,7 @@ export default function TasksPage() {
                 setNoDeadline(true)
                 setTags('')
                 setSuggestionReason('')
+                setShowCreateModal(false)
                 setSuccessMessage(`💡 Task proposal submitted to Manager for review & assignment!`)
             }
         } catch (requestError) {
@@ -406,17 +410,27 @@ export default function TasksPage() {
     }
 
     async function handleStatusChange(taskId, nextStatus) {
+        const previousTask = tasks.find((task) => String(task.id) === String(taskId))
+        if (!previousTask || normalizeStatus(previousTask.status) === nextStatus) return
+        setError('')
         setTasks((prev) =>
             prev.map((t) => (t.id === taskId ? { ...t, status: nextStatus } : t))
         )
         if (activeTask && activeTask.id === taskId) {
             setActiveTask((prev) => ({ ...prev, status: nextStatus }))
         }
-        setSuccessMessage(`Task moved to ${nextStatus}.`)
         try {
             await updateTaskStatus(taskId, nextStatus)
-        } catch {
-            // roll back if failed
+            setSuccessMessage(`Task moved to ${nextStatus === 'Done' ? 'Completed' : nextStatus}.`)
+        } catch (requestError) {
+            setTasks((prev) => prev.map((task) => (
+                String(task.id) === String(taskId) ? { ...task, status: previousTask.status } : task
+            )))
+            if (activeTask && String(activeTask.id) === String(taskId)) {
+                setActiveTask((prev) => ({ ...prev, status: previousTask.status }))
+            }
+            setError(requestError.message || 'Unable to update task status.')
+            setSuccessMessage('')
         }
     }
 
@@ -441,14 +455,20 @@ export default function TasksPage() {
         setDraggedTaskId(null)
         setDragOverCol(null)
         setSuccessMessage(`Moved "${currentTask.title}" to ${targetColumn}.`)
+        setError('')
 
         try {
             await updateTaskStatus(taskId, targetColumn)
-        } catch {
+        } catch (requestError) {
             // Rollback on network failure
             setTasks((prev) =>
                 prev.map((t) => (t.id === taskId ? { ...t, status: currentTask.status } : t))
             )
+            if (activeTask && String(activeTask.id) === String(taskId)) {
+                setActiveTask((prev) => ({ ...prev, status: currentTask.status }))
+            }
+            setError(requestError.message || 'Unable to move task. Please try again.')
+            setSuccessMessage('')
         }
     }
 
@@ -496,6 +516,7 @@ export default function TasksPage() {
 
         try {
             await deleteTask(taskId)
+            setTaskMenuId(null)
         } catch (err) {
             setTasks(previousTasks)
             try {
@@ -681,51 +702,22 @@ export default function TasksPage() {
         <main className="feature-page">
             <div className="feature-heading">
                 <div>
-                    <p className="eyebrow">Developer & Execution Workspace</p>
-                    <h1>My Tasks & Workflow</h1>
-                    <p className="heading-subtitle">Interactive Signboard with drag-and-drop, physical file attachments, and live Socket.IO collaboration.</p>
+                    <p className="eyebrow">Project workspace</p>
+                    <h1>{projectFilter === 'ALL' ? 'My Tasks' : projectFilter}</h1>
+                    <p className="heading-subtitle">Plan, track, and move work through your team’s workflow.</p>
                 </div>
                 {/* View Mode Toggle: Signboard vs Table */}
-                <div style={{ display: 'inline-flex', background: '#f3f4f6', padding: '3px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-                    <button
-                        type="button"
-                        onClick={() => setViewMode('kanban')}
-                        style={{
-                            padding: '6px 14px',
-                            fontSize: '12px',
-                            fontWeight: viewMode === 'kanban' ? '700' : '500',
-                            background: viewMode === 'kanban' ? '#ffffff' : 'transparent',
-                            color: viewMode === 'kanban' ? '#ee785e' : '#4b5563',
-                            border: 'none',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            boxShadow: viewMode === 'kanban' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                        }}
-                    >
-                        <span>📋</span> Signboard
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setViewMode('table')}
-                        style={{
-                            padding: '6px 14px',
-                            fontSize: '12px',
-                            fontWeight: viewMode === 'table' ? '700' : '500',
-                            background: viewMode === 'table' ? '#ffffff' : 'transparent',
-                            color: viewMode === 'table' ? '#ee785e' : '#4b5563',
-                            border: 'none',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            boxShadow: viewMode === 'table' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                        }}
-                    >
-                        <span>☰</span> Table List
+                <div className="task-heading-actions">
+                    <div className="task-view-toggle">
+                        <button type="button" className={viewMode === 'kanban' ? 'selected' : ''} onClick={() => setViewMode('kanban')}>
+                            ▦ Board
+                        </button>
+                        <button type="button" className={viewMode === 'table' ? 'selected' : ''} onClick={() => setViewMode('table')}>
+                            ☷ List
+                        </button>
+                    </div>
+                    <button type="button" className="primary-button task-new-button" onClick={() => setShowCreateModal(true)}>
+                        <span>+</span> {canAssign ? 'New Task' : 'Suggest Task'}
                     </button>
                 </div>
             </div>
@@ -1206,14 +1198,20 @@ export default function TasksPage() {
 
             <section className="feature-grid task-page-grid">
                 {/* Create / Propose Task Form */}
-                <form className="task-create-panel" onSubmit={submit} style={{ flex: '1 1 340px', height: 'fit-content' }}>
+                {showCreateModal && (
+                    <div className="modal-backdrop task-create-backdrop" onMouseDown={(event) => {
+                        if (event.target === event.currentTarget) setShowCreateModal(false)
+                    }} />
+                )}
+                <form className={`task-create-panel task-create-modal ${showCreateModal ? 'is-open' : ''}`} onSubmit={submit} style={{ flex: '1 1 340px', height: 'fit-content' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                         <span className="eyebrow" style={{ color: canAssign ? '#ee785e' : '#2563eb', letterSpacing: '1px' }}>
                             {canAssign ? '⚡ Manager Planning' : '💡 Developer Proposal'}
                         </span>
-                        <span style={{ fontSize: '11px', color: '#9ca3af' }}>
-                            {canAssign ? 'Official Task' : 'Suggest Task'}
-                        </span>
+                        <div className="task-create-modal-actions">
+                            <span>{canAssign ? 'Official Task' : 'Suggest Task'}</span>
+                            <button type="button" onClick={() => setShowCreateModal(false)} aria-label="Close task form">×</button>
+                        </div>
                     </div>
                     <h2 style={{ fontSize: '20px', margin: '0 0 6px', color: '#111827' }}>
                         {canAssign ? 'Create & Assign Task' : 'Suggest a Task'}
@@ -1505,6 +1503,7 @@ export default function TasksPage() {
                                     column === 'Todo' ? '📋' :
                                         column === 'In progress' ? '⚡' :
                                             column === 'Review' ? '👁' : '✓'
+                                const displayColumn = column === 'Done' ? 'Completed' : column
 
                                 return (
                                     <div
@@ -1526,22 +1525,34 @@ export default function TasksPage() {
                                         <div className="kanban-col-header">
                                             <div className="kanban-col-title-group">
                                                 <span className="kanban-col-icon-pill">{colIcon}</span>
-                                                <h3 className="kanban-col-title">{column}</h3>
+                                                <h3 className="kanban-col-title">{displayColumn}</h3>
                                                 {column === 'In progress' && (
                                                     <span className="pulsing-status-dot" title="Sprint active" />
                                                 )}
                                             </div>
-                                            <span className="kanban-col-count-badge">
-                                                {colTasks.length}
-                                            </span>
+                                            <div className="kanban-col-actions">
+                                                <span className="kanban-col-count-badge">{colTasks.length}</span>
+                                                <button
+                                                    type="button"
+                                                    className="kanban-add-task"
+                                                    onClick={() => {
+                                                        setInitialStatus(column)
+                                                        setShowCreateModal(true)
+                                                    }}
+                                                    aria-label={`Add task to ${displayColumn}`}
+                                                    title={`Add task to ${displayColumn}`}
+                                                >
+                                                    +
+                                                </button>
+                                            </div>
                                         </div>
 
                                         {/* Column Task Cards Stack */}
                                         <div className="kanban-cards-stack">
                                             {colTasks.map((task) => {
                                                 const isDragging = draggedTaskId === task.id
-                                                const attachments = attachmentsMap[task.id] || []
-                                                const comments = commentsMap[task.id] || []
+                                                const attachments = attachmentsMap[task.id] || task.attachments || []
+                                                const comments = commentsMap[task.id] || task.comments || []
                                                 const priority = (task.priority || 'medium').toLowerCase()
                                                 const priorityStripeClass = `priority-stripe-${priority}`
 
@@ -1569,13 +1580,38 @@ export default function TasksPage() {
                                                                 {priority === 'critical' ? '🔥' : priority === 'high' ? '▲' : priority === 'medium' ? '●' : '▽'}{' '}
                                                                 {task.priority || 'Medium'}
                                                             </span>
-                                                            <span className="kanban-drag-handle" title="Drag card">⠿</span>
+                                                            <div className="kanban-card-actions">
+                                                                <span className="kanban-drag-handle" title="Drag card">⠿</span>
+                                                                <button
+                                                                    type="button"
+                                                                    className="kanban-card-menu-trigger"
+                                                                    aria-label={`Options for ${task.title}`}
+                                                                    aria-expanded={taskMenuId === task.id}
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation()
+                                                                        setTaskMenuId(taskMenuId === task.id ? null : task.id)
+                                                                    }}
+                                                                >
+                                                                    ⋯
+                                                                </button>
+                                                                {taskMenuId === task.id && (
+                                                                    <div className="kanban-card-menu" onClick={(event) => event.stopPropagation()}>
+                                                                        <button type="button" onClick={() => {
+                                                                            setTaskMenuId(null)
+                                                                            openTaskModal(task)
+                                                                        }}>View details</button>
+                                                                        {canAssign && (
+                                                                            <button type="button" className="danger" onClick={(event) => handleDeleteTask(task.id, event)}>
+                                                                                Delete task
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         </div>
 
                                                         {/* Task Title */}
-                                                        <h4 className="kanban-card-title">
-                                                            {task.title}
-                                                        </h4>
+                                                        <h4 className="kanban-card-title">{task.title}</h4>
 
                                                         {task.description && (
                                                             <p style={{ margin: '0 0 6px', fontSize: '11.5px', color: '#64748b', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: '1.35' }}>
@@ -1647,7 +1683,7 @@ export default function TasksPage() {
                                             {!isLoading && colTasks.length === 0 && (
                                                 <div className="kanban-empty-dropzone">
                                                     <span style={{ fontSize: '18px' }}>📥</span>
-                                                    <span>No {column.toLowerCase()} tasks</span>
+                                                    <span>No {displayColumn.toLowerCase()} tasks</span>
                                                     <span style={{ fontSize: '10.5px', opacity: 0.7 }}>Drop cards here</span>
                                                 </div>
                                             )}

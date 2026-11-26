@@ -41,8 +41,18 @@ function presentProject(project) {
         priority: project.priority,
         organizationId: project.organizationId,
         createdById: project.createdById,
+        canManage: Boolean(project.canManage),
+        isMember: Boolean(project.isMember),
         startDate: project.startDate || null,
         dueDate: project.dueDate || null,
+        teamId: project.teamId || null,
+        tasksSummary: {
+            total: Number(project.taskTotal) || 0,
+            completed: Number(project.taskCompleted) || 0,
+            inProgress: Number(project.taskInProgress) || 0,
+            review: Number(project.taskReview) || 0,
+            todo: Number(project.taskTodo) || 0,
+        },
     }
 }
 
@@ -64,10 +74,19 @@ export function createProjectService(projectRepository) {
             const rawPriority = (input.priority || 'MEDIUM').toString().trim().toUpperCase()
             const priority = priorityAliases[rawPriority] || rawPriority
 
+            let startDate = null
+            if (input.startDate !== undefined && input.startDate !== null && input.startDate !== '') {
+                startDate = input.startDate instanceof Date ? input.startDate : new Date(input.startDate)
+                if (Number.isNaN(startDate.getTime())) throw serviceError('Start date must be valid', 400)
+            }
+
             let dueDate = null
             if (input.dueDate !== undefined && input.dueDate !== null && input.dueDate !== '') {
                 dueDate = input.dueDate instanceof Date ? input.dueDate : new Date(input.dueDate)
                 if (Number.isNaN(dueDate.getTime())) throw serviceError('Due date must be valid', 400)
+            }
+            if (startDate && dueDate && dueDate < startDate) {
+                throw serviceError('Deadline cannot be earlier than the start date', 400)
             }
 
             if (name.length < 2) throw serviceError('Project name must be at least 2 characters', 400)
@@ -75,7 +94,21 @@ export function createProjectService(projectRepository) {
             if (!statuses.has(status) || !visibilities.has(visibility) || !priorities.has(priority)) throw serviceError('Invalid project options', 400)
             if (!userId) throw serviceError('Authentication required', 401)
 
-            const project = presentProject(await projectRepository.createForMember({ name, key, description, organizationId, userId, status, visibility, priority, dueDate }))
+            const teamId = typeof input.teamId === 'string' && input.teamId.trim() ? input.teamId.trim() : null
+            const project = presentProject(await projectRepository.createForMember({
+                name,
+                key,
+                description,
+                organizationId,
+                userId,
+                status,
+                visibility,
+                priority,
+                startDate,
+                dueDate,
+                teamId,
+            }))
+            project.canManage = true
             await cacheDel(`projects:${organizationId}:${userId}`)
             return project
         },
@@ -127,6 +160,15 @@ export function createProjectService(projectRepository) {
                 if (!priorities.has(normalizedPri)) throw serviceError('Invalid project priority', 400)
                 changes.priority = normalizedPri
             }
+            if (input.startDate !== undefined) {
+                if (input.startDate === null || input.startDate === '') {
+                    changes.startDate = null
+                } else {
+                    const parsed = input.startDate instanceof Date ? input.startDate : new Date(input.startDate)
+                    if (Number.isNaN(parsed.getTime())) throw serviceError('Start date must be valid', 400)
+                    changes.startDate = parsed
+                }
+            }
             if (input.dueDate !== undefined) {
                 if (input.dueDate === null || input.dueDate === '') {
                     changes.dueDate = null
@@ -136,9 +178,16 @@ export function createProjectService(projectRepository) {
                     changes.dueDate = parsed
                 }
             }
+            if (changes.startDate && changes.dueDate && changes.dueDate < changes.startDate) {
+                throw serviceError('Deadline cannot be earlier than the start date', 400)
+            }
+            if (input.teamId !== undefined) {
+                changes.teamId = typeof input.teamId === 'string' && input.teamId.trim() ? input.teamId.trim() : null
+            }
             if (Object.keys(changes).length === 0) throw serviceError('At least one project field is required', 400)
 
             const updatedProject = presentProject(await projectRepository.updateForManager({ projectId, userId, changes }))
+            updatedProject.canManage = true
             if (updatedProject.organizationId) {
                 await cacheDel(`projects:${updatedProject.organizationId}:${userId}`)
             }

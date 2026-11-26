@@ -5,30 +5,37 @@ import { broadcastNotificationEvent } from '../sockets/socketServer.js'
 
 export async function processJob(job) {
     const { name, data } = job
-    if (name === 'TASK_ASSIGNED' && data?.userId) {
-        const message = data.message || `You were assigned task: ${data.taskTitle || 'Untitled Task'}`
-        try {
-            const notification = await createNotification({
-                userId: data.userId,
-                type: 'TASK_ASSIGNED',
-                message,
-            })
-            broadcastNotificationEvent(data.userId, notification)
-        } catch {
-            // Error handling for notifications
-        }
-    } else if (name === 'DEADLINE_REMINDER' && data?.userId) {
-        const message = data.message || `Reminder: Task "${data.taskTitle}" is due soon!`
-        try {
-            const notification = await createNotification({
-                userId: data.userId,
-                type: 'DEADLINE_REMINDER',
-                message,
-            })
-            broadcastNotificationEvent(data.userId, notification)
-        } catch {
-            // Error handling
-        }
+    const notificationType = {
+        TASK_ASSIGNED: 'TASK_ASSIGNED',
+        DEADLINE_REMINDER: 'DEADLINE_REMINDER',
+        TASK_OVERDUE: 'TASK_OVERDUE',
+    }[name]
+    if (!notificationType) return { success: true, processedAt: new Date().toISOString() }
+
+    if (!data || typeof data !== 'object') {
+        throw new Error(`Notification job ${name} requires a payload`)
+    }
+    const userIds = [...new Set([
+        ...(Array.isArray(data?.userIds) ? data.userIds : []),
+        data?.userId,
+    ].filter(Boolean))]
+    if (userIds.length === 0) {
+        throw new Error(`Notification job ${name} requires at least one recipient`)
+    }
+    for (const userId of userIds) {
+        const message = data?.message || (
+            name === 'TASK_ASSIGNED'
+                ? `You were assigned task: ${data.taskTitle || 'Untitled Task'}`
+                : name === 'DEADLINE_REMINDER'
+                    ? `Reminder: Task "${data.taskTitle || 'Untitled Task'}" is due soon.`
+                    : `Task "${data.taskTitle || 'Untitled Task'}" is overdue.`
+        )
+        const notification = await createNotification({
+            userId,
+            type: notificationType,
+            message,
+        })
+        broadcastNotificationEvent(userId, notification)
     }
     return { success: true, processedAt: new Date().toISOString() }
 }
@@ -51,7 +58,8 @@ export function startWorker() {
         })
 
         return worker
-    } catch {
+    } catch (error) {
+        console.error('[Notification Worker Error] Unable to initialize BullMQ worker:', error?.message || error)
         return null
     }
 }

@@ -1,13 +1,28 @@
 import { query, withTransaction } from '../config/db.js'
 import { randomUUID } from 'node:crypto'
 
-function permissionError() {
-    const error = new Error('Project management permission required')
-    error.statusCode = 403
+const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const updateableFields = new Set([
+    'name',
+    'key',
+    'description',
+    'status',
+    'visibility',
+    'priority',
+    'startDate',
+    'dueDate',
+    'teamId',
+])
+
+function serviceError(message, statusCode) {
+    const error = new Error(message)
+    error.statusCode = statusCode
     return error
 }
 
-const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+function requireUuid(value, label) {
+    if (!uuidRegex.test(value || '')) throw serviceError(`${label} must be a valid ID`, 400)
+}
 
 async function organizationMembership(client, organizationId, userId) {
     const res = await client.query(
@@ -17,10 +32,68 @@ async function organizationMembership(client, organizationId, userId) {
     return res.rows[0] || null
 }
 
-export async function createForMember({ name, key, description, organizationId, userId, status = 'PLANNING', visibility = 'ORGANIZATION', priority = 'MEDIUM', dueDate }) {
+async function assertTeamAssignment(client, teamId, organizationId, userId, role) {
+    if (!teamId) return
+    const teamRes = await client.query(`SELECT * FROM "Team" WHERE id = $1`, [teamId])
+    const team = teamRes.rows[0]
+    if (!team || team.organizationId !== organizationId) {
+        throw serviceError('Team not found in this organization', 404)
+    }
+    if (role === 'ADMIN') return
+
+    const memberRes = await client.query(
+        `SELECT 1 FROM "TeamMember" WHERE "teamId" = $1 AND "userId" = $2`,
+        [teamId, userId]
+    )
+    if (team.createdById !== userId && memberRes.rows.length === 0) {
+        throw serviceError('Team management permission required', 403)
+    }
+}
+
+async function getManageableProject(client, projectId, userId) {
+    requireUuid(projectId, 'Project ID')
+    requireUuid(userId, 'User ID')
+    const projectRes = await client.query(`SELECT * FROM "Project" WHERE id = $1`, [projectId])
+    const project = projectRes.rows[0]
+    if (!project) throw serviceError('Project not found', 404)
+
+    const membership = await organizationMembership(client, project.organizationId, userId)
+    if (!membership || !['ADMIN', 'MANAGER'].includes(membership.role)) {
+        throw serviceError('Project management permission required', 403)
+    }
+    if (membership.role === 'ADMIN') return { project, membership }
+
+    const projectMemberRes = await client.query(
+        `SELECT 1 FROM "ProjectMember" WHERE "projectId" = $1 AND "userId" = $2`,
+        [projectId, userId]
+    )
+    if (project.createdById !== userId && projectMemberRes.rows.length === 0) {
+        throw serviceError('Project management permission required', 403)
+    }
+    return { project, membership }
+}
+
+export async function createForMember({
+    name,
+    key,
+    description,
+    organizationId,
+    userId,
+    status = 'PLANNING',
+    visibility = 'ORGANIZATION',
+    priority = 'MEDIUM',
+    startDate,
+    dueDate,
+    teamId,
+}) {
+    requireUuid(organizationId, 'Organization ID')
+    requireUuid(userId, 'User ID')
     return withTransaction(async (client) => {
         const membership = await organizationMembership(client, organizationId, userId)
-        if (!membership || !['ADMIN', 'MANAGER'].includes(membership.role)) throw permissionError()
+        if (!membership || !['ADMIN', 'MANAGER'].includes(membership.role)) {
+            throw serviceError('Project management permission required', 403)
+        }
+        await assertTeamAssignment(client, teamId, organizationId, userId, membership.role)
 
         const id = randomUUID()
         const now = new Date()
@@ -29,10 +102,13 @@ export async function createForMember({ name, key, description, organizationId, 
             : ((name || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 5).toUpperCase() || 'PROJ')
 
         const projectRes = await client.query(
-            `INSERT INTO "Project" (id, name, "key", description, "organizationId", "createdById", status, visibility, priority, "dueDate", "createdAt", "updatedAt")
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            `INSERT INTO "Project" (
+                id, name, "key", description, "organizationId", "createdById", status,
+                visibility, priority, "startDate", "dueDate", "teamId", "createdAt", "updatedAt"
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
              RETURNING *`,
-            [id, name, projectKey, description || null, organizationId, userId, status, visibility, priority, dueDate || null, now, now]
+            [id, name, projectKey, description || null, organizationId, userId, status, visibility, priority, startDate || null, dueDate || null, teamId || null, now, now]
         )
         const project = projectRes.rows[0]
 
@@ -46,35 +122,72 @@ export async function createForMember({ name, key, description, organizationId, 
 }
 
 export async function findForMember({ organizationId, userId }) {
+    requireUuid(organizationId, 'Organization ID')
+    requireUuid(userId, 'User ID')
     const membership = await organizationMembership({ query }, organizationId, userId)
-    if (!membership) throw permissionError()
+    if (!membership) throw serviceError('Organization membership required', 403)
 
     const res = await query(
-        `SELECT * FROM "Project" WHERE "organizationId" = $1 ORDER BY "createdAt" ASC`,
-        [organizationId]
+        `SELECT p.*,
+                (SELECT COUNT(*)::int FROM "Task" task WHERE task."projectId" = p.id) AS "taskTotal",
+                (SELECT COUNT(*)::int FROM "Task" task WHERE task."projectId" = p.id AND task.status = 'COMPLETED') AS "taskCompleted",
+                (SELECT COUNT(*)::int FROM "Task" task WHERE task."projectId" = p.id AND task.status = 'IN_PROGRESS') AS "taskInProgress",
+                (SELECT COUNT(*)::int FROM "Task" task WHERE task."projectId" = p.id AND task.status = 'IN_REVIEW') AS "taskReview",
+                (SELECT COUNT(*)::int FROM "Task" task WHERE task."projectId" = p.id AND task.status = 'TODO') AS "taskTodo",
+                (
+                    $2 = 'ADMIN'
+                    OR (
+                        $2 = 'MANAGER'
+                        AND (
+                            p."createdById" = $3
+                            OR EXISTS (
+                                SELECT 1 FROM "ProjectMember" pm
+                                WHERE pm."projectId" = p.id AND pm."userId" = $3
+                            )
+                        )
+                    )
+                ) AS "canManage",
+                EXISTS (
+                    SELECT 1 FROM "ProjectMember" pm
+                    WHERE pm."projectId" = p.id AND pm."userId" = $3
+                ) AS "isMember"
+         FROM "Project" p
+         WHERE p."organizationId" = $1
+           AND (
+                p.visibility <> 'MEMBERS_ONLY'
+                OR $2 = 'ADMIN'
+                OR EXISTS (
+                    SELECT 1 FROM "ProjectMember" pm
+                    WHERE pm."projectId" = p.id AND pm."userId" = $3
+                )
+           )
+         ORDER BY p."createdAt" ASC`,
+        [organizationId, membership.role, userId]
     )
     return res.rows
 }
 
 export async function updateForManager({ projectId, userId, changes }) {
-    if (!uuidRegex.test(projectId) || !uuidRegex.test(userId)) {
-        return { id: projectId, ...changes }
-    }
     return withTransaction(async (client) => {
-        const projectRes = await client.query(`SELECT * FROM "Project" WHERE id = $1`, [projectId])
-        const project = projectRes.rows[0]
-        if (!project) return { id: projectId, ...changes }
+        const { project, membership } = await getManageableProject(client, projectId, userId)
+        const safeChanges = Object.entries(changes).filter(([field]) => updateableFields.has(field))
+        if (safeChanges.length === 0) throw serviceError('At least one valid project field is required', 400)
 
-        const membership = await organizationMembership(client, project.organizationId, userId)
-        if (!membership || !['ADMIN', 'MANAGER'].includes(membership.role)) throw permissionError()
+        const nextStartDate = changes.startDate === undefined ? project.startDate : changes.startDate
+        const nextDueDate = changes.dueDate === undefined ? project.dueDate : changes.dueDate
+        if (nextStartDate && nextDueDate && new Date(nextDueDate) < new Date(nextStartDate)) {
+            throw serviceError('Deadline cannot be earlier than the start date', 400)
+        }
+        if (changes.teamId !== undefined) {
+            await assertTeamAssignment(client, changes.teamId, project.organizationId, userId, membership.role)
+        }
 
         const fields = []
         const values = [projectId]
         let idx = 2
-
-        for (const [key, val] of Object.entries(changes)) {
-            fields.push(`"${key}" = $${idx++}`)
-            values.push(val)
+        for (const [field, value] of safeChanges) {
+            fields.push(`"${field}" = $${idx++}`)
+            values.push(value)
         }
         fields.push(`"updatedAt" = $${idx++}`)
         values.push(new Date())
@@ -88,17 +201,8 @@ export async function updateForManager({ projectId, userId, changes }) {
 }
 
 export async function deleteForManager({ projectId, userId }) {
-    if (!uuidRegex.test(projectId) || !uuidRegex.test(userId)) {
-        return { id: projectId, organizationId: null }
-    }
     return withTransaction(async (client) => {
-        const projectRes = await client.query(`SELECT * FROM "Project" WHERE id = $1`, [projectId])
-        const project = projectRes.rows[0]
-        if (!project) return { id: projectId, organizationId: null }
-
-        const membership = await organizationMembership(client, project.organizationId, userId)
-        if (!membership || !['ADMIN', 'MANAGER'].includes(membership.role)) throw permissionError()
-
+        const { project } = await getManageableProject(client, projectId, userId)
         await client.query(`DELETE FROM "ProjectMember" WHERE "projectId" = $1`, [projectId])
         await client.query(`DELETE FROM "Project" WHERE id = $1`, [projectId])
         return project

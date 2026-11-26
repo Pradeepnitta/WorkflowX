@@ -16,6 +16,10 @@ import { createProjectMemberService } from './services/projectMemberService.js'
 import * as projectMemberRepository from './repositories/projectMemberRepository.js'
 import { createProjectTaskService } from './services/projectTaskService.js'
 import * as projectTaskRepository from './repositories/projectTaskRepository.js'
+import {
+    cancelTaskDeadlineNotifications,
+    scheduleTaskDeadlineNotifications,
+} from './jobs/taskQueue.js'
 import { createCommentService } from './services/commentService.js'
 import * as commentRepository from './repositories/commentRepository.js'
 import { createAttachmentService } from './services/attachmentService.js'
@@ -26,6 +30,8 @@ import { createInvitationAcceptanceService } from './services/invitationAcceptan
 import * as invitationAcceptanceRepository from './repositories/invitationAcceptanceRepository.js'
 import { createNotificationService } from './services/notificationService.js'
 import * as notificationRepository from './repositories/notificationRepository.js'
+import { createSystemAdminService } from './services/systemAdminService.js'
+import * as systemAdminRepository from './repositories/systemAdminRepository.js'
 import { createAnalyticsService } from './services/analyticsService.js'
 import * as analyticsRepository from './repositories/analyticsRepository.js'
 import { createSearchService } from './services/searchService.js'
@@ -105,16 +111,22 @@ export function createApp({
     teamService = createTeamService(teamRepository),
     projectService = createProjectService(projectRepository),
     projectMemberService = createProjectMemberService(projectMemberRepository),
-    projectTaskService = createProjectTaskService(projectTaskRepository),
+    projectTaskService,
+    taskDeadlineScheduler = {
+        schedule: scheduleTaskDeadlineNotifications,
+        cancel: cancelTaskDeadlineNotifications,
+    },
     commentService = createCommentService(commentRepository),
     attachmentService = createAttachmentService(attachmentRepository),
     invitationService = createInvitationService(invitationRepository),
     invitationAcceptanceService = createInvitationAcceptanceService(invitationAcceptanceRepository),
     notificationService = createNotificationService(notificationRepository),
+    systemAdminService = createSystemAdminService(systemAdminRepository),
     analyticsService = createAnalyticsService(analyticsRepository),
     searchService = createSearchService(searchRepository),
 } = {}) {
     const app = express()
+    const resolvedProjectTaskService = projectTaskService || createProjectTaskService(projectTaskRepository, taskDeadlineScheduler)
 
     app.disable('x-powered-by')
 
@@ -136,12 +148,13 @@ export function createApp({
         teamService,
         projectService,
         projectMemberService,
-        projectTaskService,
+        projectTaskService: resolvedProjectTaskService,
         commentService,
         attachmentService,
         invitationService,
         invitationAcceptanceService,
         notificationService,
+        systemAdminService,
         analyticsService,
         searchService,
     })

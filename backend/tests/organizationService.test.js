@@ -45,6 +45,11 @@ test('organization service lists members, updates roles, and removes members', a
     let memberRemoved = null
 
     const mockRepo = {
+        async findMembershipRole(orgId, userId) {
+            assert.equal(orgId, 'org-1')
+            assert.equal(userId, 'user-1')
+            return 'MANAGER'
+        },
         async findMembers(orgId) {
             return [{ user: { id: 'u2', name: 'Alex', email: 'alex@example.com', avatarUrl: null }, role: 'MEMBER', joinedAt: '2026-01-01' }]
         },
@@ -70,5 +75,18 @@ test('organization service lists members, updates roles, and removes members', a
 
     await service.removeMember('org-1', 'u2', 'user-1')
     assert.equal(memberRemoved.targetUserId, 'u2')
+})
+
+test('organization service does not list members outside the organization', async () => {
+    const service = createOrganizationService({
+        async findMembershipRole() {
+            return null
+        },
+        async findMembers() {
+            assert.fail('Member data must not be queried for a non-member')
+        },
+    })
+
+    await assert.rejects(service.listMembers('org-1', 'user-1'), (error) => error.statusCode === 403)
 })
 

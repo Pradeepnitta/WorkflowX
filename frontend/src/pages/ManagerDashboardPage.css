@@ -1,0 +1,1617 @@
+.manager-dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.manager-heading-actions,
+.manager-section-heading,
+.manager-project-title,
+.manager-workload-row,
+.manager-deadline-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.manager-heading-actions {
+    flex-shrink: 0;
+}
+
+.manager-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.manager-stat-card,
+.manager-section,
+.manager-empty {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, .035);
+}
+
+.manager-stat-card {
+    min-height: 100px;
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.manager-stat-card span {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.manager-stat-card strong {
+    color: #1e293b;
+    font-size: 28px;
+    line-height: 1;
+}
+
+.manager-content-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.manager-section {
+    min-width: 0;
+    padding: 20px;
+}
+
+.manager-section-heading {
+    margin-bottom: 18px;
+}
+
+.manager-review-heading-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.manager-review-page {
+    max-width: 100%;
+}
+
+.manager-section-heading h2 {
+    margin: 0;
+    color: #1e293b;
+    font-size: 16px;
+}
+
+.manager-section-heading p,
+.manager-project-row > small,
+.manager-team-card small,
+.manager-workload-person small,
+.manager-review-row small,
+.manager-deadline-row small,
+.manager-empty-copy {
+    display: block;
+    margin: 4px 0 0;
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.manager-review-count {
+    min-width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: #fff7ed;
+    color: #c2410c;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.manager-project-list,
+.manager-review-list,
+.manager-workload-list,
+.manager-deadline-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.manager-project-row {
+    padding-bottom: 13px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.manager-project-row:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+}
+
+.manager-project-title strong,
+.manager-team-card strong,
+.manager-review-row strong,
+.manager-workload-person strong,
+.manager-deadline-row strong {
+    color: #1e293b;
+    font-size: 13px;
+}
+
+.manager-project-title small {
+    display: block;
+    margin-top: 3px;
+    color: #64748b;
+    font-size: 11px;
+}
+
+.manager-project-title b {
+    color: #5b4beb;
+    font-size: 14px;
+}
+
+.manager-progress-track {
+    height: 7px;
+    margin: 9px 0 5px;
+    overflow: hidden;
+    border-radius: 8px;
+    background: #f1f5f9;
+}
+
+.manager-progress-track span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #5b4beb, #8b7ff5);
+}
+
+.manager-review-row {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 9px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid #edf0f5;
+    border-radius: 9px;
+    background: #fff;
+    text-align: left;
+}
+
+.manager-review-row:hover {
+    border-color: #c7d2fe;
+    background: #fafaff;
+}
+
+.manager-review-row b {
+    color: #5b4beb;
+    font-size: 11px;
+}
+
+.manager-review-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #f59e0b;
+}
+
+.manager-team-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.manager-team-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid #edf0f5;
+    border-radius: 9px;
+}
+
+.manager-team-avatar,
+.manager-person-avatar {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: #eeecff;
+    color: #5b4beb;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.manager-person-avatar {
+    border-radius: 50%;
+    background: #eff6ff;
+    color: #2563eb;
+}
+
+.manager-workload-row {
+    justify-content: flex-start;
+    padding-bottom: 11px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.manager-workload-row:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+}
+
+.manager-workload-person {
+    min-width: 0;
+    flex: 1;
+}
+
+.manager-workload-row > b {
+    color: #64748b;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.manager-workload-row > b.is-overdue {
+    color: #dc2626;
+}
+
+.manager-task-section {
+    overflow: hidden;
+}
+
+.manager-task-table-wrap {
+    overflow-x: auto;
+}
+
+.manager-task-table {
+    width: 100%;
+    min-width: 850px;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.manager-task-table th {
+    padding: 10px 8px;
+    border-bottom: 1px solid #e5e7eb;
+    color: #64748b;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.manager-task-table td {
+    padding: 12px 8px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #475569;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.manager-task-table td strong {
+    color: #1e293b;
+}
+
+.manager-task-actions {
+    display: flex;
+    gap: 9px;
+}
+
+.manager-task-actions button,
+.text-button {
+    padding: 0;
+    background: transparent;
+    color: #5b4beb;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.manager-task-actions button.danger-text {
+    color: #dc2626;
+}
+
+.manager-deadline-row {
+    justify-content: flex-start;
+    padding: 10px 0;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.manager-deadline-row:last-child {
+    border-bottom: 0;
+}
+
+.manager-deadline-date {
+    min-width: 92px;
+    color: #b45309;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.manager-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: grid;
+    place-items: center;
+    overflow-y: auto;
+    padding: 20px;
+    background: rgba(15, 23, 42, .55);
+}
+
+.manager-modal {
+    width: min(620px, 100%);
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    padding: 24px;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 24px 70px rgba(15, 23, 42, .2);
+}
+
+.manager-review-modal {
+    width: min(700px, 100%);
+}
+
+.manager-modal-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.manager-modal-heading h2 {
+    margin: 3px 0 0;
+    color: #1e293b;
+    font-size: 20px;
+}
+
+.manager-modal > label,
+.manager-form-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: #334155;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.manager-modal input,
+.manager-modal select,
+.manager-modal textarea {
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid #dbe1ea;
+    border-radius: 7px;
+    color: #1e293b;
+    background: #fff;
+    font-size: 13px;
+}
+
+.manager-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 13px;
+    margin: 14px 0;
+}
+
+.manager-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 9px;
+    margin-top: 20px;
+}
+
+.manager-modal-actions .danger-button {
+    padding: 9px 13px;
+    border: 1px solid #fecaca;
+    border-radius: 7px;
+    background: #fef2f2;
+    color: #b91c1c;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.manager-review-actions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+.manager-review-context {
+    margin: -7px 0 16px;
+    color: #64748b;
+    font-size: 12px;
+}
+
+.manager-submission-details,
+.manager-review-history {
+    margin: 14px 0;
+    padding: 12px;
+    border-radius: 8px;
+    background: #f8fafc;
+    color: #334155;
+    font-size: 12px;
+}
+
+.manager-submission-details p,
+.manager-review-history p {
+    margin: 7px 0 0;
+    color: #475569;
+    line-height: 1.5;
+}
+
+.manager-review-meta {
+    display: flex;
+    gap: 14px;
+    color: #64748b;
+    font-size: 11px;
+}
+
+.manager-empty {
+    padding: 30px;
+}
+
+.manager-empty h1,
+.manager-empty h2 {
+    margin-top: 0;
+}
+
+@media (max-width: 1050px) {
+    .manager-stat-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .manager-content-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 680px) {
+    .manager-heading-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .manager-stat-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .manager-stat-card {
+        min-height: 86px;
+        padding: 14px;
+    }
+
+    .manager-stat-card strong {
+        font-size: 24px;
+    }
+
+    .manager-section {
+        padding: 15px;
+    }
+
+    .manager-team-grid,
+    .manager-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .manager-modal {
+        padding: 18px;
+    }
+}
+
+.manager-shell .sidebar {
+    position: sticky;
+    top: 0;
+    width: 212px;
+    min-width: 212px;
+    height: 100vh;
+    padding: 18px 10px 12px;
+    overflow-y: auto;
+    background: #fff;
+    border-right: 1px solid #e8eaf2;
+    box-shadow: none;
+}
+
+.manager-shell .brand {
+    gap: 9px;
+    padding: 0 7px 17px;
+    color: #17213f;
+    font-size: 15px;
+    letter-spacing: -.5px;
+}
+
+.manager-shell .brand-mark {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    border-radius: 10px;
+    background: linear-gradient(140deg, #7655f6, #4f38d5);
+    box-shadow: 0 5px 12px rgba(91, 75, 235, .2);
+}
+
+.manager-shell .brand-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.manager-shell .brand-word {
+    font-size: 15px;
+    line-height: 1.1;
+}
+
+.manager-shell .brand-accent {
+    color: #5b4beb;
+}
+
+.manager-shell .brand-subtitle {
+    color: #7e88a2;
+    font-size: 8px;
+    font-weight: 500;
+    letter-spacing: 0;
+    white-space: nowrap;
+}
+
+.manager-shell .workspace-switcher {
+    margin: 0 0 17px;
+    padding: 10px 7px;
+    border: 0;
+    border-top: 1px solid #eef0f5;
+    border-bottom: 1px solid #eef0f5;
+    border-radius: 0;
+}
+
+.manager-shell .workspace-switcher strong {
+    font-size: 11px;
+}
+
+.manager-shell .workspace-switcher small {
+    margin-top: 4px;
+    font-size: 10px;
+}
+
+.manager-shell .workspace-avatar {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    border-radius: 8px;
+    background: #f0edff;
+    color: #5b4beb;
+}
+
+.manager-shell .nav-label {
+    padding: 0 10px;
+    margin: 0 0 7px;
+    color: #8d97ad;
+    font-size: 9px;
+    letter-spacing: .8px;
+}
+
+.manager-shell .nav-item {
+    min-height: 37px;
+    gap: 10px;
+    margin: 1px 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    color: #64708b;
+    font-size: 11px;
+}
+
+.manager-shell .nav-item.active,
+.manager-shell .nav-item:hover {
+    color: #5b4beb;
+    background: #f0edff;
+    box-shadow: none;
+}
+
+.manager-shell .nav-icon {
+    width: 17px;
+    color: inherit;
+    font-size: 16px;
+}
+
+.manager-shell .sidebar-section {
+    margin: 14px 0 0;
+}
+
+.manager-shell .sidebar-section-heading {
+    margin: 0 8px 8px;
+}
+
+.manager-shell .sidebar-section-heading .nav-label {
+    color: #27324f;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+.manager-shell .sidebar-member {
+    gap: 8px;
+    padding: 6px 7px;
+}
+
+.manager-shell .sidebar-member-detail {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.manager-shell .sidebar-member-detail strong {
+    overflow: hidden;
+    color: #34405e;
+    font-size: 10px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.manager-shell .sidebar-member-detail small {
+    overflow: hidden;
+    margin: 0;
+    color: #8d97ad;
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.manager-shell .sidebar-footer {
+    display: none !important;
+}
+
+.manager-shell .main-content {
+    min-width: 0;
+    background: #f7f8fc;
+}
+
+.manager-shell .topbar {
+    height: 64px;
+    padding: 0 24px;
+    background: rgba(255, 255, 255, .97);
+    border-bottom: 1px solid #e8eaf2;
+}
+
+.manager-shell .topbar-leading {
+    display: none;
+}
+
+.manager-shell .top-actions {
+    display: grid;
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    gap: 16px;
+}
+
+.manager-shell .topbar-search {
+    justify-self: center;
+    width: min(500px, 100%);
+    height: 37px;
+    padding: 0 12px;
+    border-color: #e8eaf2;
+    border-radius: 22px;
+    background: #f7f8fc;
+}
+
+.manager-shell .topbar-search input {
+    font-size: 11px;
+}
+
+.manager-shell .topbar-search kbd {
+    padding: 3px 7px;
+    border-radius: 12px;
+    white-space: nowrap;
+}
+
+.manager-shell .topbar-profile {
+    gap: 8px;
+}
+
+.manager-shell .topbar-profile-copy small {
+    color: #7e88a2;
+}
+
+.manager-shell .content-wrap {
+    width: 100%;
+    max-width: none;
+    padding: 18px 20px 34px;
+}
+
+.manager-dashboard {
+    gap: 14px;
+}
+
+.manager-dashboard .feature-heading {
+    min-height: 66px;
+    align-items: center;
+    gap: 16px;
+    margin: 0;
+}
+
+.manager-dashboard .feature-heading h1 {
+    margin: 0;
+    color: #182342;
+    font-size: clamp(22px, 2.2vw, 27px);
+    letter-spacing: -.7px;
+}
+
+.manager-dashboard .heading-subtitle {
+    margin: 4px 0 0;
+    color: #75809a;
+    font-size: 12px;
+}
+
+.manager-waving-hand {
+    display: inline-block;
+    margin-right: 5px;
+    font-size: .9em;
+}
+
+.manager-heading-actions {
+    gap: 9px;
+}
+
+.manager-heading-actions .primary-button {
+    padding: 9px 13px;
+    border-radius: 8px;
+    font-size: 11px;
+}
+
+.manager-period-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 11px;
+    border: 1px solid #e8eaf2;
+    border-radius: 8px;
+    background: #fff;
+    color: #47536f;
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.manager-period-label span {
+    color: #5b4beb;
+    font-size: 14px;
+}
+
+.manager-stat-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.manager-stat-card {
+    position: relative;
+    min-height: 94px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 14px;
+    overflow: hidden;
+    border-color: #e9ebf4;
+    border-radius: 12px;
+    box-shadow: 0 3px 12px rgba(34, 45, 80, .035);
+}
+
+.manager-stat-card::after {
+    position: absolute;
+    right: -14px;
+    bottom: -27px;
+    width: 94px;
+    height: 58px;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    opacity: .13;
+    content: "";
+    transform: rotate(-18deg);
+}
+
+.manager-stat-card.tone-violet {
+    background: linear-gradient(120deg, #f8f6ff, #fff);
+    color: #7956f6;
+}
+
+.manager-stat-card.tone-green {
+    background: linear-gradient(120deg, #f0fbf7, #fff);
+    color: #20b981;
+}
+
+.manager-stat-card.tone-blue {
+    background: linear-gradient(120deg, #f1f7ff, #fff);
+    color: #4387f7;
+}
+
+.manager-stat-card.tone-orange {
+    background: linear-gradient(120deg, #fff7f0, #fff);
+    color: #f28a31;
+}
+
+.manager-stat-card.tone-mint {
+    background: linear-gradient(120deg, #effbf6, #fff);
+    color: #20b981;
+}
+
+.manager-stat-icon {
+    display: grid;
+    width: 39px;
+    height: 39px;
+    flex: 0 0 39px;
+    place-items: center;
+    border-radius: 50%;
+    background: currentColor;
+    color: #fff;
+    font-size: 19px;
+    font-weight: 700;
+    box-shadow: 0 4px 10px rgba(36, 49, 83, .12);
+}
+
+.manager-stat-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.manager-stat-card .manager-stat-copy strong {
+    color: #1c2748;
+    font-size: 25px;
+    line-height: 1;
+}
+
+.manager-stat-card .manager-stat-copy span {
+    color: #3a4664;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.manager-stat-card .manager-stat-copy small {
+    overflow: hidden;
+    color: #8b95aa;
+    font-size: 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.manager-dashboard-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1.1fr) minmax(238px, .8fr);
+    grid-template-areas:
+        "projects performance progress"
+        "reviews deadlines activity";
+    gap: 12px;
+}
+
+.manager-dashboard-grid > .manager-section,
+.manager-progress-panel {
+    min-width: 0;
+    min-height: 232px;
+    padding: 15px;
+    border: 1px solid #e9ebf4;
+    border-radius: 12px;
+    box-shadow: 0 3px 12px rgba(34, 45, 80, .035);
+}
+
+.manager-project-overview {
+    grid-area: projects;
+}
+
+.manager-performance-panel {
+    grid-area: performance;
+}
+
+.manager-progress-panel {
+    position: relative;
+    grid-area: progress;
+    overflow: hidden;
+    padding: 17px;
+    border: 0;
+    background: linear-gradient(145deg, #5b48ef 0%, #8458f2 63%, #9a5df4 100%);
+    color: #fff;
+    box-shadow: 0 8px 18px rgba(91, 72, 239, .2);
+}
+
+.manager-progress-panel::before {
+    position: absolute;
+    right: -12px;
+    bottom: 56px;
+    width: 190px;
+    height: 110px;
+    background: rgba(255, 255, 255, .1);
+    clip-path: polygon(0 100%, 45% 28%, 61% 55%, 76% 10%, 100% 100%);
+    content: "";
+    pointer-events: none;
+}
+
+.manager-progress-panel-heading,
+.manager-progress-callout,
+.manager-progress-panel > p,
+.manager-progress-percent,
+.manager-progress-track,
+.manager-progress-facts {
+    position: relative;
+    z-index: 1;
+}
+
+.manager-progress-panel-heading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+}
+
+.manager-progress-panel-heading > span {
+    font-size: 18px;
+}
+
+.manager-progress-panel .manager-progress-percent {
+    display: block;
+    margin-top: 9px;
+    color: #fff;
+    font-size: 34px;
+    line-height: 1;
+}
+
+.manager-progress-panel > p {
+    margin: 4px 0 10px;
+    color: rgba(255, 255, 255, .86);
+    font-size: 10px;
+}
+
+.manager-progress-track-light {
+    height: 6px;
+    margin: 0 0 12px;
+    background: rgba(255, 255, 255, .25);
+}
+
+.manager-progress-track-light span {
+    background: #fff;
+}
+
+.manager-progress-callout {
+    padding: 9px 10px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, .16);
+}
+
+.manager-progress-callout strong {
+    font-size: 10px;
+}
+
+.manager-progress-callout strong span {
+    margin-right: 4px;
+    color: #ffe083;
+}
+
+.manager-progress-callout p {
+    margin: 4px 0 0;
+    color: rgba(255, 255, 255, .85);
+    font-size: 9px;
+    line-height: 1.4;
+}
+
+.manager-progress-facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px 8px;
+    margin-top: 9px;
+    color: rgba(255, 255, 255, .88);
+    font-size: 8px;
+}
+
+.manager-progress-facts b {
+    margin-right: 3px;
+    color: #fff;
+    font-size: 10px;
+}
+
+.manager-reviews-panel {
+    grid-area: reviews;
+}
+
+.manager-deadlines-panel {
+    grid-area: deadlines;
+}
+
+.manager-activity-panel {
+    grid-area: activity;
+}
+
+.manager-dashboard-grid .manager-section-heading {
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.manager-dashboard-grid .manager-section-heading h2 {
+    color: #1c2748;
+    font-size: 14px;
+    letter-spacing: -.2px;
+}
+
+.manager-dashboard-grid .manager-section-heading p {
+    margin-top: 3px;
+    font-size: 9px;
+}
+
+.manager-dashboard-grid .text-button {
+    flex: 0 0 auto;
+    color: #6b50ea;
+    font-size: 9px;
+    white-space: nowrap;
+}
+
+.manager-dashboard-grid .text-button span {
+    font-size: 12px;
+}
+
+.manager-project-list {
+    gap: 0;
+}
+
+.manager-project-row {
+    display: grid;
+    grid-template-columns: 31px minmax(70px, 1fr) auto 67px 34px;
+    align-items: center;
+    gap: 7px;
+    min-height: 59px;
+    padding: 7px 0;
+    border-bottom: 1px solid #f0f1f6;
+}
+
+.manager-project-row:last-child {
+    border-bottom: 0;
+}
+
+.manager-project-icon {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border-radius: 9px;
+    background: #eeeaff;
+    color: #694df0;
+    font-size: 16px;
+}
+
+.manager-project-icon.priority-high,
+.manager-project-icon.priority-urgent {
+    background: #fff0ef;
+    color: #f26767;
+}
+
+.manager-project-icon.priority-low {
+    background: #eafaf3;
+    color: #23b982;
+}
+
+.manager-project-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.manager-project-copy strong {
+    overflow: hidden;
+    color: #273350;
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.manager-project-copy small,
+.manager-project-tasks {
+    overflow: hidden;
+    color: #8490a8;
+    font-size: 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.manager-priority-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 7px;
+    border-radius: 12px;
+    background: #fff2e7;
+    color: #e57625;
+    font-size: 8px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.manager-priority-pill.priority-low {
+    background: #eaf9f2;
+    color: #21a976;
+}
+
+.manager-priority-pill.priority-high,
+.manager-priority-pill.priority-urgent {
+    background: #fff0ee;
+    color: #ec6666;
+}
+
+.manager-project-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.manager-project-progress b {
+    color: #2f3c5a;
+    font-size: 9px;
+}
+
+.manager-project-progress .manager-progress-track {
+    height: 4px;
+    margin: 0;
+}
+
+.manager-project-progress .manager-progress-track span {
+    background: linear-gradient(90deg, #28c18a, #42d4a0);
+}
+
+.manager-project-tasks {
+    text-align: right;
+}
+
+.manager-chart-legend {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin: -4px 0 2px;
+    color: #5e6983;
+    font-size: 8px;
+}
+
+.manager-chart-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.manager-chart-legend i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #684eff;
+}
+
+.manager-chart-legend .legend-created {
+    background: #6baaf9;
+}
+
+.manager-performance-chart {
+    display: block;
+    width: 100%;
+    height: 154px;
+    overflow: visible;
+}
+
+.manager-chart-gridline {
+    stroke: #e9edf5;
+    stroke-width: 1;
+}
+
+.manager-chart-axis-label,
+.manager-chart-day {
+    fill: #76829a;
+    font-family: inherit;
+    font-size: 8px;
+}
+
+.manager-chart-day {
+    font-size: 8px;
+}
+
+.manager-chart-area {
+    fill: rgba(105, 79, 255, .09);
+}
+
+.manager-chart-line {
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.manager-chart-line.line-completed {
+    stroke: #684eff;
+}
+
+.manager-chart-line.line-created {
+    stroke: #6baaf9;
+}
+
+.manager-chart-point {
+    stroke: #fff;
+    stroke-width: 1.5;
+}
+
+.manager-chart-point.point-completed {
+    fill: #684eff;
+}
+
+.manager-chart-point.point-created {
+    fill: #6baaf9;
+}
+
+.manager-review-list {
+    gap: 0;
+}
+
+.manager-dashboard-grid .manager-review-row {
+    grid-template-columns: 3px minmax(0, 1fr) auto 38px;
+    gap: 8px;
+    min-height: 55px;
+    padding: 8px 3px;
+    border: 0;
+    border-bottom: 1px solid #f0f1f6;
+    border-radius: 0;
+    background: transparent;
+}
+
+.manager-dashboard-grid .manager-review-row:last-child {
+    border-bottom: 0;
+}
+
+.manager-dashboard-grid .manager-review-row:hover {
+    background: #fbfaff;
+}
+
+.manager-review-priority {
+    width: 3px;
+    height: 30px;
+    border-radius: 4px;
+    background: #f1a441;
+}
+
+.manager-review-priority.priority-high,
+.manager-review-priority.priority-urgent {
+    background: #f36b6b;
+}
+
+.manager-review-priority.priority-low {
+    background: #27c18a;
+}
+
+.manager-review-copy,
+.manager-activity-copy,
+.manager-deadline-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.manager-dashboard-grid .manager-review-copy strong,
+.manager-dashboard-grid .manager-deadline-copy strong {
+    overflow: hidden;
+    color: #263350;
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.manager-dashboard-grid .manager-review-copy small,
+.manager-dashboard-grid .manager-deadline-copy small {
+    overflow: hidden;
+    margin: 0;
+    color: #8791a8;
+    font-size: 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.manager-relative-time {
+    color: #8993a9;
+    font-size: 8px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.manager-deadline-list {
+    gap: 0;
+}
+
+.manager-dashboard-grid .manager-deadline-row {
+    display: grid;
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+    gap: 8px;
+    min-height: 55px;
+    padding: 7px 0;
+    border-bottom: 1px solid #f0f1f6;
+}
+
+.manager-dashboard-grid .manager-deadline-row:last-child {
+    border-bottom: 0;
+}
+
+.manager-deadline-icon {
+    display: grid;
+    width: 25px;
+    height: 25px;
+    place-items: center;
+    border-radius: 50%;
+    background: #fff6ed;
+    color: #f28a31;
+    font-size: 15px;
+}
+
+.manager-deadline-icon.is-today {
+    background: #fff0ef;
+    color: #ef6268;
+}
+
+.manager-deadline-pill {
+    align-self: center;
+    padding: 4px 7px;
+    border-radius: 11px;
+    background: #eff5ff;
+    color: #4381e7;
+    font-size: 8px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.manager-deadline-pill.is-today {
+    background: #fff0f1;
+    color: #e95766;
+}
+
+.manager-activity-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.manager-activity-row {
+    display: grid;
+    grid-template-columns: 9px minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 8px;
+    min-height: 47px;
+    padding: 5px 0;
+}
+
+.manager-activity-dot {
+    width: 8px;
+    height: 8px;
+    margin-top: 3px;
+    border-radius: 50%;
+    background: #7956f6;
+    box-shadow: 0 0 0 3px #f0edff;
+}
+
+.manager-activity-dot.activity-1 {
+    background: #21b981;
+    box-shadow: 0 0 0 3px #e8faf2;
+}
+
+.manager-activity-dot.activity-2 {
+    background: #f28a31;
+    box-shadow: 0 0 0 3px #fff3e8;
+}
+
+.manager-activity-dot.activity-3 {
+    background: #4387f7;
+    box-shadow: 0 0 0 3px #edf5ff;
+}
+
+.manager-dashboard-grid .manager-activity-copy strong {
+    overflow: hidden;
+    color: #293653;
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.manager-dashboard-grid .manager-activity-copy small {
+    display: -webkit-box;
+    overflow: hidden;
+    margin: 0;
+    color: #8791a8;
+    font-size: 8px;
+    line-height: 1.35;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+}
+
+.manager-secondary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.manager-secondary-grid > .manager-section {
+    padding: 17px;
+    border-color: #e9ebf4;
+    border-radius: 12px;
+    box-shadow: 0 3px 12px rgba(34, 45, 80, .035);
+}
+
+.manager-task-section {
+    border-radius: 12px;
+}
+
+.manager-task-section .manager-section-heading {
+    margin-bottom: 14px;
+}
+
+.manager-task-table th {
+    padding: 10px;
+}
+
+.manager-task-table td {
+    padding: 12px 10px;
+}
+
+.manager-empty-copy {
+    font-size: 10px;
+}
+
+.manager-review-page {
+    max-width: 980px;
+    margin: 0 auto;
+}
+
+@media (max-width: 1180px) {
+    .manager-dashboard-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-areas:
+            "projects performance"
+            "progress reviews"
+            "deadlines activity";
+    }
+
+    .manager-progress-panel {
+        min-height: 232px;
+    }
+}
+
+@media (max-width: 980px) {
+    .manager-shell .sidebar {
+        position: fixed;
+        width: min(290px, calc(100vw - 52px));
+        min-width: 0;
+    }
+
+    .manager-shell .topbar {
+        justify-content: space-between;
+    }
+
+    .manager-shell .topbar-leading {
+        display: flex;
+    }
+
+    .manager-shell .breadcrumbs {
+        display: none;
+    }
+
+    .manager-shell .top-actions {
+        display: flex;
+        width: auto;
+        gap: 10px;
+    }
+
+    .manager-shell .topbar-search {
+        justify-self: auto;
+        width: 34px;
+        padding: 0 7px;
+        border-color: transparent;
+        background: transparent;
+    }
+
+    .manager-shell .topbar-search input,
+    .manager-shell .topbar-search kbd {
+        display: none;
+    }
+
+    .manager-shell .topbar-search-trigger {
+        display: grid;
+    }
+
+    .manager-shell .topbar-search > span {
+        display: none;
+    }
+
+    .manager-shell .topbar-search.is-open {
+        position: absolute;
+        left: 55px;
+        right: 175px;
+        width: auto;
+        border-color: #e8eaf2;
+        background: #fff;
+    }
+
+    .manager-shell .topbar-search.is-open input {
+        display: block;
+    }
+
+    .manager-shell .topbar-search.is-open .topbar-search-trigger {
+        display: none;
+    }
+
+    .manager-shell .content-wrap {
+        padding: 18px 18px 30px;
+    }
+
+    .manager-stat-grid {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 720px) {
+    .manager-dashboard .feature-heading {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .manager-heading-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+
+    .manager-stat-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .manager-stat-card {
+        min-height: 82px;
+        padding: 11px;
+    }
+
+    .manager-stat-icon {
+        width: 33px;
+        height: 33px;
+        flex-basis: 33px;
+    }
+
+    .manager-stat-card .manager-stat-copy strong {
+        font-size: 22px;
+    }
+
+    .manager-dashboard-grid {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+            "projects"
+            "performance"
+            "progress"
+            "reviews"
+            "deadlines"
+            "activity";
+    }
+
+    .manager-secondary-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .manager-project-row {
+        grid-template-columns: 30px minmax(0, 1fr) auto;
+    }
+
+    .manager-project-progress,
+    .manager-project-tasks {
+        display: none;
+    }
+
+    .manager-dashboard-grid .manager-review-row {
+        grid-template-columns: 3px minmax(0, 1fr) auto;
+    }
+
+    .manager-dashboard-grid .manager-review-row .manager-relative-time {
+        display: none;
+    }
+
+    .manager-dashboard-grid > .manager-section,
+    .manager-progress-panel {
+        min-height: auto;
+    }
+}

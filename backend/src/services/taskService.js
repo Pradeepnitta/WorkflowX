@@ -12,7 +12,7 @@ function positiveInteger(value, fallback) {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
-export async function listTasks(searchParams) {
+export async function listTasks(searchParams, ownerEmail = null) {
     const filters = {
         query: searchParams.get('q'),
         status: searchParams.get('status'),
@@ -24,6 +24,7 @@ export async function listTasks(searchParams) {
     const tasks = await readTasks()
     const filteredTasks = tasks.filter((task) => (
         (!filters.query || [task.title, task.project, task.assignee].some((value) => String(value).toLowerCase().includes(filters.query.toLowerCase())))
+        && (!ownerEmail || String(task.assignee || '').trim().toLowerCase() === ownerEmail.toLowerCase())
         && matchesFilter(task.status, filters.status)
         && matchesFilter(task.priority, filters.priority)
         && matchesFilter(task.assignee, filters.assignee)
@@ -118,43 +119,6 @@ export async function updateTask(id, input) {
     }
     tasks[index] = updated
     await saveTasks(tasks)
-
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId)
-    if (isUuid) {
-        try {
-            const statusMap = { 'Todo': 'TODO', 'In progress': 'IN_PROGRESS', 'Review': 'IN_REVIEW', 'Done': 'COMPLETED' }
-            const priorityMap = { 'Low': 'LOW', 'Medium': 'MEDIUM', 'High': 'HIGH', 'Critical': 'URGENT' }
-            const pgStatus = statusMap[input.status] || input.status
-            const pgPriority = priorityMap[input.priority] || input.priority
-
-            const updates = []
-            const values = []
-            let paramIdx = 1
-
-            if (input.status) {
-                updates.push(`status = $${paramIdx++}`)
-                values.push(pgStatus)
-            }
-            if (input.title) {
-                updates.push(`title = $${paramIdx++}`)
-                values.push(input.title)
-            }
-            if (input.description !== undefined) {
-                updates.push(`description = $${paramIdx++}`)
-                values.push(input.description)
-            }
-            if (input.priority) {
-                updates.push(`priority = $${paramIdx++}`)
-                values.push(pgPriority)
-            }
-            if (updates.length > 0) {
-                values.push(targetId)
-                await query(`UPDATE "Task" SET ${updates.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = $${paramIdx}`, values)
-            }
-        } catch {
-            // ignore
-        }
-    }
 
     return updated
 }

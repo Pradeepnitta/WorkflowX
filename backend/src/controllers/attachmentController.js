@@ -1,3 +1,5 @@
+import { broadcastTaskEvent } from '../sockets/socketServer.js'
+
 export function createAttachmentController({ attachmentService, sendJson, readBody }) {
     return {
         async uploadAttachment(request, response, user, taskId) {
@@ -6,13 +8,13 @@ export function createAttachmentController({ attachmentService, sendJson, readBo
             sendJson(response, 201, { data: attachment })
         },
 
-        async listAttachments(request, response, taskId) {
-            const attachments = await attachmentService.listAttachments(taskId)
+        async listAttachments(request, response, user, taskId) {
+            const attachments = await attachmentService.listAttachments(taskId, user.sub)
             sendJson(response, 200, { data: attachments })
         },
 
-        async removeAttachment(request, response, attachmentId) {
-            const result = await attachmentService.removeAttachment(attachmentId)
+        async removeAttachment(request, response, user, attachmentId) {
+            const result = await attachmentService.removeAttachment(attachmentId, user.sub)
             sendJson(response, 200, { data: result })
         },
     }
@@ -28,8 +30,9 @@ export function createCommentController({ commentService, sendJson, readBody, ge
         async createComment(request, response, user, taskId) {
             const input = await readBody(request)
             const data = await commentService.create(taskId, input, user.sub)
-            const io = getIO ? getIO() : null
-            if (io) io.emit('comment:created', { taskId, comment: data, user })
+            if (getIO && getIO() && data.projectId) {
+                await broadcastTaskEvent(data.projectId, 'comment:created', { taskId, comment: data })
+            }
             sendJson(response, 201, { data })
         },
 

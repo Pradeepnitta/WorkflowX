@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getOrganizations } from '../services/organizationService.js'
 import { searchWorkspace } from '../services/searchService.js'
 import '../App.css'
@@ -13,10 +13,12 @@ const groups = [
 
 function SearchPage() {
     const navigate = useNavigate()
+    const [searchParams, setSearchParams] = useSearchParams()
+    const searchQuery = searchParams.get('q') || ''
     const [organizations, setOrganizations] = useState([])
     const [organizationId, setOrganizationId] = useState('')
-    const [query, setQuery] = useState('')
     const [results, setResults] = useState(null)
+    const [searchTrigger, setSearchTrigger] = useState(0)
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState('')
 
@@ -29,24 +31,46 @@ function SearchPage() {
             .catch((requestError) => setError(requestError.message))
     }, [])
 
-    async function submit(event) {
+    useEffect(() => {
+        let isCurrent = true
+        const timer = window.setTimeout(() => {
+            if (searchQuery.trim().length < 2 || !organizationId) {
+                if (isCurrent) setResults(null)
+                return
+            }
+
+            if (isCurrent) {
+                setIsLoading(true)
+                setError('')
+            }
+            searchWorkspace(searchQuery.trim(), organizationId)
+                .then((searchResults) => {
+                    if (isCurrent) setResults(searchResults)
+                })
+                .catch((requestError) => {
+                    if (isCurrent) setError(requestError.message)
+                })
+                .finally(() => {
+                    if (isCurrent) setIsLoading(false)
+                })
+        }, searchQuery.trim().length >= 2 ? 250 : 0)
+        return () => {
+            isCurrent = false
+            window.clearTimeout(timer)
+        }
+    }, [searchQuery, organizationId, searchTrigger])
+
+    function submit(event) {
         event.preventDefault()
-        if (query.trim().length < 2 || !organizationId) return
-        setIsLoading(true)
-        setError('')
-        try {
-            setResults(await searchWorkspace(query.trim(), organizationId))
-        } catch (requestError) {
-            setError(requestError.message)
-        } finally {
-            setIsLoading(false)
+        if (searchQuery.trim().length >= 2 && organizationId) {
+            setSearchTrigger((trigger) => trigger + 1)
         }
     }
 
     return (
         <main className="feature-page">
             <div className="feature-heading"><div><p className="eyebrow">Workspace</p><h1>Search</h1><p className="heading-subtitle">Find projects, tasks, comments, and people.</p></div>{organizations.length > 0 && <label className="organization-select">Organization<select value={organizationId} onChange={(event) => setOrganizationId(event.target.value)}>{organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}</select></label>}</div>
-            <form className="search-form" onSubmit={submit}><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search your workspace" aria-label="Search your workspace" /><button className="primary-button" type="submit" disabled={isLoading || query.trim().length < 2}>{isLoading ? 'Searching...' : 'Search'}</button></form>
+            <form className="search-form" onSubmit={submit}><input value={searchQuery} onChange={(event) => setSearchParams(event.target.value ? { q: event.target.value } : {}, { replace: true })} placeholder="Search your workspace" aria-label="Search your workspace" /><button className="primary-button" type="submit" disabled={isLoading || searchQuery.trim().length < 2}>{isLoading ? 'Searching...' : 'Search'}</button></form>
             {error && <p className="service-error" role="alert">{error}</p>}
             {results && (
                 <section className="search-results">

@@ -10,11 +10,9 @@ import {
     removeProjectMember,
 } from '../services/projectService.js'
 import { getOrganizations, getOrganizationMembers } from '../services/organizationService.js'
-import { getTasks } from '../services/taskService.js'
 import { getSocket } from '../services/socketService.js'
+import { getTeams } from '../services/teamService.js'
 import '../App.css'
-
-const AVAILABLE_TEAMS = ['Frontend Team', 'Backend Team', 'QA Team', 'DevOps Team', 'Product & Design']
 
 function highlightMatch(text, query) {
     if (!query || !text) return text
@@ -72,8 +70,8 @@ export default function ProjectsPage() {
     const [organizations, setOrganizations] = useState([])
     const [organizationId, setOrganizationId] = useState('')
     const [projects, setProjects] = useState([])
+    const [teams, setTeams] = useState([])
     const [orgMembers, setOrgMembers] = useState([])
-    const [allTasks, setAllTasks] = useState([])
     const [isLoading, setIsLoading] = useState(true)
     const [toastMessage, setToastMessage] = useState('')
     const [error, setError] = useState('')
@@ -84,6 +82,8 @@ export default function ProjectsPage() {
     useEffect(() => {
         const q = searchParams.get('search') || searchParams.get('team')
         if (q !== null && q !== undefined) {
+            // Team links pass the project filter through the URL.
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setSearchQuery(q)
         }
     }, [searchParams])
@@ -103,9 +103,9 @@ export default function ProjectsPage() {
     const [newProjectDescription, setNewProjectDescription] = useState('')
     const [newProjectStatus, setNewProjectStatus] = useState('PLANNING')
     const [newProjectPriority, setNewProjectPriority] = useState('MEDIUM')
+    const [newProjectStartDate, setNewProjectStartDate] = useState('')
     const [newProjectDueDate, setNewProjectDueDate] = useState('')
-    const [newProjectLead, setNewProjectLead] = useState('')
-    const [newProjectTeams, setNewProjectTeams] = useState(['Frontend Team'])
+    const [newProjectTeamId, setNewProjectTeamId] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
 
     // Form inputs for Member Addition inside Detail Modal
@@ -118,40 +118,39 @@ export default function ProjectsPage() {
 
     // Load initial organizations
     useEffect(() => {
-        setIsLoading(true)
         getOrganizations()
             .then((loadedOrganizations) => {
                 const orgs = Array.isArray(loadedOrganizations) ? loadedOrganizations : []
                 setOrganizations(orgs)
                 if (orgs.length > 0) {
+                    setIsLoading(true)
                     setOrganizationId(orgs[0].id)
                 } else {
-                    setProjects([])
+                    setIsLoading(false)
                 }
             })
-            .catch(() => {
-                setProjects([])
+            .catch((requestError) => {
+                setError(requestError.message)
+                setIsLoading(false)
             })
-            .finally(() => setIsLoading(false))
     }, [])
 
     // Load projects, members, and all tasks when organization changes
     useEffect(() => {
         if (!organizationId) {
-            setProjects([])
             return
         }
 
         Promise.all([
-            getProjects(organizationId).catch(() => []),
-            getOrganizationMembers(organizationId).catch(() => []),
-            getTasks().catch(() => []),
+            getProjects(organizationId),
+            getTeams(organizationId),
+            getOrganizationMembers(organizationId),
         ])
-            .then(([loadedProjects, loadedMembers, loadedTasks]) => {
+            .then(([loadedProjects, loadedTeams, loadedMembers]) => {
                 const pList = Array.isArray(loadedProjects) ? loadedProjects : []
-                const tList = Array.isArray(loadedTasks) ? loadedTasks : []
+                const teamList = Array.isArray(loadedTeams) ? loadedTeams : []
 
-                setAllTasks(tList)
+                setTeams(teamList)
                 setOrgMembers(Array.isArray(loadedMembers) ? loadedMembers : [])
 
                 const enriched = pList.map((p, idx) => {
@@ -162,9 +161,12 @@ export default function ProjectsPage() {
                         description: p.description || '',
                         status: p.status || 'ACTIVE',
                         priority: p.priority || 'MEDIUM',
+                        startDate: p.startDate ? new Date(p.startDate).toISOString().slice(0, 10) : '',
                         dueDate: p.dueDate ? new Date(p.dueDate).toISOString().slice(0, 10) : '',
                         lead: p.lead || (p.createdBy?.name || 'Unassigned'),
-                        teams: p.teams && p.teams.length > 0 ? p.teams : ['Frontend Team'],
+                        teamId: p.teamId || '',
+                        teams: p.teamId ? [teamList.find((team) => team.id === p.teamId)?.name].filter(Boolean) : [],
+                        canManage: Boolean(p.canManage),
                         members: p.members || [],
                         tasksSummary: p.tasksSummary || { total: 0, completed: 0, inProgress: 0, review: 0, todo: 0 },
                     }
@@ -172,9 +174,10 @@ export default function ProjectsPage() {
 
                 setProjects(enriched)
             })
-            .catch(() => {
-                setProjects([])
+            .catch((requestError) => {
+                setError(requestError.message)
             })
+            .finally(() => setIsLoading(false))
     }, [organizationId])
 
     // Real-time Socket.IO Listeners for Projects and Tasks
@@ -193,9 +196,12 @@ export default function ProjectsPage() {
                     description: newProj.description || '',
                     status: newProj.status || 'ACTIVE',
                     priority: newProj.priority || 'MEDIUM',
+                    startDate: newProj.startDate ? new Date(newProj.startDate).toISOString().slice(0, 10) : '',
                     dueDate: newProj.dueDate ? new Date(newProj.dueDate).toISOString().slice(0, 10) : '',
                     lead: newProj.lead || 'Unassigned',
-                    teams: newProj.teams && newProj.teams.length > 0 ? newProj.teams : ['Frontend Team'],
+                    teamId: newProj.teamId || '',
+                    teams: newProj.teamId ? [teams.find((team) => team.id === newProj.teamId)?.name].filter(Boolean) : [],
+                    canManage: Boolean(newProj.canManage),
                     members: newProj.members || [],
                     tasksSummary: { total: 0, completed: 0, inProgress: 0, review: 0, todo: 0 },
                 }
@@ -218,19 +224,6 @@ export default function ProjectsPage() {
             setDetailProject((prev) => (prev && (prev.id === delId || String(prev.id) === String(delId)) ? null : prev))
         }
 
-        function handleTaskCreated(newTask) {
-            if (newTask) setAllTasks((prev) => [newTask, ...prev.filter((t) => t.id !== newTask.id)])
-        }
-
-        function handleTaskUpdated(updatedTask) {
-            if (updatedTask) setAllTasks((prev) => prev.map((t) => (t.id === updatedTask.id ? { ...t, ...updatedTask } : t)))
-        }
-
-        function handleTaskDeleted(payload) {
-            const delId = payload?.id || payload?.taskId
-            if (delId) setAllTasks((prev) => prev.filter((t) => t.id !== delId && String(t.id) !== String(delId)))
-        }
-
         function handleMemberAdded(payload) {
             if (payload?.member) {
                 const newM = payload.member
@@ -246,9 +239,6 @@ export default function ProjectsPage() {
         socket.on('project:created', handleProjectCreated)
         socket.on('project:updated', handleProjectUpdated)
         socket.on('project:deleted', handleProjectDeleted)
-        socket.on('task:created', handleTaskCreated)
-        socket.on('task:updated', handleTaskUpdated)
-        socket.on('task:deleted', handleTaskDeleted)
         socket.on('organization:member-added', handleMemberAdded)
         socket.on('member:added', handleMemberAdded)
 
@@ -256,13 +246,10 @@ export default function ProjectsPage() {
             socket.off('project:created', handleProjectCreated)
             socket.off('project:updated', handleProjectUpdated)
             socket.off('project:deleted', handleProjectDeleted)
-            socket.off('task:created', handleTaskCreated)
-            socket.off('task:updated', handleTaskUpdated)
-            socket.off('task:deleted', handleTaskDeleted)
             socket.off('organization:member-added', handleMemberAdded)
             socket.off('member:added', handleMemberAdded)
         }
-    }, [])
+    }, [teams])
 
     function handleOpenCreateModal() {
         if (organizationId) {
@@ -270,46 +257,14 @@ export default function ProjectsPage() {
                 .then((mems) => {
                     if (Array.isArray(mems)) setOrgMembers(mems)
                 })
-                .catch(() => null)
+                .catch((requestError) => setError(requestError.message))
         }
         setShowCreateModal(true)
     }
 
-    // Real-time task breakdown map grouped by project name
-    const projectTasksMap = useMemo(() => {
-        const map = {}
-        allTasks.forEach((task) => {
-            const pName = (task.project || '').trim().toLowerCase()
-            if (!pName) return
-            if (!map[pName]) {
-                map[pName] = { total: 0, completed: 0, inProgress: 0, review: 0, todo: 0 }
-            }
-            map[pName].total++
-            const status = (task.status || '').toLowerCase()
-            if (status === 'done' || status === 'completed') {
-                map[pName].completed++
-            } else if (status === 'in progress' || status === 'in_progress') {
-                map[pName].inProgress++
-            } else if (status === 'review' || status === 'in_review') {
-                map[pName].review++
-            } else {
-                map[pName].todo++
-            }
-        })
-        return map
-    }, [allTasks])
-
-    // Enrich projects with live task metrics
     const enrichedProjects = useMemo(() => {
-        return projects.map((p) => {
-            const pKey = (p.name || '').trim().toLowerCase()
-            const liveSummary = projectTasksMap[pKey] || p.tasksSummary || { total: 0, completed: 0, inProgress: 0, review: 0, todo: 0 }
-            return {
-                ...p,
-                tasksSummary: liveSummary,
-            }
-        })
-    }, [projects, projectTasksMap])
+        return projects
+    }, [projects])
 
     // Filter projects based on search query, status tab, and priority dropdown
     const filteredProjects = useMemo(() => {
@@ -381,8 +336,8 @@ export default function ProjectsPage() {
                 setDetailProject((prev) => (prev && prev.id === project.id ? { ...prev, members: normalized } : prev))
                 setProjects((prev) => prev.map((p) => (p.id === project.id ? { ...p, members: normalized } : p)))
             }
-        } catch {
-            // Keep existing state
+        } catch (requestError) {
+            setError(requestError.message)
         }
     }
 
@@ -401,11 +356,13 @@ export default function ProjectsPage() {
             const created = await createProject({
                 name: newProjectName.trim(),
                 key: generatedKey,
-                description: newProjectDescription.trim() || 'No description provided.',
+                description: newProjectDescription.trim() || null,
                 organizationId: effectiveOrgId,
                 priority: newProjectPriority,
                 status: newProjectStatus,
+                startDate: newProjectStartDate || null,
                 dueDate: newProjectDueDate || null,
+                teamId: newProjectTeamId || null,
             })
 
             if (created?.organizationId && (!organizationId || organizationId === 'org-default')) {
@@ -417,26 +374,17 @@ export default function ProjectsPage() {
                 id: realId,
                 name: created?.name || newProjectName.trim(),
                 key: created?.key || generatedKey,
-                description: created?.description || newProjectDescription.trim() || 'No description provided.',
+                description: created?.description || newProjectDescription.trim() || '',
                 status: created?.status || newProjectStatus,
                 priority: created?.priority || newProjectPriority,
+                startDate: created?.startDate ? new Date(created.startDate).toISOString().slice(0, 10) : (newProjectStartDate || ''),
                 dueDate: created?.dueDate ? new Date(created.dueDate).toISOString().slice(0, 10) : (newProjectDueDate || ''),
-                lead: newProjectLead || 'Unassigned',
-                teams: newProjectTeams.length > 0 ? newProjectTeams : ['Frontend Team'],
+                lead: 'Unassigned',
+                teamId: created?.teamId || newProjectTeamId || '',
+                teams: (created?.teamId || newProjectTeamId) ? [teams.find((team) => team.id === (created?.teamId || newProjectTeamId))?.name].filter(Boolean) : [],
+                canManage: Boolean(created?.canManage),
                 members: [],
                 tasksSummary: { total: 0, completed: 0, inProgress: 0, review: 0, todo: 0 },
-            }
-
-            // If a lead was chosen and is an org member, automatically assign them
-            const leadMember = orgMembers.find((m) => (m.name || m.email) === newProjectLead || m.userId === newProjectLead)
-            if (leadMember && realId && !String(realId).startsWith('proj-')) {
-                await addProjectMember(realId, leadMember.userId).catch(() => null)
-                realProject.members = [{
-                    id: leadMember.userId,
-                    name: leadMember.name || leadMember.email,
-                    email: leadMember.email,
-                    role: 'LEAD',
-                }]
             }
 
             setProjects((prev) => [realProject, ...prev.filter((p) => p.id !== realProject.id)])
@@ -449,9 +397,9 @@ export default function ProjectsPage() {
             setNewProjectDescription('')
             setNewProjectStatus('PLANNING')
             setNewProjectPriority('MEDIUM')
+            setNewProjectStartDate('')
             setNewProjectDueDate('')
-            setNewProjectLead('')
-            setNewProjectTeams(['Frontend Team'])
+            setNewProjectTeamId('')
         } catch (err) {
             setError(err.message || 'Failed to create project')
         } finally {
@@ -473,7 +421,9 @@ export default function ProjectsPage() {
                     description: editingProject.description,
                     status: editingProject.status,
                     priority: editingProject.priority,
+                    startDate: editingProject.startDate || null,
                     dueDate: editingProject.dueDate || null,
+                    teamId: editingProject.teamId || null,
                 })
             }
 
@@ -652,7 +602,11 @@ export default function ProjectsPage() {
                             <select
                                 id="projects-org-select"
                                 value={organizationId}
-                                onChange={(e) => setOrganizationId(e.target.value)}
+                                onChange={(e) => {
+                                    setIsLoading(true)
+                                    setError('')
+                                    setOrganizationId(e.target.value)
+                                }}
                             >
                                 {organizations.map((org) => (
                                     <option key={org.id} value={org.id}>{org.name}</option>
@@ -1151,7 +1105,7 @@ export default function ProjectsPage() {
                                             Details
                                         </button>
 
-                                        {canManageProjects && (
+                                        {canManageProjects && project.canManage && (
                                             <>
                                                 <button
                                                     id={`edit-project-${project.id}`}
@@ -1323,7 +1277,7 @@ export default function ProjectsPage() {
                                                     >
                                                         Details
                                                     </button>
-                                                    {canManageProjects && (
+                                                    {canManageProjects && project.canManage && (
                                                         <>
                                                             <button
                                                                 type="button"
@@ -1467,12 +1421,23 @@ export default function ProjectsPage() {
                                 </label>
 
                                 <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>
+                                    Start date
+                                    <input
+                                        id="new-project-startdate-input"
+                                        type="date"
+                                        value={newProjectStartDate}
+                                        onChange={(e) => setNewProjectStartDate(e.target.value)}
+                                        style={{ width: '100%', padding: '7px 8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #d1d5db' }}
+                                    />
+                                </label>
+
+                                <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>
                                     Deadline / Due
                                     <input
                                         id="new-project-duedate-input"
                                         type="date"
                                         value={newProjectDueDate}
-                                        min={new Date().toISOString().split('T')[0]}
+                                        min={newProjectStartDate || undefined}
                                         onChange={(e) => setNewProjectDueDate(e.target.value)}
                                         style={{ width: '100%', padding: '7px 8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #d1d5db' }}
                                     />
@@ -1480,57 +1445,20 @@ export default function ProjectsPage() {
                             </div>
 
                             <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>
-                                Project Lead / Manager
+                                <p style={{ margin: '0 0 6px', fontSize: '12px', fontWeight: 600, color: '#374151' }}>
+                                    Assigned team
+                                </p>
                                 <select
-                                    id="new-project-lead-select"
-                                    value={newProjectLead}
-                                    onChange={(e) => setNewProjectLead(e.target.value)}
+                                    value={newProjectTeamId}
+                                    onChange={(event) => setNewProjectTeamId(event.target.value)}
                                     style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff' }}
                                 >
-                                    <option value="">Select Project Lead...</option>
-                                    {orgMembers.map((m) => (
-                                        <option key={m.userId} value={m.name || m.email}>
-                                            {m.name || m.email} ({m.role})
-                                        </option>
+                                    <option value="">No team assigned</option>
+                                    {teams.filter((team) => team.canManage).map((team) => (
+                                        <option key={team.id} value={team.id}>{team.name}</option>
                                     ))}
                                 </select>
                             </label>
-
-                            <div>
-                                <p style={{ margin: '0 0 6px', fontSize: '12px', fontWeight: 600, color: '#374151' }}>
-                                    Associated Teams
-                                </p>
-                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                    {AVAILABLE_TEAMS.map((teamName) => {
-                                        const isSelected = newProjectTeams.includes(teamName)
-                                        return (
-                                            <button
-                                                key={teamName}
-                                                type="button"
-                                                onClick={() => {
-                                                    if (isSelected) {
-                                                        setNewProjectTeams(newProjectTeams.filter((t) => t !== teamName))
-                                                    } else {
-                                                        setNewProjectTeams([...newProjectTeams, teamName])
-                                                    }
-                                                }}
-                                                style={{
-                                                    padding: '4px 10px',
-                                                    fontSize: '11px',
-                                                    borderRadius: '6px',
-                                                    border: isSelected ? '1px solid #2563eb' : '1px solid #d1d5db',
-                                                    background: isSelected ? '#eff6ff' : '#fff',
-                                                    color: isSelected ? '#1d4ed8' : '#374151',
-                                                    fontWeight: isSelected ? 600 : 'normal',
-                                                    cursor: 'pointer',
-                                                }}
-                                            >
-                                                {isSelected ? '✓ ' : '+ '} {teamName}
-                                            </button>
-                                        )
-                                    })}
-                                </div>
-                            </div>
 
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '14px' }}>
                                 <button
@@ -1655,12 +1583,23 @@ export default function ProjectsPage() {
                                 </label>
 
                                 <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>
+                                    Start date
+                                    <input
+                                        id="edit-project-startdate-input"
+                                        type="date"
+                                        value={editingProject.startDate || ''}
+                                        onChange={(e) => setEditingProject({ ...editingProject, startDate: e.target.value })}
+                                        style={{ width: '100%', padding: '7px 8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #d1d5db' }}
+                                    />
+                                </label>
+
+                                <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>
                                     Deadline
                                     <input
                                         id="edit-project-duedate-input"
                                         type="date"
                                         value={editingProject.dueDate || ''}
-                                        min={new Date().toISOString().split('T')[0]}
+                                        min={editingProject.startDate || undefined}
                                         onChange={(e) => setEditingProject({ ...editingProject, dueDate: e.target.value })}
                                         style={{ width: '100%', padding: '7px 8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #d1d5db' }}
                                     />
@@ -1668,57 +1607,28 @@ export default function ProjectsPage() {
                             </div>
 
                             <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>
-                                Project Lead
+                                <p style={{ margin: '0 0 6px', fontSize: '12px', fontWeight: 600, color: '#374151' }}>
+                                    Assigned team
+                                </p>
                                 <select
-                                    id="edit-project-lead-select"
-                                    value={editingProject.lead || ''}
-                                    onChange={(e) => setEditingProject({ ...editingProject, lead: e.target.value })}
+                                    value={editingProject.teamId || ''}
+                                    onChange={(event) => {
+                                        const teamId = event.target.value
+                                        const team = teams.find((item) => item.id === teamId)
+                                        setEditingProject({
+                                            ...editingProject,
+                                            teamId,
+                                            teams: team ? [team.name] : [],
+                                        })
+                                    }}
                                     style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff' }}
                                 >
-                                    <option value="">Unassigned</option>
-                                    {orgMembers.map((m) => (
-                                        <option key={m.userId} value={m.name || m.email}>
-                                            {m.name || m.email} ({m.role})
-                                        </option>
+                                    <option value="">No team assigned</option>
+                                    {teams.filter((team) => team.canManage).map((team) => (
+                                        <option key={team.id} value={team.id}>{team.name}</option>
                                     ))}
                                 </select>
                             </label>
-
-                            <div>
-                                <p style={{ margin: '0 0 6px', fontSize: '12px', fontWeight: 600, color: '#374151' }}>
-                                    Associated Teams
-                                </p>
-                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                    {AVAILABLE_TEAMS.map((teamName) => {
-                                        const currentTeams = editingProject.teams || []
-                                        const isSelected = currentTeams.includes(teamName)
-                                        return (
-                                            <button
-                                                key={teamName}
-                                                type="button"
-                                                onClick={() => {
-                                                    const updatedTeams = isSelected
-                                                        ? currentTeams.filter((t) => t !== teamName)
-                                                        : [...currentTeams, teamName]
-                                                    setEditingProject({ ...editingProject, teams: updatedTeams })
-                                                }}
-                                                style={{
-                                                    padding: '4px 10px',
-                                                    fontSize: '11px',
-                                                    borderRadius: '6px',
-                                                    border: isSelected ? '1px solid #2563eb' : '1px solid #d1d5db',
-                                                    background: isSelected ? '#eff6ff' : '#fff',
-                                                    color: isSelected ? '#1d4ed8' : '#374151',
-                                                    fontWeight: isSelected ? 600 : 'normal',
-                                                    cursor: 'pointer',
-                                                }}
-                                            >
-                                                {isSelected ? '✓ ' : '+ '} {teamName}
-                                            </button>
-                                        )
-                                    })}
-                                </div>
-                            </div>
 
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '14px' }}>
                                 <button
@@ -1868,7 +1778,7 @@ export default function ProjectsPage() {
                             </div>
 
                             {/* Member addition inline form */}
-                            {canManageProjects && (
+                            {canManageProjects && detailProject.canManage && (
                                 <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
                                     <select
                                         id="add-member-to-project-select"
@@ -1946,7 +1856,7 @@ export default function ProjectsPage() {
                                                 </div>
                                             </div>
 
-                                            {canManageProjects && (
+                                            {canManageProjects && detailProject.canManage && (
                                                 <button
                                                     id={`remove-project-member-${member.id}`}
                                                     type="button"
@@ -1986,7 +1896,7 @@ export default function ProjectsPage() {
                             </button>
 
                             <div style={{ display: 'flex', gap: '8px' }}>
-                                {canManageProjects && (
+                                {canManageProjects && detailProject.canManage && (
                                     <button
                                         type="button"
                                         onClick={() => {

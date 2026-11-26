@@ -17,10 +17,12 @@ export async function findActiveByHash(tokenHash) {
     const res = await query(
         `SELECT rt.*,
                 u.id as "u_id", u.name as "u_name", u.email as "u_email", u."avatarUrl" as "u_avatarUrl",
-                u."createdAt" as "u_createdAt", u."updatedAt" as "u_updatedAt"
+                u."createdAt" as "u_createdAt", u."updatedAt" as "u_updatedAt",
+                u."systemRole" as "u_systemRole", u."accountStatus" as "u_accountStatus"
          FROM "RefreshToken" rt
          JOIN "User" u ON rt."userId" = u.id
          WHERE rt."tokenHash" = $1 AND rt."revokedAt" IS NULL AND rt."expiresAt" > $2
+           AND u."accountStatus" = 'ACTIVE'
          LIMIT 1`,
         [tokenHash, new Date()]
     )
@@ -40,6 +42,8 @@ export async function findActiveByHash(tokenHash) {
             avatarUrl: row.u_avatarUrl,
             createdAt: row.u_createdAt,
             updatedAt: row.u_updatedAt,
+            systemRole: row.u_systemRole || 'USER',
+            accountStatus: row.u_accountStatus || 'ACTIVE',
         },
     }
 }

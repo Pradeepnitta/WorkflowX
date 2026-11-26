@@ -58,6 +58,14 @@ export async function findForUser(userId) {
     return res.rows
 }
 
+export async function findMembershipRole(organizationId, userId) {
+    const res = await query(
+        `SELECT role FROM "OrganizationMember" WHERE "organizationId" = $1 AND "userId" = $2 LIMIT 1`,
+        [organizationId, userId]
+    )
+    return res.rows[0]?.role || null
+}
+
 export async function findMembers(organizationId) {
     const res = await query(
         `SELECT DISTINCT ON (u.id)
@@ -119,7 +127,9 @@ export async function findMembers(organizationId) {
 
 export async function updateMemberRole({ organizationId, targetUserId, role, adminUserId }) {
     if (!uuidRegex.test(organizationId) || !uuidRegex.test(targetUserId) || !uuidRegex.test(adminUserId)) {
-        return { userId: targetUserId, role, user: { id: targetUserId, name: 'User', email: 'user@workflowx.dev' } }
+        const error = new Error('Organization, target user, and actor IDs must be valid')
+        error.statusCode = 400
+        throw error
     }
     return withTransaction(async (client) => {
         const adminRes = await client.query(
@@ -161,7 +171,9 @@ export async function updateMemberRole({ organizationId, targetUserId, role, adm
 
 export async function removeMember({ organizationId, targetUserId, adminUserId }) {
     if (!uuidRegex.test(organizationId) || !uuidRegex.test(targetUserId) || !uuidRegex.test(adminUserId)) {
-        return { count: 1, removedUserId: targetUserId }
+        const error = new Error('Organization, target user, and actor IDs must be valid')
+        error.statusCode = 400
+        throw error
     }
     return withTransaction(async (client) => {
         const adminRes = await client.query(

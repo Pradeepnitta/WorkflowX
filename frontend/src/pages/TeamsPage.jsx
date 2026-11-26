@@ -9,6 +9,15 @@ import '../App.css'
 
 const DEPARTMENTS = ['All Teams', 'Engineering', 'Quality Assurance', 'DevOps & SRE', 'Product & Design']
 
+function inferDepartment(name, dept) {
+    if (dept && dept !== 'General' && DEPARTMENTS.includes(dept)) return dept
+    const n = (name || '').toLowerCase()
+    if (n.includes('qa') || n.includes('quality') || n.includes('test')) return 'Quality Assurance'
+    if (n.includes('devops') || n.includes('sre') || n.includes('infra') || n.includes('cloud')) return 'DevOps & SRE'
+    if (n.includes('product') || n.includes('design') || n.includes('ux') || n.includes('ui')) return 'Product & Design'
+    return 'Engineering'
+}
+
 function highlightMatch(text, query) {
     if (!query || !text) return text
     const cleanQuery = query.trim()
@@ -32,7 +41,6 @@ export default function TeamsPage() {
     const [organizationId, setOrganizationId] = useState('')
     const [teams, setTeams] = useState([])
     const [orgMembers, setOrgMembers] = useState([])
-    const [projects, setProjects] = useState([])
     const [isLoading, setIsLoading] = useState(true)
     const [toastMessage, setToastMessage] = useState('')
     const [error, setError] = useState('')
@@ -49,10 +57,7 @@ export default function TeamsPage() {
 
     // Form inputs for Create Team
     const [newTeamName, setNewTeamName] = useState('')
-    const [newTeamDept, setNewTeamDept] = useState('Engineering')
     const [newTeamDescription, setNewTeamDescription] = useState('')
-    const [newTeamLead, setNewTeamLead] = useState('')
-    const [newTeamProjects, setNewTeamProjects] = useState([])
     const [newTeamMembers, setNewTeamMembers] = useState([])
     const [memberPickerSelect, setMemberPickerSelect] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
@@ -67,69 +72,52 @@ export default function TeamsPage() {
 
     // Load initial organizations
     useEffect(() => {
-        setIsLoading(true)
         getOrganizations()
             .then((loadedOrganizations) => {
                 const orgs = Array.isArray(loadedOrganizations) ? loadedOrganizations : []
                 setOrganizations(orgs)
                 if (orgs.length > 0) {
+                    setIsLoading(true)
                     setOrganizationId(orgs[0].id)
                 } else {
-                    setTeams([])
+                    setIsLoading(false)
                 }
             })
-            .catch(() => {
-                setTeams([])
+            .catch((requestError) => {
+                setError(requestError.message)
+                setIsLoading(false)
             })
-            .finally(() => setIsLoading(false))
     }, [])
 
     // Load teams, members, and projects when organization changes
     useEffect(() => {
         if (!organizationId) {
-            setTeams([])
             return
         }
 
-        setIsLoading(true)
         Promise.all([
-            getTeams(organizationId).catch(() => []),
-            getOrganizationMembers(organizationId).catch(() => []),
-            getProjects(organizationId).catch(() => []),
+            getTeams(organizationId),
+            getOrganizationMembers(organizationId),
+            getProjects(organizationId),
         ])
             .then(([loadedTeams, members, loadedProjects]) => {
                 const teamList = Array.isArray(loadedTeams) ? loadedTeams : []
-
-function inferDepartment(name, dept) {
-    if (dept && dept !== 'General' && DEPARTMENTS.includes(dept)) return dept
-    const n = (name || '').toLowerCase()
-    if (n.includes('qa') || n.includes('quality') || n.includes('test')) return 'Quality Assurance'
-    if (n.includes('devops') || n.includes('sre') || n.includes('infra') || n.includes('cloud')) return 'DevOps & SRE'
-    if (n.includes('product') || n.includes('design') || n.includes('ux') || n.includes('ui')) return 'Product & Design'
-    return 'Engineering'
-}
-
-                // Enrich teams with defaults and active projects
-                const orgProjects = Array.isArray(loadedProjects) && loadedProjects.length > 0
-                    ? loadedProjects.map((p) => p.name)
-                    : ['WorkFlowX Web Platform']
+                const projectList = Array.isArray(loadedProjects) ? loadedProjects : []
 
                 const enriched = teamList.map((t, idx) => {
                     const managerMember = (t.members || []).find((m) => m.user?.role === 'MANAGER' || m.user?.role === 'ADMIN')
-                    const detectedLead = t.lead && t.lead !== 'Unassigned'
-                        ? t.lead
-                        : (managerMember?.user?.name ? `${managerMember.user.name} (${managerMember.user.role})` : (t.members?.[0]?.user?.name || 'Unassigned'))
-
-                    const squadProjects = t.projects && t.projects.length > 0
-                        ? t.projects
-                        : orgProjects
+                    const squadProjects = projectList
+                        .filter((project) => project.teamId === t.id)
+                        .map((project) => project.name)
 
                     return {
                         id: t.id || `team-${idx}`,
                         name: t.name,
                         department: inferDepartment(t.name, t.department),
-                        description: t.description || 'Cross-functional engineering and delivery squad.',
-                        lead: detectedLead,
+                        description: t.description || '',
+                        lead: managerMember?.user?.name
+                            ? `${managerMember.user.name} (${managerMember.user.role})`
+                            : 'Not designated',
                         projects: squadProjects,
                         members: Array.isArray(t.members) ? t.members : [],
                     }
@@ -137,10 +125,9 @@ function inferDepartment(name, dept) {
 
                 setTeams(enriched)
                 setOrgMembers(Array.isArray(members) ? members : [])
-                setProjects(Array.isArray(loadedProjects) ? loadedProjects : [])
             })
-            .catch(() => {
-                setTeams([])
+            .catch((requestError) => {
+                setError(requestError.message)
             })
             .finally(() => setIsLoading(false))
     }, [organizationId])
@@ -157,7 +144,7 @@ function inferDepartment(name, dept) {
                 .then((mems) => {
                     if (Array.isArray(mems)) setOrgMembers(mems)
                 })
-                .catch(() => null)
+                .catch((requestError) => setError(requestError.message))
         }
 
         socket.on('organization:member-added', handleMemberAdded)
@@ -175,7 +162,7 @@ function inferDepartment(name, dept) {
                 .then((mems) => {
                     if (Array.isArray(mems)) setOrgMembers(mems)
                 })
-                .catch(() => null)
+                .catch((requestError) => setError(requestError.message))
         }
         setShowCreateModal(true)
     }
@@ -186,7 +173,7 @@ function inferDepartment(name, dept) {
                 .then((mems) => {
                     if (Array.isArray(mems)) setOrgMembers(mems)
                 })
-                .catch(() => null)
+                .catch((requestError) => setError(requestError.message))
         }
         setDetailTeam(team)
     }
@@ -227,18 +214,18 @@ function inferDepartment(name, dept) {
         return {
             totalTeams: total,
             totalMembers: orgMembers.length > 0 ? orgMembers.length : memberCount,
-            totalProjectsLinked: projectSet.size || (projects.length || 1),
+            totalProjectsLinked: projectSet.size,
             activeSquads: teams.filter((t) => (t.members?.length || 0) > 0).length,
         }
-    }, [teams, projects, orgMembers])
+    }, [teams, orgMembers])
 
-    // Candidate members for lead & squad member dropdown selection
+    // Candidate members for team membership.
     const availableCandidateMembers = useMemo(() => {
         if (orgMembers && orgMembers.length > 0) {
             return orgMembers.map((m) => {
                 const uid = m.userId || m.id || m.user?.id
-                const name = m.name || m.user?.name || (m.email || m.user?.email ? (m.email || m.user?.email).split('@')[0] : 'Member')
                 const email = m.email || m.user?.email || ''
+                const name = m.name || m.user?.name || (email ? email.split('@')[0] : 'Member')
                 const role = (m.role || m.user?.role || 'MEMBER').toUpperCase()
                 const avatarUrl = m.avatarUrl || m.user?.avatarUrl || null
                 return { userId: uid, name, email, role, avatarUrl }
@@ -258,12 +245,11 @@ function inferDepartment(name, dept) {
         const memberUserIds = newTeamMembers.map((m) => m.userId).filter(Boolean)
 
         const newTeamPayload = {
-            id: `team-${Date.now()}`,
             name: newTeamName.trim(),
-            department: newTeamDept,
-            description: newTeamDescription.trim() || 'Cross-functional engineering and delivery squad.',
-            lead: newTeamLead || (newTeamMembers[0]?.name ? `${newTeamMembers[0].name} (${newTeamMembers[0].role || 'Member'})` : 'Unassigned'),
-            projects: newTeamProjects,
+            department: inferDepartment(newTeamName.trim()),
+            description: newTeamDescription.trim(),
+            lead: 'Not designated',
+            projects: [],
             members: newTeamMembers.map((m) => ({
                 userId: m.userId,
                 user: { id: m.userId, name: m.name, email: m.email, role: m.role || 'MEMBER', avatarUrl: m.avatarUrl },
@@ -271,21 +257,16 @@ function inferDepartment(name, dept) {
         }
 
         try {
-            if (organizationId) {
-                const created = await createTeam({
-                    name: newTeamPayload.name,
-                    description: newTeamPayload.description,
-                    organizationId,
-                    memberUserIds,
-                }).catch(() => null)
-
-                if (created?.id) {
-                    newTeamPayload.id = created.id
-                    if (Array.isArray(created.members) && created.members.length > 0) {
-                        newTeamPayload.members = created.members
-                    }
-                }
-            }
+            if (!organizationId) throw new Error('Select an organization before creating a team.')
+            const created = await createTeam({
+                name: newTeamPayload.name,
+                description: newTeamPayload.description,
+                organizationId,
+                memberUserIds,
+            })
+            if (!created?.id) throw new Error('The team was not created. Please try again.')
+            newTeamPayload.id = created.id
+            newTeamPayload.members = Array.isArray(created.members) ? created.members : newTeamPayload.members
 
             setTeams((prev) => [newTeamPayload, ...prev])
             showToast(`Team "${newTeamPayload.name}" created successfully with ${newTeamPayload.members.length} member(s)!`)
@@ -293,10 +274,7 @@ function inferDepartment(name, dept) {
 
             // Reset form
             setNewTeamName('')
-            setNewTeamDept('Engineering')
             setNewTeamDescription('')
-            setNewTeamLead('')
-            setNewTeamProjects([])
             setNewTeamMembers([])
             setMemberPickerSelect('')
         } catch (err) {
@@ -313,7 +291,7 @@ function inferDepartment(name, dept) {
         const targetName = teamToDelete.name
 
         try {
-            await deleteTeam(targetId).catch(() => null)
+            await deleteTeam(targetId)
             setTeams((prev) => prev.filter((t) => t.id !== targetId))
             if (detailTeam && detailTeam.id === targetId) {
                 setDetailTeam(null)
@@ -329,11 +307,10 @@ function inferDepartment(name, dept) {
     async function handleAddMemberToTeam() {
         if (!detailTeam || !selectedMemberToAdd) return
 
-        const memberObj = orgMembers.find((m) => m.userId === selectedMemberToAdd) || {
-            userId: selectedMemberToAdd,
-            name: selectedMemberToAdd.includes('@') ? selectedMemberToAdd.split('@')[0] : selectedMemberToAdd,
-            email: selectedMemberToAdd.includes('@') ? selectedMemberToAdd : '',
-            role: 'DEVELOPER',
+        const memberObj = orgMembers.find((m) => m.userId === selectedMemberToAdd)
+        if (!memberObj) {
+            setError('Choose a member from this organization.')
+            return
         }
 
         const newMemberEntry = {
@@ -347,7 +324,7 @@ function inferDepartment(name, dept) {
         }
 
         try {
-            await addTeamMember(detailTeam.id, newMemberEntry.userId).catch(() => null)
+            await addTeamMember(detailTeam.id, newMemberEntry.userId)
             const updatedMembers = [...(detailTeam.members || []), newMemberEntry]
             const updatedTeam = { ...detailTeam, members: updatedMembers }
 
@@ -365,7 +342,7 @@ function inferDepartment(name, dept) {
         if (!detailTeam) return
 
         try {
-            await removeTeamMember(detailTeam.id, userId).catch(() => null)
+            await removeTeamMember(detailTeam.id, userId)
             const updatedMembers = (detailTeam.members || []).filter((m) => m.userId !== userId)
             const updatedTeam = { ...detailTeam, members: updatedMembers }
 
@@ -380,6 +357,13 @@ function inferDepartment(name, dept) {
     const activeOrg = organizations.find((o) => o.id === organizationId)
     const userRole = (activeOrg?.role || localStorage.getItem('workflowx_registered_role') || 'MEMBER').toUpperCase()
     const canManageTeams = userRole === 'ADMIN' || userRole === 'MANAGER'
+    const eligibleCandidateMembers = userRole === 'MANAGER'
+        ? availableCandidateMembers.filter((member) => member.role === 'MEMBER')
+        : availableCandidateMembers
+    const currentTeamMembers = detailTeam ? detailTeam.members || [] : []
+    const availableTeamCandidates = eligibleCandidateMembers.filter(
+        (member) => !currentTeamMembers.some((existing) => existing.userId === member.userId)
+    )
 
     return (
         <main className="feature-page" style={{ paddingBottom: '60px' }}>
@@ -438,7 +422,11 @@ function inferDepartment(name, dept) {
                             <select
                                 id="teams-org-select"
                                 value={organizationId}
-                                onChange={(e) => setOrganizationId(e.target.value)}
+                                onChange={(e) => {
+                                    setIsLoading(true)
+                                    setError('')
+                                    setOrganizationId(e.target.value)
+                                }}
                             >
                                 {organizations.map((org) => (
                                     <option key={org.id} value={org.id}>{org.name}</option>
@@ -896,7 +884,9 @@ function inferDepartment(name, dept) {
                                         <button
                                             id={`view-team-tasks-${team.id}`}
                                             type="button"
-                                            onClick={() => navigate(`/tasks?project=${encodeURIComponent(team.projects?.[0] || 'WorkFlowX Web Platform')}`)}
+                                            onClick={() => team.projects?.[0]
+                                                ? navigate(`/tasks?project=${encodeURIComponent(team.projects[0])}`)
+                                                : navigate('/projects')}
                                             style={{
                                                 background: '#f0fdf4',
                                                 border: '1px solid #bbf7d0',
@@ -1040,7 +1030,9 @@ function inferDepartment(name, dept) {
                                                     </button>
                                                     <button
                                                         type="button"
-                                                        onClick={() => navigate(`/tasks?project=${encodeURIComponent(team.projects?.[0] || 'WorkFlowX Web Platform')}`)}
+                                                        onClick={() => team.projects?.[0]
+                                                            ? navigate(`/tasks?project=${encodeURIComponent(team.projects[0])}`)
+                                                            : navigate('/projects')}
                                                         style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}
                                                         title="Open in Kanban Signboard"
                                                     >
@@ -1118,7 +1110,7 @@ function inferDepartment(name, dept) {
                         </div>
 
                         <form onSubmit={handleCreateTeam} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
+                            <div>
                                 <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>
                                     Team Name *
                                     <input
@@ -1132,20 +1124,6 @@ function inferDepartment(name, dept) {
                                     />
                                 </label>
 
-                                <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>
-                                    Department
-                                    <select
-                                        id="new-team-dept-select"
-                                        value={newTeamDept}
-                                        onChange={(e) => setNewTeamDept(e.target.value)}
-                                        style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff' }}
-                                    >
-                                        <option value="Engineering">Engineering</option>
-                                        <option value="Quality Assurance">Quality Assurance</option>
-                                        <option value="DevOps & SRE">DevOps & SRE</option>
-                                        <option value="Product & Design">Product & Design</option>
-                                    </select>
-                                </label>
                             </div>
 
                             <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>
@@ -1161,22 +1139,6 @@ function inferDepartment(name, dept) {
                             </label>
 
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
-                                <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>
-                                    Team Lead
-                                    <select
-                                        id="new-team-lead-select"
-                                        value={newTeamLead}
-                                        onChange={(e) => setNewTeamLead(e.target.value)}
-                                        style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff' }}
-                                    >
-                                        <option value="">Select Team Lead (Optional)</option>
-                                        {availableCandidateMembers.map((m) => (
-                                            <option key={m.userId} value={`${m.name} (${m.role})`}>
-                                                {m.name} {m.email ? `(${m.email})` : ''} — {m.role}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </label>
 
                                 {/* Dropdown Members Selection */}
                                 <div>
@@ -1219,7 +1181,7 @@ function inferDepartment(name, dept) {
                                             }}
                                         >
                                             <option value="">➕ Select member from dropdown to add...</option>
-                                            {availableCandidateMembers.map((cand) => {
+                                            {eligibleCandidateMembers.map((cand) => {
                                                 const isAlreadyAdded = newTeamMembers.some((m) => m.userId === cand.userId)
                                                 return (
                                                     <option key={cand.userId} value={cand.userId} disabled={isAlreadyAdded}>
@@ -1315,42 +1277,6 @@ function inferDepartment(name, dept) {
                                             No extra squad members chosen yet. Pick from the dropdown above to add people.
                                         </p>
                                     )}
-                                </div>
-                            </div>
-
-                            <div>
-                                <p style={{ margin: '0 0 6px', fontSize: '12px', fontWeight: 600, color: '#374151' }}>
-                                    Assign Active Projects
-                                </p>
-                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                    {['E-Commerce Website', 'Mobile App v2.0', 'Cloud Infrastructure Migration', 'Design System Refresh'].map((projName) => {
-                                        const isSelected = newTeamProjects.includes(projName)
-                                        return (
-                                            <button
-                                                key={projName}
-                                                type="button"
-                                                onClick={() => {
-                                                    if (isSelected) {
-                                                        setNewTeamProjects(newTeamProjects.filter((p) => p !== projName))
-                                                    } else {
-                                                        setNewTeamProjects([...newTeamProjects, projName])
-                                                    }
-                                                }}
-                                                style={{
-                                                    padding: '4px 10px',
-                                                    fontSize: '11px',
-                                                    borderRadius: '6px',
-                                                    border: isSelected ? '1px solid #2563eb' : '1px solid #d1d5db',
-                                                    background: isSelected ? '#eff6ff' : '#fff',
-                                                    color: isSelected ? '#1d4ed8' : '#374151',
-                                                    fontWeight: isSelected ? 600 : 'normal',
-                                                    cursor: 'pointer',
-                                                }}
-                                            >
-                                                {isSelected ? '✓ ' : '+ '} {projName}
-                                            </button>
-                                        )
-                                    })}
                                 </div>
                             </div>
 
@@ -1479,7 +1405,7 @@ function inferDepartment(name, dept) {
                                         style={{ flex: 1, padding: '7px 10px', fontSize: '12px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff' }}
                                     >
                                         <option value="">Select organization member to add...</option>
-                                        {availableCandidateMembers.map((m) => (
+                                        {availableTeamCandidates.map((m) => (
                                             <option key={m.userId} value={m.userId}>
                                                 {m.name} {m.email ? `(${m.email})` : ''} — {m.role}
                                             </option>
@@ -1583,9 +1509,9 @@ function inferDepartment(name, dept) {
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        const p = detailTeam.projects?.[0] || 'WorkFlowX Web Platform'
+                                        const p = detailTeam.projects?.[0]
                                         setDetailTeam(null)
-                                        navigate(`/tasks?project=${encodeURIComponent(p)}`)
+                                        navigate(p ? `/tasks?project=${encodeURIComponent(p)}` : '/projects')
                                     }}
                                     className="primary-button"
                                     style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}

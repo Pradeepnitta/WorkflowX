@@ -9,6 +9,8 @@
         "start": "node src/server.js",
         "check": "node --check src/server.js",
         "test": "node --test tests/*.test.js",
+        "migrate:manager-workflows": "node scripts/migrate_manager_workflows.js",
+        "migrate:global-admin": "node scripts/migrate_global_admin.js",
         "seed": "node scripts/seed.js",
         "seed:roles": "node scripts/seedRoles.js",
         "seed:users": "node scripts/seedUsers.js",

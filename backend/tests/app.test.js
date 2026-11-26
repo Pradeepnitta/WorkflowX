@@ -24,9 +24,11 @@ test('app serves health and tasks without starting the production listener', asy
 
     try {
         await saveTasks([
-            { id: 1, title: 'Audit API permissions', status: 'Todo', priority: 'High' },
-            { id: 2, title: 'Security review', status: 'Todo', priority: 'High' },
+            { id: 1, title: 'Audit API permissions', status: 'Todo', priority: 'High', assignee: 'admin@example.com' },
+            { id: 2, title: 'Security review', status: 'Todo', priority: 'High', assignee: 'admin@example.com' },
         ])
+        const token = createAccessToken({ id: 'user-123', email: 'admin@example.com' })
+        const authHeaders = { Authorization: `Bearer ${token}` }
 
         const rootResponse = await fetch(`${baseUrl}/`)
         const root = await rootResponse.json()
@@ -37,9 +39,10 @@ test('app serves health and tasks without starting the production listener', asy
             method: 'OPTIONS',
             headers: { Origin: 'http://localhost:5173', 'Access-Control-Request-Headers': 'Authorization' },
         })
-        const tasksResponse = await fetch(`${baseUrl}/api/tasks`)
+        const unauthenticatedTasksResponse = await fetch(`${baseUrl}/api/tasks`)
+        const tasksResponse = await fetch(`${baseUrl}/api/tasks`, { headers: authHeaders })
         const tasks = await tasksResponse.json()
-        const filteredResponse = await fetch(`${baseUrl}/api/tasks?status=todo&priority=high&limit=1`)
+        const filteredResponse = await fetch(`${baseUrl}/api/tasks?status=todo&priority=high&limit=1`, { headers: authHeaders })
         const filteredTasks = await filteredResponse.json()
 
         assert.equal(rootResponse.status, 200)
@@ -49,10 +52,10 @@ test('app serves health and tasks without starting the production listener', asy
         assert.equal(apiHealthResponse.status, 200)
         assert.equal(preflightResponse.status, 204)
         assert.match(preflightResponse.headers.get('access-control-allow-headers'), /Authorization/)
+        assert.equal(unauthenticatedTasksResponse.status, 401)
         assert.equal(tasksResponse.status, 200)
         assert.ok(Array.isArray(tasks.data))
 
-        const token = createAccessToken({ id: 'user-123', email: 'admin@example.com' })
         const meResponse = await fetch(`${baseUrl}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
         const me = await meResponse.json()
         assert.equal(meResponse.status, 200)
@@ -64,11 +67,66 @@ test('app serves health and tasks without starting the production listener', asy
         assert.ok(filteredTasks.meta.total >= 2)
         assert.equal(filteredTasks.meta.limit, 1)
 
-        const searchResponse = await fetch(`${baseUrl}/api/tasks?q=permissions`)
+        const searchResponse = await fetch(`${baseUrl}/api/tasks?q=permissions`, { headers: authHeaders })
         const searchTasks = await searchResponse.json()
         assert.equal(searchResponse.status, 200)
         assert.equal(searchTasks.meta.total, 1)
         assert.equal(searchTasks.data[0].title, 'Audit API permissions')
+
+        const otherUserToken = createAccessToken({ id: 'user-456', email: 'developer@example.com' })
+        const otherUserHeaders = { Authorization: `Bearer ${otherUserToken}` }
+        const otherUserTasksResponse = await fetch(`${baseUrl}/api/tasks`, { headers: otherUserHeaders })
+        const otherUserTasks = await otherUserTasksResponse.json()
+        assert.equal(otherUserTasksResponse.status, 200)
+        assert.equal(otherUserTasks.meta.total, 0)
+
+        const crossUserUpdateResponse = await fetch(`${baseUrl}/api/tasks/1`, {
+            method: 'PATCH',
+            headers: { ...otherUserHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: 'Unauthorized update' }),
+        })
+        assert.equal(crossUserUpdateResponse.status, 404)
+    } finally {
+        await saveTasks(initialTasks)
+        await stopTestServer(server)
+    }
+})
+
+test('legacy task routes require authentication and isolate task owners', async () => {
+    const { server, baseUrl } = await startTestServer()
+    const initialTasks = await readTasks()
+    const taskId = `legacy-isolation-${Date.now()}`
+    const ownerToken = createAccessToken({ id: 'owner-123', email: 'owner@example.com' })
+    const otherToken = createAccessToken({ id: 'other-456', email: 'other@example.com' })
+    const headersFor = (token) => ({ Authorization: `Bearer ${token}` })
+
+    try {
+        await saveTasks([
+            { id: taskId, title: 'Private task', status: 'Todo', priority: 'Medium', assignee: 'owner@example.com' },
+        ])
+
+        const anonymousResponse = await fetch(`${baseUrl}/api/tasks`)
+        const ownerResponse = await fetch(`${baseUrl}/api/tasks`, { headers: headersFor(ownerToken) })
+        const ownerTasks = await ownerResponse.json()
+        const otherResponse = await fetch(`${baseUrl}/api/tasks`, { headers: headersFor(otherToken) })
+        const otherTasks = await otherResponse.json()
+        const crossOwnerUpdateResponse = await fetch(`${baseUrl}/api/tasks/${taskId}`, {
+            method: 'PATCH',
+            headers: { ...headersFor(otherToken), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: 'Unauthorized update' }),
+        })
+        const crossOwnerDeleteResponse = await fetch(`${baseUrl}/api/tasks/${taskId}`, {
+            method: 'DELETE',
+            headers: headersFor(otherToken),
+        })
+
+        assert.equal(anonymousResponse.status, 401)
+        assert.equal(ownerResponse.status, 200)
+        assert.equal(ownerTasks.meta.total, 1)
+        assert.equal(otherResponse.status, 200)
+        assert.equal(otherTasks.meta.total, 0)
+        assert.equal(crossOwnerUpdateResponse.status, 404)
+        assert.equal(crossOwnerDeleteResponse.status, 404)
     } finally {
         await saveTasks(initialTasks)
         await stopTestServer(server)
@@ -77,23 +135,24 @@ test('app serves health and tasks without starting the production listener', asy
 
 test('app rejects invalid task creation and unknown routes', async () => {
     const { server, baseUrl } = await startTestServer()
+    const token = createAccessToken({ id: 'user-123', email: 'admin@example.com' })
 
     try {
         const invalidTaskResponse = await fetch(`${baseUrl}/api/tasks`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({ title: '' }),
         })
         const invalidTask = await invalidTaskResponse.json()
         const malformedBodyResponse = await fetch(`${baseUrl}/api/tasks`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: '{"title":',
         })
         const malformedBody = await malformedBodyResponse.json()
         const oversizedBodyResponse = await fetch(`${baseUrl}/api/tasks`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({ title: 'x'.repeat(1024 * 1024) }),
         })
         const oversizedBody = await oversizedBodyResponse.json()

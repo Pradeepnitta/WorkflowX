@@ -33,10 +33,10 @@ test('attachment service lists and removes attachments', async () => {
         },
     }
     const service = createAttachmentService(mockRepo)
-    const list = await service.listAttachments('task-1')
+    const list = await service.listAttachments('task-1', 'user-1')
     assert.equal(list.length, 1)
     assert.equal(list[0].fileName, 'spec.docx')
 
-    await service.removeAttachment('att-1')
+    await service.removeAttachment('att-1', 'user-1')
     assert.equal(deletedId, 'att-1')
 })

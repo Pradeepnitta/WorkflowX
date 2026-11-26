@@ -1,4 +1,4 @@
-import { query } from '../config/db.js'
+import { query, withTransaction } from '../config/db.js'
 import { randomUUID } from 'node:crypto'
 
 export async function findByEmail(email) {
@@ -13,13 +13,37 @@ export async function findByEmail(email) {
 export async function createUser(data) {
     const id = data.id || randomUUID()
     const now = new Date()
-    const res = await query(
-        `INSERT INTO "User" (id, name, email, "passwordHash", "avatarUrl", "createdAt", "updatedAt")
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING *`,
-        [id, data.name, data.email, data.passwordHash, data.avatarUrl || null, data.createdAt || now, data.updatedAt || now]
-    )
-    return res.rows[0]
+    return withTransaction(async (client) => {
+        const systemRole = data.systemRole || 'USER'
+        const res = await client.query(
+            `INSERT INTO "User" (
+                id, name, email, "passwordHash", "avatarUrl", "systemRole", "accountStatus", "createdAt", "updatedAt"
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             RETURNING *`,
+            [
+                id,
+                data.name,
+                data.email,
+                data.passwordHash,
+                data.avatarUrl || null,
+                systemRole,
+                data.accountStatus || 'ACTIVE',
+                data.createdAt || now,
+                data.updatedAt || now,
+            ]
+        )
+        if (systemRole === 'ADMIN') {
+            await client.query(
+                `INSERT INTO "AuditLog" (
+                    id, "actorUserId", action, "resourceType", "resourceId", result, details, "createdAt"
+                 )
+                 VALUES ($1, $2, 'SYSTEM_ADMIN_BOOTSTRAPPED', 'USER', $2, 'SUCCESS', $3::jsonb, $4)`,
+                [randomUUID(), id, JSON.stringify({ source: 'protected_registration' }), now]
+            )
+        }
+        return res.rows[0]
+    })
 }
 
 export const create = createUser
@@ -60,4 +84,16 @@ export async function updateProfile({ userId, name, avatarUrl, passwordHash }) {
         values
     )
     return res.rows[0]
+}
+
+export async function updateLastActive(userId) {
+    await query(`UPDATE "User" SET "lastActiveAt" = $2 WHERE id = $1`, [userId, new Date()])
+}
+
+export async function countActiveSystemAdmins() {
+    const result = await query(
+        `SELECT COUNT(*)::int AS count
+         FROM "User" WHERE "systemRole" = 'ADMIN' AND "accountStatus" = 'ACTIVE'`
+    )
+    return result.rows[0]?.count || 0
 }

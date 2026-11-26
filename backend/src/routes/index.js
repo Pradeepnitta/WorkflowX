@@ -48,6 +48,7 @@ export function createRoutes({
     projectService,
     projectMemberService,
     projectTaskService,
+    systemAdminService,
     commentService,
     attachmentService,
     invitationService,
@@ -58,7 +59,7 @@ export function createRoutes({
 }) {
     // 1. Initialize Page Controllers
     const authController = createAuthController({ authService, sendJson, readBody })
-    const adminController = createAdminController({ organizationService, sendJson, readBody })
+    const adminController = createAdminController({ organizationService, systemAdminService, sendJson, readBody })
     const orgController = createOrganizationController({ organizationService, invitationService, invitationAcceptanceService, sendJson, readBody, getIO })
     const teamController = createTeamController({ teamService, sendJson, readBody })
     const projectController = createProjectController({ projectService, projectMemberService, sendJson, readBody, getIO })

@@ -29,7 +29,14 @@ function validateCredentials(input) {
 }
 
 function publicUser(user) {
-    return { id: user.id, name: user.name, email: user.email, avatarUrl: user.avatarUrl || null }
+    return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        avatarUrl: user.avatarUrl || null,
+        systemRole: user.systemRole || 'USER',
+        accountStatus: user.accountStatus || 'ACTIVE',
+    }
 }
 
 export function createAuthService(userRepository, refreshTokenRepository, otpService) {
@@ -72,12 +79,19 @@ export function createAuthService(userRepository, refreshTokenRepository, otpSer
             }
 
             if (role === 'ADMIN') {
-                const expectedKey = process.env.ADMIN_SECRET_KEY || process.env.ADMIN_KEY || 'workflowx-admin-key-2026'
+                const expectedKey = process.env.ADMIN_SECRET_KEY || process.env.ADMIN_KEY
+                if (!expectedKey) throw serviceError('Admin bootstrap is not configured', 503)
                 if (!adminKey) {
                     throw serviceError('Admin Secret Key is required to create an Administrator account.', 403)
                 }
                 if (adminKey !== expectedKey) {
                     throw serviceError('Invalid Admin Secret Key. Administrator privileges denied.', 403)
+                }
+                if (
+                    typeof userRepository.countActiveSystemAdmins === 'function'
+                    && await userRepository.countActiveSystemAdmins() > 0
+                ) {
+                    throw serviceError('Global Admin bootstrap is already complete', 409)
                 }
             }
 
@@ -88,6 +102,7 @@ export function createAuthService(userRepository, refreshTokenRepository, otpSer
                 name,
                 email,
                 passwordHash: await hashPassword(password),
+                systemRole: role === 'ADMIN' ? 'ADMIN' : 'USER',
             })
 
             if (otpService) {
@@ -110,12 +125,20 @@ export function createAuthService(userRepository, refreshTokenRepository, otpSer
             if (!(await verifyPassword(password, user.passwordHash))) {
                 throw serviceError('Invalid password', 401)
             }
+            if (user.accountStatus && user.accountStatus !== 'ACTIVE') {
+                throw serviceError('This account is not active', 403)
+            }
 
             const hasAdminMembership = user.memberships?.some((m) => m.role === 'ADMIN')
-            const requiresAdminKey = isAdminLogin || hasAdminMembership || (input.adminKey !== undefined && input.adminKey !== '')
+            const isSystemAdmin = user.systemRole === 'ADMIN'
+            if (isAdminLogin && !isSystemAdmin && !hasAdminMembership) {
+                throw serviceError('Administrator account required', 403)
+            }
+            const requiresAdminKey = isAdminLogin || isSystemAdmin || hasAdminMembership || (input.adminKey !== undefined && input.adminKey !== '')
 
             if (requiresAdminKey) {
-                const expectedKey = process.env.ADMIN_SECRET_KEY || process.env.ADMIN_KEY || 'workflowx-admin-key-2026'
+                const expectedKey = process.env.ADMIN_SECRET_KEY || process.env.ADMIN_KEY
+                if (!expectedKey) throw serviceError('Admin sign-in is not configured', 503)
                 if (!adminKey) {
                     throw serviceError('Admin Secret Key is required for Administrator sign-in.', 403)
                 }
@@ -124,6 +147,9 @@ export function createAuthService(userRepository, refreshTokenRepository, otpSer
                 }
             }
 
+            if (typeof userRepository.updateLastActive === 'function') {
+                await userRepository.updateLastActive(user.id)
+            }
             return createSession(user)
         },
 
@@ -159,7 +185,7 @@ export function createAuthService(userRepository, refreshTokenRepository, otpSer
         async me(userId) {
             const user = await userRepository.findById(userId)
             if (!user) throw serviceError('User not found', 404)
-            let role = user.role || user.memberships?.[0]?.role || null
+            let role = user.systemRole === 'ADMIN' ? 'ADMIN' : user.role || user.memberships?.[0]?.role || null
             if (!role) {
                 try {
                     const res = await query(`SELECT role FROM "OrganizationMember" WHERE "userId" = $1 ORDER BY "joinedAt" ASC LIMIT 1`, [userId])
@@ -181,6 +207,9 @@ export function createAuthService(userRepository, refreshTokenRepository, otpSer
             const tokenHash = hashRefreshToken(input.refreshToken)
             const storedToken = await refreshTokenRepository.findActiveByHash(tokenHash)
             if (!storedToken) throw serviceError('Invalid or expired refresh token', 401)
+            if (storedToken.user.accountStatus && storedToken.user.accountStatus !== 'ACTIVE') {
+                throw serviceError('This account is not active', 403)
+            }
 
             await refreshTokenRepository.revoke(storedToken.id)
             return createSession(storedToken.user)

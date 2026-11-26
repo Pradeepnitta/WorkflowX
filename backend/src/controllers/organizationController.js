@@ -17,7 +17,7 @@ export function createOrganizationController({ organizationService, invitationSe
             if (typeof getIO === 'function') {
                 const io = getIO()
                 if (io) {
-                    io.emit('organization:member-added', {
+                    io.to(`organization:${organizationId}`).emit('organization:member-added', {
                         organizationId,
                         member: {
                             userId: data.id,

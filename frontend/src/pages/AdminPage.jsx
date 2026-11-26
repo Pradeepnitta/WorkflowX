@@ -13,9 +13,10 @@ import { getUserInitials } from '../constants/avatarOptions.js'
 import '../App.css'
 
 const ROLES = ['ADMIN', 'MANAGER', 'MEMBER', 'VIEWER']
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const PERMISSIONS_MATRIX = [
-    { action: 'Manage users & accounts', admin: true, manager: false, developer: false, viewer: false },
+    { action: 'Manage organization members', admin: true, manager: false, developer: false, viewer: false },
     { action: 'Assign Role to User', admin: true, manager: false, developer: false, viewer: false },
     { action: 'Change member roles', admin: true, manager: false, developer: false, viewer: false },
     { action: 'Create projects', admin: true, manager: true, developer: false, viewer: false },
@@ -26,7 +27,6 @@ const PERMISSIONS_MATRIX = [
     { action: 'Execute assigned tasks', admin: true, manager: true, developer: true, viewer: false },
     { action: 'Comment on tasks', admin: true, manager: true, developer: true, viewer: false },
     { action: 'View projects & tasks', admin: true, manager: true, developer: true, viewer: true },
-    { action: 'Organization settings', admin: true, manager: false, developer: false, viewer: false },
 ]
 
 
@@ -50,7 +50,6 @@ function highlightMatch(text, query) {
 export default function AdminPage() {
     const [organizations, setOrganizations] = useState([])
     const [organizationId, setOrganizationId] = useState('')
-    const [activeOrg, setActiveOrg] = useState(null)
     const [members, setMembers] = useState([])
     const [projects, setProjects] = useState([])
     const [teams, setTeams] = useState([])
@@ -60,7 +59,6 @@ export default function AdminPage() {
     const [searchQuery, setSearchQuery] = useState('')
     const [roleFilter, setRoleFilter] = useState('ALL')
     const [selectedUser, setSelectedUser] = useState(null)
-    const [activeStatusMap, setActiveStatusMap] = useState({})
 
     // In-app modal confirmation states
     const [pendingDeleteUser, setPendingDeleteUser] = useState(null)
@@ -68,9 +66,6 @@ export default function AdminPage() {
     const [pendingDeleteProject, setPendingDeleteProject] = useState(null)
 
     // Forms
-    const [orgName, setOrgName] = useState('')
-    const [orgDescription, setOrgDescription] = useState('')
-    const [orgLogoUrl, setOrgLogoUrl] = useState('')
     const [inviteEmail, setInviteEmail] = useState('')
     const [inviteRole, setInviteRole] = useState('MEMBER')
 
@@ -80,73 +75,35 @@ export default function AdminPage() {
     const [newProjName, setNewProjName] = useState('')
     const [newProjDesc, setNewProjDesc] = useState('')
 
-    // Security & Billing state
-    const [require2FA, setRequire2FA] = useState(true)
-    const [ssoEnabled, setSsoEnabled] = useState(true)
-    const [passwordMinLength, setPasswordMinLength] = useState('8')
-    const [billingPlan, setBillingPlan] = useState('Enterprise Pro Plan')
-    const [activityLogs, setActivityLogs] = useState([])
-
     const [isLoading, setIsLoading] = useState(true)
     const [isActionBusy, setIsActionBusy] = useState(false)
     const [error, setError] = useState('')
     const [successMessage, setSuccessMessage] = useState('')
 
-    const DEFAULT_ORGANIZATION = {
-        id: 'org-default',
-        name: 'Workspace',
-        role: 'ADMIN',
-        description: 'Primary Workspace',
-    }
-
     useEffect(() => {
         getOrganizations()
             .then((orgs) => {
-                const list = Array.isArray(orgs) && orgs.length > 0 ? orgs : [DEFAULT_ORGANIZATION]
+                const list = Array.isArray(orgs) ? orgs : []
                 setOrganizations(list)
-                setOrganizationId(list[0].id)
-                setActiveOrg(list[0])
-                setOrgName(list[0].name)
-                setOrgDescription(list[0].description || '')
+                if (list.length > 0) {
+                    setOrganizationId(list[0].id)
+                } else {
+                    setIsLoading(false)
+                }
             })
-            .catch(() => {
-                const list = [DEFAULT_ORGANIZATION]
-                setOrganizations(list)
-                setOrganizationId(list[0].id)
-                setActiveOrg(list[0])
-                setOrgName(list[0].name)
-                setOrgDescription(list[0].description || '')
+            .catch((err) => {
+                setError(err.message)
+                setIsLoading(false)
             })
-            .finally(() => setIsLoading(false))
     }, [])
 
     useEffect(() => {
-        if (!organizationId) {
-            setMembers([])
-            setProjects([])
-            setTeams([])
-            return
-        }
-        setIsLoading(true)
-        setError('')
-        const foundOrg = (organizations || []).find((o) => o.id === organizationId) || DEFAULT_ORGANIZATION
-        setActiveOrg(foundOrg)
-        setOrgName(foundOrg.name)
-        setOrgDescription(foundOrg.description || '')
-
-        const fetchMembers = organizationId === 'org-default'
-            ? Promise.resolve([])
-            : getOrganizationMembers(organizationId).catch(() => [])
-
-        const fetchProjects = organizationId === 'org-default'
-            ? Promise.resolve([])
-            : getProjects(organizationId).catch(() => [])
-
-        const fetchTeams = organizationId === 'org-default'
-            ? Promise.resolve([])
-            : getTeams(organizationId).catch(() => [])
-
-        Promise.all([fetchMembers, fetchProjects, fetchTeams])
+        if (!organizationId) return
+        Promise.all([
+            getOrganizationMembers(organizationId),
+            getProjects(organizationId),
+            getTeams(organizationId),
+        ])
             .then(([loadedMembers, loadedProjects, loadedTeams]) => {
                 const mList = Array.isArray(loadedMembers) ? [...loadedMembers] : []
                 const pList = Array.isArray(loadedProjects) ? [...loadedProjects] : []
@@ -154,18 +111,13 @@ export default function AdminPage() {
                 setMembers(mList)
                 setProjects(pList)
                 setTeams(tList)
-                // Initialize user active map
-                const statusMap = {}
-                mList.forEach((m) => {
-                    statusMap[m.userId || m.id] = true
-                })
-                setActiveStatusMap(statusMap)
             })
             .catch((err) => setError(err.message))
             .finally(() => setIsLoading(false))
     }, [organizationId, organizations])
 
-    const userRole = (activeOrg?.role || localStorage.getItem('workflowx_registered_role') || 'ADMIN').toUpperCase()
+    const activeOrg = organizations.find((organization) => organization.id === organizationId) || null
+    const userRole = (activeOrg?.role || 'MEMBER').toUpperCase()
     const isAdmin = userRole === 'ADMIN'
     const isManager = userRole === 'MANAGER'
 
@@ -177,31 +129,22 @@ export default function AdminPage() {
         }
         setError('')
         setSuccessMessage('')
-        setMembers((current) =>
-            current.map((m) => ((m.userId || m.id) === targetUserId ? { ...m, role: newRole } : m))
-        )
-        if (selectedUser && ((selectedUser.userId || selectedUser.id) === targetUserId)) {
-            setSelectedUser((prev) => (prev ? { ...prev, role: newRole } : null))
-        }
-        setSuccessMessage(`Updated role of user to ${newRole}.`)
-
-        const isUuid = (id) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-        if (isUuid(organizationId) && isUuid(targetUserId)) {
-            try {
-                await updateOrganizationMemberRole(organizationId, targetUserId, newRole)
-            } catch (err) {
-                console.warn('Backend role update notice:', err.message)
-            }
-        }
-    }
-
-    function toggleUserActive(targetUserId, currentStatus) {
-        if (!isAdmin) {
-            setError('Admin permission required: Only organization administrators can change user active status.')
+        if (!uuidPattern.test(organizationId) || !uuidPattern.test(targetUserId)) {
+            setError('A saved organization member is required to change a role.')
             return
         }
-        setActiveStatusMap((prev) => ({ ...prev, [targetUserId]: !currentStatus }))
-        setSuccessMessage(`User status toggled to ${!currentStatus ? 'Active' : 'Deactivated'}.`)
+        try {
+            await updateOrganizationMemberRole(organizationId, targetUserId, newRole)
+            setMembers((current) =>
+                current.map((m) => ((m.userId || m.id) === targetUserId ? { ...m, role: newRole } : m))
+            )
+            if (selectedUser && ((selectedUser.userId || selectedUser.id) === targetUserId)) {
+                setSelectedUser((prev) => (prev ? { ...prev, role: newRole } : null))
+            }
+            setSuccessMessage(`Updated role of user to ${newRole}.`)
+        } catch (err) {
+            setError(err.message)
+        }
     }
 
     function handleRemoveMember(targetUserId, memberName) {
@@ -221,26 +164,20 @@ export default function AdminPage() {
         setError('')
         setSuccessMessage('')
 
-        // Instantly remove from local state so UI updates immediately
-        setMembers((current) => current.filter((m) => (m.userId || m.id) !== targetUserId))
-        setActiveStatusMap((prev) => {
-            const next = { ...prev }
-            delete next[targetUserId]
-            return next
-        })
-        if (selectedUser && ((selectedUser.userId || selectedUser.id) === targetUserId)) {
-            setSelectedUser(null)
+        if (!uuidPattern.test(organizationId) || !uuidPattern.test(targetUserId)) {
+            setError('A saved organization member is required for removal.')
+            return
         }
-
-        const isUuid = (id) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-        if (isUuid(organizationId) && isUuid(targetUserId)) {
-            try {
-                await removeOrganizationMember(organizationId, targetUserId)
-            } catch (err) {
-                console.warn('Backend remove sync notice:', err.message)
+        try {
+            await removeOrganizationMember(organizationId, targetUserId)
+            setMembers((current) => current.filter((m) => (m.userId || m.id) !== targetUserId))
+            if (selectedUser && ((selectedUser.userId || selectedUser.id) === targetUserId)) {
+                setSelectedUser(null)
             }
+            setSuccessMessage(`User "${memberName}" was successfully removed from the organization.`)
+        } catch (err) {
+            setError(err.message)
         }
-        setSuccessMessage(`User "${memberName}" was successfully removed from the organization.`)
     }
 
     async function handleInviteSubmit(event) {
@@ -254,31 +191,22 @@ export default function AdminPage() {
         setError('')
         setSuccessMessage('')
 
-        const newMember = {
-            userId: 'usr-' + Date.now(),
-            name: inviteEmail.split('@')[0],
-            email: inviteEmail.trim(),
-            role: inviteRole,
-            title: inviteRole === 'ADMIN' ? 'Administrator' : inviteRole === 'MANAGER' ? 'Project Manager' : inviteRole === 'MEMBER' ? 'Developer' : 'Viewer',
-            team: 'General Team',
-            joinedAt: 'Just now',
+        if (!uuidPattern.test(organizationId)) {
+            setError('Select a saved organization before inviting a user.')
+            setIsActionBusy(false)
+            return
         }
-
-        setMembers((prev) => [newMember, ...prev])
-        setActiveStatusMap((prev) => ({ ...prev, [newMember.userId]: true }))
-        setSuccessMessage(`Invitation sent to ${inviteEmail} as ${inviteRole}.`)
-        const emailSent = inviteEmail
-        setInviteEmail('')
-
-        const isUuid = (id) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-        if (isUuid(organizationId)) {
-            try {
-                await inviteOrganizationMember(organizationId, { email: emailSent, role: inviteRole })
-            } catch (err) {
-                console.warn('Backend invite sync notice:', err.message)
-            }
+        try {
+            await inviteOrganizationMember(organizationId, { email: inviteEmail, role: inviteRole })
+            const refreshedMembers = await getOrganizationMembers(organizationId)
+            setMembers(Array.isArray(refreshedMembers) ? refreshedMembers : [])
+            setSuccessMessage(`Invitation created for ${inviteEmail} as ${inviteRole}.`)
+            setInviteEmail('')
+        } catch (err) {
+            setError(err.message)
+        } finally {
+            setIsActionBusy(false)
         }
-        setIsActionBusy(false)
     }
 
     // Team Management Actions
@@ -289,31 +217,17 @@ export default function AdminPage() {
         setError('')
         setSuccessMessage('')
 
-        const newTeamObj = {
-            id: 'team-' + Date.now(),
-            name: newTeamName.trim(),
-            description: newTeamDesc.trim() || 'Core team responsibilities',
-            organizationId,
-            members: [],
+        try {
+            const team = await createTeam({ name: newTeamName, description: newTeamDesc, organizationId })
+            setTeams((prev) => [...prev, team])
+            setSuccessMessage(`Team "${newTeamName.trim()}" created successfully.`)
+            setNewTeamName('')
+            setNewTeamDesc('')
+        } catch (err) {
+            setError(err.message)
+        } finally {
+            setIsActionBusy(false)
         }
-
-        const isUuid = (id) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-        if (isUuid(organizationId)) {
-            try {
-                const team = await createTeam({ name: newTeamName, description: newTeamDesc, organizationId })
-                setTeams((prev) => [...prev, team])
-            } catch (err) {
-                console.warn('Backend team create notice:', err.message)
-                setTeams((prev) => [...prev, newTeamObj])
-            }
-        } else {
-            setTeams((prev) => [...prev, newTeamObj])
-        }
-
-        setSuccessMessage(`Team "${newTeamName.trim()}" created successfully.`)
-        setNewTeamName('')
-        setNewTeamDesc('')
-        setIsActionBusy(false)
     }
 
     function handleDeleteTeam(teamId, teamName) {
@@ -328,16 +242,12 @@ export default function AdminPage() {
 
         setError('')
         setSuccessMessage('')
-        setTeams((prev) => prev.filter((t) => t.id !== teamId))
-        setSuccessMessage(`Team "${teamName}" deleted successfully.`)
-
-        const isUuid = (id) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-        if (isUuid(teamId)) {
-            try {
-                await authenticatedRequest(`/api/teams/${teamId}`, { method: 'DELETE' })
-            } catch (err) {
-                console.warn('Backend team delete notice:', err.message)
-            }
+        try {
+            await authenticatedRequest(`/api/teams/${teamId}`, { method: 'DELETE' })
+            setTeams((prev) => prev.filter((t) => t.id !== teamId))
+            setSuccessMessage(`Team "${teamName}" deleted successfully.`)
+        } catch (err) {
+            setError(err.message)
         }
     }
 
@@ -349,52 +259,32 @@ export default function AdminPage() {
         setError('')
         setSuccessMessage('')
 
-        const newProjObj = {
-            id: 'proj-' + Date.now(),
-            name: newProjName.trim(),
-            description: newProjDesc.trim() || 'Organization project',
-            status: 'PLANNING',
-            visibility: 'ORGANIZATION',
-            priority: 'MEDIUM',
-            organizationId,
+        try {
+            const proj = await createProject({ name: newProjName, description: newProjDesc, organizationId })
+            setProjects((prev) => [...prev, proj])
+            setSuccessMessage(`Project "${newProjName.trim()}" created successfully.`)
+            setNewProjName('')
+            setNewProjDesc('')
+        } catch (err) {
+            setError(err.message)
+        } finally {
+            setIsActionBusy(false)
         }
-
-        const isUuid = (id) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-        if (isUuid(organizationId)) {
-            try {
-                const proj = await createProject({ name: newProjName, description: newProjDesc, organizationId })
-                setProjects((prev) => [...prev, proj])
-            } catch (err) {
-                console.warn('Backend project create notice:', err.message)
-                setProjects((prev) => [...prev, newProjObj])
-            }
-        } else {
-            setProjects((prev) => [...prev, newProjObj])
-        }
-
-        setSuccessMessage(`Project "${newProjName.trim()}" created successfully.`)
-        setNewProjName('')
-        setNewProjDesc('')
-        setIsActionBusy(false)
     }
 
     async function handleArchiveProject(projectId, currentStatus) {
         setError('')
         setSuccessMessage('')
         const nextStatus = currentStatus === 'ARCHIVED' ? 'ACTIVE' : 'ARCHIVED'
-        setProjects((prev) => prev.map((p) => (p.id === projectId ? { ...p, status: nextStatus } : p)))
-        setSuccessMessage(`Project status updated to ${nextStatus}.`)
-
-        const isUuid = (id) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-        if (isUuid(projectId)) {
-            try {
-                await authenticatedRequest(`/api/projects/${projectId}`, {
-                    method: 'PATCH',
-                    body: JSON.stringify({ status: nextStatus }),
-                })
-            } catch (err) {
-                console.warn('Backend project update notice:', err.message)
-            }
+        try {
+            await authenticatedRequest(`/api/projects/${projectId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ status: nextStatus }),
+            })
+            setProjects((prev) => prev.map((p) => (p.id === projectId ? { ...p, status: nextStatus } : p)))
+            setSuccessMessage(`Project status updated to ${nextStatus}.`)
+        } catch (err) {
+            setError(err.message)
         }
     }
 
@@ -410,53 +300,13 @@ export default function AdminPage() {
 
         setError('')
         setSuccessMessage('')
-        setProjects((prev) => prev.filter((p) => p.id !== projectId))
-        setSuccessMessage(`Project "${projectName}" deleted successfully.`)
-
-        const isUuid = (id) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-        if (isUuid(projectId)) {
-            try {
-                await authenticatedRequest(`/api/projects/${projectId}`, { method: 'DELETE' })
-            } catch (err) {
-                console.warn('Backend project delete notice:', err.message)
-            }
+        try {
+            await authenticatedRequest(`/api/projects/${projectId}`, { method: 'DELETE' })
+            setProjects((prev) => prev.filter((p) => p.id !== projectId))
+            setSuccessMessage(`Project "${projectName}" deleted successfully.`)
+        } catch (err) {
+            setError(err.message)
         }
-    }
-
-    function handleOrgSave(event) {
-        event.preventDefault()
-        setError('')
-        setOrganizations((prev) =>
-            prev.map((o) => (o.id === organizationId ? { ...o, name: orgName, description: orgDescription } : o))
-        )
-        setActiveOrg((prev) => (prev ? { ...prev, name: orgName, description: orgDescription } : null))
-        setSuccessMessage(`Organization profile for "${orgName}" saved successfully.`)
-    }
-
-    function handleSecuritySave(event) {
-        event.preventDefault()
-        setError('')
-        setSuccessMessage('Security policies (2FA, SSO, Password rules) updated successfully.')
-    }
-
-    function handleExportLogs() {
-        if (!activityLogs || activityLogs.length === 0) {
-            setSuccessMessage('No audit logs available to export.')
-            return
-        }
-        const csvHeader = 'ID,Actor,Action,Target,Time,Type\n'
-        const csvRows = activityLogs.map(
-            (l) => `"${l.id}","${l.actor}","${l.action}","${l.target}","${l.time}","${l.type}"`
-        ).join('\n')
-        const blob = new Blob([csvHeader + csvRows], { type: 'text/csv;charset=utf-8;' })
-        const url = URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.setAttribute('href', url)
-        link.setAttribute('download', `workflowx-audit-logs-${new Date().toISOString().slice(0, 10)}.csv`)
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        setSuccessMessage('Audit log exported to CSV successfully.')
     }
 
     const filteredMembers = (members || []).filter((m) => {
@@ -482,7 +332,11 @@ export default function AdminPage() {
                 {(organizations?.length || 0) > 0 && (
                     <label className="organization-select">
                         Organization
-                        <select value={organizationId} onChange={(e) => setOrganizationId(e.target.value)}>
+                        <select value={organizationId} onChange={(e) => {
+                            setIsLoading(true)
+                            setError('')
+                            setOrganizationId(e.target.value)
+                        }}>
                             {organizations.map((org) => (
                                 <option key={org.id} value={org.id}>
                                     {org.name} ({org.role})
@@ -664,7 +518,6 @@ export default function AdminPage() {
                         <div className="project-list">
                             {filteredMembers.map((m) => {
                                 const mId = m.userId || m.id
-                                const isActive = activeStatusMap[mId] !== false
                                 return (
                                     <article className="project-row" key={mId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', padding: '14px 18px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -701,9 +554,6 @@ export default function AdminPage() {
                                                     <span className={`priority ${m.role.toLowerCase()}`} style={{ fontSize: '8px', padding: '2px 5px', borderRadius: '4px' }}>
                                                         {m.role}
                                                     </span>
-                                                    <span style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px', background: isActive ? '#eaf7f0' : '#fff0ec', color: isActive ? '#4a9e7e' : '#e96f59' }}>
-                                                        {isActive ? 'Active' : 'Deactivated'}
-                                                    </span>
                                                 </h3>
                                                 <p style={{ margin: '3px 0 0', fontSize: '11px', color: '#858996' }}>
                                                     {highlightMatch(m.email, searchQuery)}
@@ -734,15 +584,6 @@ export default function AdminPage() {
                                                     </option>
                                                 ))}
                                             </select>
-
-                                            <button
-                                                type="button"
-                                                className="secondary-button"
-                                                onClick={() => toggleUserActive(mId, isActive)}
-                                                style={{ padding: '5px 8px', fontSize: '11px' }}
-                                            >
-                                                {isActive ? 'Deactivate' : 'Activate'}
-                                            </button>
 
                                             {isAdmin && (
                                                 <button
@@ -828,7 +669,7 @@ export default function AdminPage() {
                     <div style={{ marginBottom: '18px' }}>
                         <h2 style={{ margin: 0, font: "600 18px 'Space Grotesk'" }}>Role-Based Access Control (RBAC) Matrix</h2>
                         <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#858996' }}>
-                            Organization-wide permission rules for Admin, Manager, Developer/Member, and Viewer.
+                            Workspace roles are scoped to this organization. System Admin privileges are managed separately.
                         </p>
                     </div>
 
@@ -1019,133 +860,23 @@ export default function AdminPage() {
 
             {/* Section 5: Organization Settings & Security */}
             {activeTab === 'settings' && (
-                <section className="feature-grid">
-                    <form className="project-create-panel panel" onSubmit={handleOrgSave} style={{ flex: '1 1 400px' }}>
-                        <p className="eyebrow">Organization Profile</p>
-                        <h2>General Settings</h2>
-                        <label>
-                            Organization Name
-                            <input
-                                id="org-name-input"
-                                type="text"
-                                value={orgName}
-                                onChange={(e) => setOrgName(e.target.value)}
-                                required
-                                disabled={!isAdmin}
-                            />
-                        </label>
-                        <label>
-                            Organization Logo URL
-                            <input
-                                id="org-logo-input"
-                                type="url"
-                                value={orgLogoUrl}
-                                onChange={(e) => setOrgLogoUrl(e.target.value)}
-                                placeholder="https://example.com/logo.png"
-                                disabled={!isAdmin}
-                            />
-                        </label>
-                        <label>
-                            Description
-                            <textarea
-                                id="org-desc-input"
-                                value={orgDescription}
-                                onChange={(e) => setOrgDescription(e.target.value)}
-                                rows="3"
-                                disabled={!isAdmin}
-                            />
-                        </label>
-                        <button id="save-org-btn" className="primary-button" type="submit" disabled={!isAdmin}>
-                            Save General Settings
-                        </button>
-                    </form>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', flex: '1 1 400px' }}>
-                        <form className="project-create-panel panel" onSubmit={handleSecuritySave}>
-                            <p className="eyebrow">Security Controls</p>
-                            <h2>Security & Authentication</h2>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', margin: '14px 0' }}>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0, fontWeight: 500 }}>
-                                    <input
-                                        id="enforce-2fa-checkbox"
-                                        type="checkbox"
-                                        checked={require2FA}
-                                        onChange={(e) => setRequire2FA(e.target.checked)}
-                                        style={{ width: 'auto' }}
-                                    />
-                                    Enforce Two-Factor Authentication (2FA) for Admins & Managers
-                                </label>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0, fontWeight: 500 }}>
-                                    <input
-                                        id="sso-enabled-checkbox"
-                                        type="checkbox"
-                                        checked={ssoEnabled}
-                                        onChange={(e) => setSsoEnabled(e.target.checked)}
-                                        style={{ width: 'auto' }}
-                                    />
-                                    SAML Single Sign-On (SSO) Integration
-                                </label>
-                                <label>
-                                    Minimum Password Length
-                                    <select id="password-min-length-select" value={passwordMinLength} onChange={(e) => setPasswordMinLength(e.target.value)}>
-                                        <option value="8">8 Characters</option>
-                                        <option value="12">12 Characters (Recommended)</option>
-                                        <option value="16">16 Characters (Strict)</option>
-                                    </select>
-                                </label>
-                            </div>
-                            <button id="save-security-btn" className="primary-button" type="submit" disabled={!isAdmin}>
-                                Save Security Policies
-                            </button>
-                        </form>
-
-                        <section className="project-create-panel panel">
-                            <p className="eyebrow">Subscription & Billing</p>
-                            <h2>Organization Plan</h2>
-                            <div style={{ padding: '12px', background: '#f7f7f5', borderRadius: '8px', margin: '10px 0 16px' }}>
-                                <strong style={{ fontSize: '14px', color: '#20222b' }}>{billingPlan}</strong>
-                                <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#858996' }}>Unlimited Members • Enterprise Support • Audit Logging Active</p>
-                            </div>
-                        </section>
-                    </div>
+                <section className="panel" style={{ padding: '24px' }}>
+                    <p className="eyebrow">Workspace settings</p>
+                    <h2>Settings are not available through the current workspace API</h2>
+                    <p style={{ color: '#64748b', fontSize: '13px', lineHeight: 1.6 }}>
+                        This workspace Admin view does not save organization, security, SSO, or billing settings.
+                        No changes are made from this page.
+                    </p>
                 </section>
             )}
 
             {/* Section 6: Admin Activity Audit Log */}
             {activeTab === 'logs' && (
                 <section className="panel" style={{ padding: '24px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-                        <div>
-                            <h2 style={{ margin: 0, font: "600 18px 'Space Grotesk'" }}>Admin Activity Audit Log</h2>
-                            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#858996' }}>
-                                Real-time audit history of workspace actions, role modifications, and project updates.
-                            </p>
-                        </div>
-                        <button id="export-logs-btn" className="secondary-button" onClick={handleExportLogs}>
-                            Export Log
-                        </button>
-                    </div>
-
-                    <div className="activity-list">
-                        {activityLogs.length === 0 ? (
-                            <div style={{ textAlign: 'center', padding: '36px 20px', color: '#858996' }}>
-                                <p style={{ margin: '0 0 6px', fontWeight: 600 }}>No audit logs recorded yet.</p>
-                                <span style={{ fontSize: '12px' }}>Administrative actions, role modifications, and project updates will appear here.</span>
-                            </div>
-                        ) : (
-                            activityLogs.map((log) => (
-                                <div key={log.id} className="activity-item" style={{ alignItems: 'center', padding: '12px 0' }}>
-                                    <span className={`activity-avatar ${log.type === 'project' ? 'coral-bg' : log.type === 'task' ? 'blue-bg' : 'green-bg'}`}>
-                                        {(log.actor || 'SY').slice(0, 2).toUpperCase()}
-                                    </span>
-                                    <p style={{ margin: 0, flex: 1, fontSize: '12px' }}>
-                                        <strong>{log.actor}</strong> {log.action} <b style={{ color: '#20222b' }}>"{log.target}"</b>
-                                        <small style={{ marginTop: '2px' }}>{log.time}</small>
-                                    </p>
-                                </div>
-                            ))
-                        )}
-                    </div>
+                    <h2>Workspace audit logs are not exposed by the current API</h2>
+                    <p style={{ color: '#64748b', fontSize: '13px', lineHeight: 1.6 }}>
+                        System-wide account audit records are available to active System Admins in the System Admin dashboard.
+                    </p>
                 </section>
             )}
 
@@ -1221,19 +952,6 @@ export default function AdminPage() {
                                     >
                                         Role: {selectedUser.role}
                                     </span>
-                                    <span
-                                        style={{
-                                            fontSize: '9px',
-                                            padding: '2px 6px',
-                                            borderRadius: '4px',
-                                            background:
-                                                activeStatusMap[selectedUser.userId || selectedUser.id] !== false ? '#eaf7f0' : '#fff0ec',
-                                            color:
-                                                activeStatusMap[selectedUser.userId || selectedUser.id] !== false ? '#4a9e7e' : '#e96f59',
-                                        }}
-                                    >
-                                        {activeStatusMap[selectedUser.userId || selectedUser.id] !== false ? 'Active' : 'Deactivated'}
-                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -1260,11 +978,11 @@ export default function AdminPage() {
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #eee', paddingBottom: '6px' }}>
                                 <span style={{ color: '#858996' }}>Assigned Team:</span>
-                                <b>{selectedUser.team || 'Core Engineering Team'}</b>
+                                <b>{selectedUser.team || 'Not assigned'}</b>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #eee', paddingBottom: '6px' }}>
                                 <span style={{ color: '#858996' }}>Joined Workspace:</span>
-                                <b>{selectedUser.joinedAt || 'Jan 15, 2026'}</b>
+                                <b>{selectedUser.joinedAt ? new Date(selectedUser.joinedAt).toLocaleDateString() : 'Not available'}</b>
                             </div>
                         </div>
 
@@ -1273,7 +991,7 @@ export default function AdminPage() {
                                 Role Permissions & Responsibilities:
                             </strong>
                             {selectedUser.role === 'ADMIN' &&
-                                'Full organization control: View/manage all users, invite new users, remove users, toggle active status, change roles, org settings, project management.'}
+                                'Workspace administration: manage organization members, invitations, roles, teams, and projects. System-wide account controls are reserved for System Admins.'}
                             {selectedUser.role === 'MANAGER' &&
                                 'Project & team management: Create & archive projects, monitor deadlines, create tasks, assign tasks to developers, manage team members (cannot assign or change user roles).'}
                             {selectedUser.role === 'MEMBER' &&
@@ -1296,18 +1014,6 @@ export default function AdminPage() {
                                 style={{ color: '#d9381e', background: '#fff2ee', border: '1px solid #ffd2c9', fontWeight: 600 }}
                             >
                                 Remove Member
-                            </button>
-                            <button
-                                type="button"
-                                id="modal-toggle-status-btn"
-                                className="secondary-button"
-                                onClick={() => {
-                                    const uId = selectedUser.userId || selectedUser.id
-                                    toggleUserActive(uId, activeStatusMap[uId] !== false)
-                                    setSelectedUser(null)
-                                }}
-                            >
-                                {activeStatusMap[selectedUser.userId || selectedUser.id] !== false ? 'Deactivate Account' : 'Activate Account'}
                             </button>
                             <button
                                 type="button"

@@ -29,28 +29,38 @@ export function createAttachmentService(repository = attachmentRepository) {
             return attachment
         },
 
-        async listAttachments(taskId) {
+        async listAttachments(taskId, userId) {
             if (!taskId) {
                 const error = new Error('Task ID is required')
                 error.statusCode = 400
                 throw error
             }
-            return repository.findAttachmentsByTask(taskId)
+            if (!userId) {
+                const error = new Error('Authentication required')
+                error.statusCode = 401
+                throw error
+            }
+            return repository.findAttachmentsByTask(taskId, userId)
         },
 
-        async removeAttachment(attachmentId) {
+        async removeAttachment(attachmentId, userId) {
             if (!attachmentId) {
                 const error = new Error('Attachment ID is required')
                 error.statusCode = 400
                 throw error
             }
-            const existing = await repository.findAttachmentById(attachmentId)
+            if (!userId) {
+                const error = new Error('Authentication required')
+                error.statusCode = 401
+                throw error
+            }
+            const existing = await repository.findAttachmentById(attachmentId, userId)
             if (!existing) {
                 const error = new Error('Attachment not found')
                 error.statusCode = 404
                 throw error
             }
-            return repository.deleteAttachment(attachmentId)
+            return repository.deleteAttachment(attachmentId, userId)
         },
     }
 }

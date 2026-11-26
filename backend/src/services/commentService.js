@@ -9,6 +9,7 @@ function presentComment(comment) {
         id: comment.id,
         content: comment.content,
         taskId: comment.taskId,
+        projectId: comment.projectId || null,
         authorId: comment.authorId,
         author: comment.author ? { id: comment.author.id, name: comment.author.name, email: comment.author.email } : null,
         parentId: comment.parentId || null,

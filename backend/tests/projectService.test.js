@@ -13,7 +13,7 @@ test('project service creates and lists organization projects', async () => {
         async findForMember({ organizationId, userId }) {
             assert.equal(organizationId, 'organization-1')
             assert.equal(userId, 'user-1')
-            return projects
+            return projects.map((project) => ({ ...project, canManage: true }))
         },
     })
 

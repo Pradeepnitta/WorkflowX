@@ -13,6 +13,11 @@ export async function createForAdmin({ email, organizationId, role = 'MEMBER', t
             error.statusCode = 403
             throw error
         }
+        if (membership.role === 'MANAGER' && !['MEMBER', 'VIEWER'].includes(role)) {
+            const error = new Error('Managers can invite Developers or Viewers only')
+            error.statusCode = 403
+            throw error
+        }
 
         const id = randomUUID()
         const now = new Date()
