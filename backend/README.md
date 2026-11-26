@@ -4,10 +4,11 @@ The API uses PostgreSQL for organization-scoped projects, teams, tasks, reviews,
 
 ## Setup
 
-Apply the additive Manager workflow migration once before starting the API:
+Apply both additive migrations to the target PostgreSQL database before deploying or starting this API version:
 
 ```bash
 npm run migrate:manager-workflows
+npm run migrate:global-admin
 ```
 
 Configure the PostgreSQL connection using the environment variables expected by `src/config/db.js`, then run:
@@ -18,12 +19,6 @@ npm run dev
 
 The API listens on `http://localhost:3001`.
 Set `AUTH_ACCESS_TOKEN_SECRET` before starting the API. Configure `ADMIN_SECRET_KEY` (or `ADMIN_KEY`) to enable the protected global-Admin signup and signin flow.
-
-Run the global Admin migration after deployment:
-
-```bash
-npm run migrate:global-admin
-```
 
 Existing organization Admin memberships remain organization-scoped. Only accounts registered through the protected global-Admin bootstrap flow receive system-wide Admin access.
 
