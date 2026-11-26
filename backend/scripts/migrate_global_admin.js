@@ -29,6 +29,20 @@ async function migrate() {
             ON "User" ("systemRole", "accountStatus")
         `)
         await client.query(`
+            CREATE TABLE IF NOT EXISTS "RefreshToken" (
+                id UUID PRIMARY KEY,
+                "tokenHash" TEXT NOT NULL UNIQUE,
+                "userId" UUID NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+                "expiresAt" TIMESTAMPTZ NOT NULL,
+                "revokedAt" TIMESTAMPTZ,
+                "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        `)
+        await client.query(`
+            CREATE INDEX IF NOT EXISTS "RefreshToken_userId_expiresAt_idx"
+            ON "RefreshToken" ("userId", "expiresAt")
+        `)
+        await client.query(`
             CREATE TABLE IF NOT EXISTS "AuditLog" (
                 id UUID PRIMARY KEY,
                 "actorUserId" UUID REFERENCES "User"(id) ON DELETE SET NULL,

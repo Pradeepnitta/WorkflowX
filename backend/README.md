@@ -11,6 +11,8 @@ npm run migrate:manager-workflows
 npm run migrate:global-admin
 ```
 
+The global Admin migration also creates the refresh-token table required by login and session refresh. It is idempotent; rerun it against an existing deployment's database after deploying this migration update.
+
 Configure the PostgreSQL connection using the environment variables expected by `src/config/db.js`, then run:
 
 ```bash
