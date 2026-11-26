@@ -3235,9 +3235,10 @@ body {
 .auth-frame {
     display: grid;
     grid-template-columns: minmax(0, .92fr) minmax(460px, 1.08fr);
+    grid-template-rows: minmax(0, 1fr);
     width: min(1140px, 100%);
+    height: min(760px, calc(100vh - 48px));
     min-height: min(760px, calc(100vh - 48px));
-    max-height: calc(100vh - 48px);
     overflow: hidden;
     border: 1px solid #e6e8f0;
     border-radius: 24px;
@@ -3487,6 +3488,7 @@ body {
 .auth-content {
     display: flex;
     min-width: 0;
+    min-height: 0;
     overflow-y: auto;
     background: #fff;
 }
@@ -3962,7 +3964,9 @@ body {
 
     .auth-frame {
         grid-template-columns: 1fr;
+        grid-template-rows: auto;
         width: min(600px, 100%);
+        height: auto;
         min-height: 0;
         max-height: none;
     }
