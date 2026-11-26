@@ -15,12 +15,7 @@ function normalizeDatabaseUrl(url) {
 }
 
 export function resolveDatabaseUrl() {
-    const defaultDbUrl = 'postgresql://workflowx_db_user:Pm2tMq64rUeWah9Qwfj6A7UCXrcowmc2@dpg-darou8d9fdbs73ag117g-a.oregon-postgres.render.com/workflowx_db?sslmode=require'
-    let url = process.env.DATABASE_URL
-    if (!url || url.includes('localhost') || url.includes('127.0.0.1')) {
-        url = defaultDbUrl
-    }
-    return normalizeDatabaseUrl(url)
+    return normalizeDatabaseUrl(process.env.DATABASE_URL)
 }
 
 const globalForDb = globalThis

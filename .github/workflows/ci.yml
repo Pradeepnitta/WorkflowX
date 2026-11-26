@@ -9,6 +9,8 @@ on:
 jobs:
   backend-tests:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://workflowx_test:workflowx_test@127.0.0.1:1/workflowx_test?sslmode=disable
     defaults:
       run:
         working-directory: ./backend

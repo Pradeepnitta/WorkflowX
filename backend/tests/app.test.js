@@ -35,6 +35,7 @@ test('app serves health and tasks without starting the production listener', asy
         const healthResponse = await fetch(`${baseUrl}/health`)
         const health = await healthResponse.json()
         const apiHealthResponse = await fetch(`${baseUrl}/api/health`)
+        const apiHealth = await apiHealthResponse.json()
         const preflightResponse = await fetch(`${baseUrl}/api/auth/me`, {
             method: 'OPTIONS',
             headers: { Origin: 'http://localhost:5173', 'Access-Control-Request-Headers': 'Authorization' },
@@ -48,8 +49,10 @@ test('app serves health and tasks without starting the production listener', asy
         assert.equal(rootResponse.status, 200)
         assert.deepEqual(root, { message: 'WorkFlowX API is running' })
         assert.equal(healthResponse.status, 200)
-        assert.equal(health.status, 'healthy')
+        assert.ok(['connected', 'disconnected'].includes(health.database))
+        assert.equal(health.status, health.database === 'connected' ? 'healthy' : 'degraded')
         assert.equal(apiHealthResponse.status, 200)
+        assert.equal(apiHealth.status, apiHealth.database === 'connected' ? 'healthy' : 'degraded')
         assert.equal(preflightResponse.status, 204)
         assert.match(preflightResponse.headers.get('access-control-allow-headers'), /Authorization/)
         assert.equal(unauthenticatedTasksResponse.status, 401)
