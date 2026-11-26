@@ -1,4 +1,11 @@
-import { withTransaction } from '../src/config/db.js'
+import { existsSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const envPath = resolve(dirname(fileURLToPath(import.meta.url)), '../.env')
+if (existsSync(envPath)) process.loadEnvFile(envPath)
+
+const { withTransaction } = await import('../src/config/db.js')
 
 async function migrate() {
     await withTransaction(async (client) => {
