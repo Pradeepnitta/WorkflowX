@@ -129,12 +129,11 @@ export function createAuthService(userRepository, refreshTokenRepository, otpSer
                 throw serviceError('This account is not active', 403)
             }
 
-            const hasAdminMembership = user.memberships?.some((m) => m.role === 'ADMIN')
             const isSystemAdmin = user.systemRole === 'ADMIN'
-            if (isAdminLogin && !isSystemAdmin && !hasAdminMembership) {
-                throw serviceError('Administrator account required', 403)
+            if (isAdminLogin && !isSystemAdmin) {
+                throw serviceError('System administrator account required', 403)
             }
-            const requiresAdminKey = isAdminLogin || isSystemAdmin || hasAdminMembership || (input.adminKey !== undefined && input.adminKey !== '')
+            const requiresAdminKey = isAdminLogin || isSystemAdmin
 
             if (requiresAdminKey) {
                 const expectedKey = process.env.ADMIN_SECRET_KEY || process.env.ADMIN_KEY

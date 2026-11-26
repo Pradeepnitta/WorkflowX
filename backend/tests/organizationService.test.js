@@ -11,10 +11,14 @@ test('organization service creates an organization with the authenticated owner'
         },
     })
 
-    const organization = await service.create({ name: ' Acme Inc. ', description: ' Team workspace ' }, 'user-1')
+    const organization = await service.create({
+        name: ' Acme Inc. ',
+        description: ' Team workspace ',
+        role: 'manager',
+    }, 'user-1')
 
     assert.deepEqual(organization, { id: 'organization-1', name: 'Acme Inc.', description: 'Team workspace' })
-    assert.deepEqual(calls, [{ name: 'Acme Inc.', description: 'Team workspace', userId: 'user-1' }])
+    assert.deepEqual(calls, [{ name: 'Acme Inc.', description: 'Team workspace', userId: 'user-1', role: 'MANAGER' }])
 })
 
 test('organization service rejects missing owner or short names', async () => {
@@ -22,6 +26,7 @@ test('organization service rejects missing owner or short names', async () => {
 
     await assert.rejects(service.create({ name: 'A' }, 'user-1'), (error) => error.statusCode === 400)
     await assert.rejects(service.create({ name: 'Acme' }), (error) => error.statusCode === 401)
+    await assert.rejects(service.create({ name: 'Acme', role: 'SYSTEM_ADMIN' }, 'user-1'), (error) => error.statusCode === 400)
 })
 
 test('organization service lists only the user memberships', async () => {

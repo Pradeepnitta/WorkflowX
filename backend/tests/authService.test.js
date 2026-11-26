@@ -187,6 +187,21 @@ test('auth service requires and validates adminKey for admin signup and signin',
     assert.equal(adminLogin.user.email, 'admin@workflowx.com')
 })
 
+test('workspace Admin signs in without a System Admin key', async () => {
+    const repository = createRepository()
+    const auth = createAuthService(repository)
+    await auth.register({ name: 'Workspace Admin', email: 'workspace-admin@example.com', password: 'password123' })
+    repository.users[0].memberships = [{ role: 'ADMIN' }]
+
+    const login = await auth.login({ email: 'workspace-admin@example.com', password: 'password123' })
+    assert.equal(login.user.email, 'workspace-admin@example.com')
+
+    await assert.rejects(
+        auth.login({ email: 'workspace-admin@example.com', password: 'password123', isAdminLogin: true }),
+        (error) => error.statusCode === 403 && error.message === 'System administrator account required',
+    )
+})
+
 test('auth service rejects Admin sign-in attempts by ordinary users and disabled accounts', async () => {
     process.env.ADMIN_SECRET_KEY = 'test-master-admin-key'
     const repository = createRepository()
@@ -200,7 +215,7 @@ test('auth service rejects Admin sign-in attempts by ordinary users and disabled
             role: 'ADMIN',
             adminKey: 'test-master-admin-key',
         }),
-        (error) => error.statusCode === 403 && error.message === 'Administrator account required',
+        (error) => error.statusCode === 403 && error.message === 'System administrator account required',
     )
 
     repository.users[0].accountStatus = 'SUSPENDED'

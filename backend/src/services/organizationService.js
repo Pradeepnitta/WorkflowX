@@ -23,11 +23,13 @@ export function createOrganizationService(organizationRepository) {
         async create(input, userId) {
             const name = typeof input.name === 'string' ? input.name.trim() : ''
             const description = typeof input.description === 'string' ? input.description.trim() : null
+            const role = typeof input.role === 'string' ? input.role.trim().toUpperCase() : 'ADMIN'
 
             if (name.length < 2) throw serviceError('Organization name must be at least 2 characters', 400)
             if (!userId) throw serviceError('Authentication required', 401)
+            if (!validRoles.has(role)) throw serviceError('Invalid organization role', 400)
 
-            const organization = await organizationRepository.createWithAdmin({ name, description, userId })
+            const organization = await organizationRepository.createWithAdmin({ name, description, userId, role })
             return { id: organization.id, name: organization.name, description: organization.description || null }
         },
 
