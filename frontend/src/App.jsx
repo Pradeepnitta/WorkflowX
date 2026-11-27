@@ -29,8 +29,70 @@ function DashboardHomeRoute() {
     if (String(organization?.role || '').toUpperCase() === 'MANAGER') {
         return <Navigate to="/manager" replace />
     }
+    if (String(organization?.role || '').toUpperCase() === 'MEMBER') {
+        return <Navigate to="/developer" replace />
+    }
 
     return <DashboardOverviewPage />
+}
+
+function DeveloperRoleRoute({ view }) {
+    const { organization, organizationLoaded } = useOutletContext()
+
+    if (!organizationLoaded) {
+        return <main className="feature-page"><p className="loading-state">Loading your workspace…</p></main>
+    }
+
+    if (String(organization?.role || '').toUpperCase() !== 'MEMBER') {
+        return <Navigate to={String(organization?.role || '').toUpperCase() === 'MANAGER' ? '/manager' : '/'} replace />
+    }
+
+    return <DeveloperDashboardPage view={view} />
+}
+
+function DeveloperWorkspaceRoute({ view, fallback }) {
+    const { organization, organizationLoaded } = useOutletContext()
+
+    if (!organizationLoaded) {
+        return <main className="feature-page"><p className="loading-state">Loading your workspace…</p></main>
+    }
+
+    if (String(organization?.role || '').toUpperCase() === 'MEMBER') {
+        return <DeveloperDashboardPage view={view} />
+    }
+
+    return fallback
+}
+
+function NonDeveloperRoute({ children }) {
+    const { organization, organizationLoaded } = useOutletContext()
+
+    if (!organizationLoaded) {
+        return <main className="feature-page"><p className="loading-state">Loading your workspace…</p></main>
+    }
+
+    if (String(organization?.role || '').toUpperCase() === 'MEMBER') {
+        return <Navigate to="/developer" replace />
+    }
+
+    return children
+}
+
+function TasksRoute() {
+    const { organization, organizationLoaded } = useOutletContext()
+
+    if (!organizationLoaded) {
+        return <main className="feature-page"><p className="loading-state">Loading your workspace…</p></main>
+    }
+
+    if (String(organization?.role || '').toUpperCase() === 'MANAGER') {
+        return <ManagerDashboardPage view="tasks" />
+    }
+    if (String(organization?.role || '').toUpperCase() === 'MEMBER') {
+        return <DeveloperDashboardPage view="tasks" />
+    }
+
+    return <TasksPage />
 }
 
 function App() {
@@ -59,21 +121,21 @@ function App() {
                 <Route element={<ProtectedRoute />}>
                     <Route element={<AppLayout />}>
                         <Route path="/" element={<DashboardHomeRoute />} />
-                        <Route path="/manager" element={<ManagerDashboardPage />} />
-                        <Route path="/manager/reviews" element={<ManagerDashboardPage view="reviews" />} />
-                        <Route path="/developer" element={<DeveloperDashboardPage view="overview" />} />
-                        <Route path="/developer/tasks" element={<DeveloperDashboardPage view="tasks" />} />
-                        <Route path="/developer/projects" element={<DeveloperDashboardPage view="projects" />} />
-                        <Route path="/developer/team" element={<DeveloperDashboardPage view="team" />} />
-                        <Route path="/developer/submissions" element={<DeveloperDashboardPage view="submissions" />} />
-                        <Route path="/developer/performance" element={<DeveloperDashboardPage view="performance" />} />
-                        <Route path="/tasks" element={<TasksPage />} />
-                        <Route path="/projects" element={<ProjectsPage />} />
-                        <Route path="/teams" element={<TeamsPage />} />
+                    <Route path="/manager" element={<NonDeveloperRoute><ManagerDashboardPage /></NonDeveloperRoute>} />
+                    <Route path="/manager/reviews" element={<NonDeveloperRoute><ManagerDashboardPage view="reviews" /></NonDeveloperRoute>} />
+                    <Route path="/developer" element={<DeveloperRoleRoute view="overview" />} />
+                    <Route path="/developer/tasks" element={<DeveloperRoleRoute view="tasks" />} />
+                    <Route path="/developer/projects" element={<DeveloperRoleRoute view="projects" />} />
+                    <Route path="/developer/team" element={<DeveloperRoleRoute view="team" />} />
+                    <Route path="/developer/submissions" element={<DeveloperRoleRoute view="submissions" />} />
+                    <Route path="/developer/performance" element={<DeveloperRoleRoute view="performance" />} />
+                        <Route path="/tasks" element={<TasksRoute />} />
+                    <Route path="/projects" element={<DeveloperWorkspaceRoute view="projects" fallback={<ProjectsPage />} />} />
+                    <Route path="/teams" element={<DeveloperWorkspaceRoute view="team" fallback={<TeamsPage />} />} />
                         <Route path="/members" element={<OrganizationMembersPage />} />
-                        <Route path="/admin" element={<AdminPage />} />
-                        <Route path="/system-admin" element={<SystemAdminPage />} />
-                        <Route path="/analytics" element={<AnalyticsPage />} />
+                    <Route path="/admin" element={<NonDeveloperRoute><AdminPage /></NonDeveloperRoute>} />
+                    <Route path="/system-admin" element={<NonDeveloperRoute><SystemAdminPage /></NonDeveloperRoute>} />
+                    <Route path="/analytics" element={<DeveloperWorkspaceRoute view="performance" fallback={<AnalyticsPage />} />} />
                         <Route path="/notifications" element={<InboxPage />} />
                         <Route path="/search" element={<SearchPage />} />
                         <Route path="/profile" element={<ProfilePage />} />

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getOrganizations, getOrganizationMembers } from '../services/organizationService.js'
-import { createTeam, getTeams, addTeamMember, removeTeamMember, deleteTeam } from '../services/teamService.js'
+import { createTeam, getTeams, addTeamMember, removeTeamMember, updateTeam, deleteTeam } from '../services/teamService.js'
 import { getProjects } from '../services/projectService.js'
 import { connectSocket } from '../services/socketService.js'
 import '../App.css'
@@ -52,6 +52,7 @@ export default function TeamsPage() {
 
     // Modals
     const [showCreateModal, setShowCreateModal] = useState(false)
+    const [editingTeam, setEditingTeam] = useState(null)
     const [detailTeam, setDetailTeam] = useState(null)
     const [teamToDelete, setTeamToDelete] = useState(null)
 
@@ -157,6 +158,10 @@ export default function TeamsPage() {
     }, [organizationId])
 
     function handleOpenCreateModal() {
+        setEditingTeam(null)
+        setNewTeamName('')
+        setNewTeamDescription('')
+        setNewTeamMembers([])
         if (organizationId) {
             getOrganizationMembers(organizationId)
                 .then((mems) => {
@@ -164,6 +169,15 @@ export default function TeamsPage() {
                 })
                 .catch((requestError) => setError(requestError.message))
         }
+        setShowCreateModal(true)
+    }
+
+    function handleOpenEditTeam(team) {
+        setError('')
+        setEditingTeam(team)
+        setNewTeamName(team.name || '')
+        setNewTeamDescription(team.description || '')
+        setNewTeamMembers([])
         setShowCreateModal(true)
     }
 
@@ -242,6 +256,33 @@ export default function TeamsPage() {
         setIsSubmitting(true)
         setError('')
 
+        if (editingTeam) {
+            try {
+                if (!editingTeam.canManage) throw new Error('You do not have permission to edit this team.')
+                const updated = await updateTeam(editingTeam.id, {
+                    name: newTeamName.trim(),
+                    description: newTeamDescription.trim(),
+                })
+                const updatedTeam = {
+                    ...editingTeam,
+                    ...updated,
+                    name: updated?.name || newTeamName.trim(),
+                    description: updated?.description || newTeamDescription.trim(),
+                    department: inferDepartment(updated?.name || newTeamName.trim(), editingTeam.department),
+                }
+                setTeams((prev) => prev.map((team) => team.id === editingTeam.id ? updatedTeam : team))
+                setDetailTeam((current) => current?.id === editingTeam.id ? updatedTeam : current)
+                showToast(`Team "${updatedTeam.name}" updated successfully.`)
+                setShowCreateModal(false)
+                setEditingTeam(null)
+            } catch (err) {
+                setError(err.message || 'Failed to update team.')
+            } finally {
+                setIsSubmitting(false)
+            }
+            return
+        }
+
         const memberUserIds = newTeamMembers.map((m) => m.userId).filter(Boolean)
 
         const newTeamPayload = {
@@ -287,6 +328,10 @@ export default function TeamsPage() {
     // Handler: Confirm & Execute Delete Team
     async function confirmExecuteDeleteTeam() {
         if (!teamToDelete) return
+        if (!teamToDelete.canManage) {
+            setError('You do not have permission to delete this team.')
+            return
+        }
         const targetId = teamToDelete.id
         const targetName = teamToDelete.name
 
@@ -306,6 +351,10 @@ export default function TeamsPage() {
     // Handler: Add Member to Team (inside detail modal)
     async function handleAddMemberToTeam() {
         if (!detailTeam || !selectedMemberToAdd) return
+        if (!detailTeam.canManage) {
+            setError('You do not have permission to manage this team.')
+            return
+        }
 
         const memberObj = orgMembers.find((m) => m.userId === selectedMemberToAdd)
         if (!memberObj) {
@@ -340,6 +389,10 @@ export default function TeamsPage() {
     // Handler: Remove Member from Team
     async function handleRemoveMemberFromTeam(userId) {
         if (!detailTeam) return
+        if (!detailTeam.canManage) {
+            setError('You do not have permission to manage this team.')
+            return
+        }
 
         try {
             await removeTeamMember(detailTeam.id, userId)
@@ -923,7 +976,7 @@ export default function TeamsPage() {
                                             Projects
                                         </button>
 
-                                        {canManageTeams && (
+                                        {canManageTeams && team.canManage && (
                                             <button
                                                 id={`delete-team-${team.id}`}
                                                 type="button"
@@ -1045,7 +1098,7 @@ export default function TeamsPage() {
                                                     >
                                                         Projects
                                                     </button>
-                                                    {canManageTeams && (
+                                                    {canManageTeams && team.canManage && (
                                                         <button
                                                             id={`table-delete-team-${team.id}`}
                                                             type="button"
@@ -1098,7 +1151,9 @@ export default function TeamsPage() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
                             <div>
                                 <p className="eyebrow" style={{ margin: 0 }}>Team Organization</p>
-                                <h2 style={{ margin: '4px 0 0', fontSize: '20px', color: '#111827' }}>Create New Squad</h2>
+                                <h2 style={{ margin: '4px 0 0', fontSize: '20px', color: '#111827' }}>
+                                    {editingTeam ? 'Edit Team Details' : 'Create New Squad'}
+                                </h2>
                             </div>
                             <button
                                 type="button"
@@ -1138,7 +1193,7 @@ export default function TeamsPage() {
                                 />
                             </label>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
+                            {!editingTeam && <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
 
                                 {/* Dropdown Members Selection */}
                                 <div>
@@ -1278,7 +1333,7 @@ export default function TeamsPage() {
                                         </p>
                                     )}
                                 </div>
-                            </div>
+                            </div>}
 
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '14px' }}>
                                 <button
@@ -1294,7 +1349,7 @@ export default function TeamsPage() {
                                     className="primary-button"
                                     disabled={isSubmitting}
                                 >
-                                    {isSubmitting ? 'Creating...' : 'Create Team'}
+                                    {isSubmitting ? (editingTeam ? 'Saving...' : 'Creating...') : (editingTeam ? 'Save Changes' : 'Create Team')}
                                 </button>
                             </div>
                         </form>
@@ -1345,6 +1400,16 @@ export default function TeamsPage() {
                                 <h2 style={{ margin: 0, fontSize: '22px', color: '#111827' }}>
                                     {detailTeam.name}
                                 </h2>
+                                {canManageTeams && detailTeam.canManage && (
+                                    <button
+                                        type="button"
+                                        className="secondary-button"
+                                        onClick={() => handleOpenEditTeam(detailTeam)}
+                                        style={{ marginTop: '10px', padding: '6px 10px', fontSize: '11px' }}
+                                    >
+                                        Edit team details
+                                    </button>
+                                )}
                             </div>
                             <button
                                 type="button"
@@ -1396,7 +1461,7 @@ export default function TeamsPage() {
                             </h4>
 
                             {/* Member Addition Inline Form */}
-                            {canManageTeams ? (
+                            {canManageTeams && detailTeam.canManage ? (
                                 <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
                                     <select
                                         id="add-team-member-select"
@@ -1479,7 +1544,7 @@ export default function TeamsPage() {
                                                 </div>
                                             </div>
 
-                                            {canManageTeams && (
+                                            {canManageTeams && detailTeam.canManage && (
                                                 <button
                                                     id={`remove-team-member-${m.userId}`}
                                                     type="button"

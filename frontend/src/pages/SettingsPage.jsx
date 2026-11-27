@@ -89,7 +89,6 @@ export default function SettingsPage() {
     const [defaultView, setDefaultView] = useState(() => localStorage.getItem('workflowx_default_view') || 'kanban')
 
     // Notification toggles
-    const [emailAlerts, setEmailAlerts] = useState(() => localStorage.getItem('workflowx_notify_email') !== 'false')
     const [mentionAlerts, setMentionAlerts] = useState(() => localStorage.getItem('workflowx_notify_mentions') !== 'false')
     const [taskUpdateAlerts, setTaskUpdateAlerts] = useState(() => localStorage.getItem('workflowx_notify_tasks') !== 'false')
     const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem('workflowx_sound') !== 'false')
@@ -132,12 +131,10 @@ export default function SettingsPage() {
 
     // Initial User & Organization Load
     useEffect(() => {
-        setIsLoading(true)
-        Promise.all([
-            getCurrentUser().catch(() => null),
-            getOrganizations().catch(() => []),
-        ])
-            .then(([userData, orgsData]) => {
+        Promise.allSettled([getCurrentUser(), getOrganizations()])
+            .then(([userResult, organizationsResult]) => {
+                const userData = userResult.status === 'fulfilled' ? userResult.value : null
+                const orgsData = organizationsResult.status === 'fulfilled' ? organizationsResult.value : []
                 if (userData) {
                     setUser(userData)
                     setName(userData.name || '')
@@ -147,6 +144,14 @@ export default function SettingsPage() {
                 setOrganizations(orgs)
                 const storedRole = localStorage.getItem('workflowx_registered_role') || orgs[0]?.role || 'MEMBER'
                 setUserRole(storedRole.toUpperCase())
+
+                const errors = [
+                    [userResult, 'Unable to load your profile.'],
+                    [organizationsResult, 'Unable to load your workspace role.'],
+                ]
+                    .filter(([result]) => result.status === 'rejected')
+                    .map(([result, fallback]) => `${fallback} ${result.reason?.message || ''}`.trim())
+                if (errors.length > 0) setError(errors.join(' '))
             })
             .catch((err) => setError(err.message))
             .finally(() => setIsLoading(false))
@@ -178,7 +183,6 @@ export default function SettingsPage() {
         localStorage.setItem('workflowx_theme', theme)
         localStorage.setItem('workflowx_density', density)
         localStorage.setItem('workflowx_default_view', defaultView)
-        localStorage.setItem('workflowx_notify_email', String(emailAlerts))
         localStorage.setItem('workflowx_notify_mentions', String(mentionAlerts))
         localStorage.setItem('workflowx_notify_tasks', String(taskUpdateAlerts))
         localStorage.setItem('workflowx_sound', String(soundEnabled))
@@ -565,7 +569,7 @@ export default function SettingsPage() {
                                             textAlign: 'left',
                                         }}
                                     >
-                                        <span>📋 My Signboard Tasks</span>
+                                        <span>📋 My Tasks</span>
                                         <span>➔</span>
                                     </button>
                                     <button
@@ -598,7 +602,7 @@ export default function SettingsPage() {
                         <form className="panel" onSubmit={handlePreferencesSave} style={{ background: '#fff', borderRadius: '12px', padding: '24px', border: '1px solid #e5e7eb', maxWidth: '750px' }}>
                             <h2 style={{ fontSize: '18px', margin: '0 0 4px', color: '#111827' }}>Display & Appearance Settings</h2>
                             <p style={{ fontSize: '13px', color: '#6b7280', margin: '0 0 20px' }}>
-                                Customize color theme, card spacing density, and default sprint views across your device.
+                                Customize your theme and task card spacing.
                             </p>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
@@ -633,7 +637,7 @@ export default function SettingsPage() {
 
                                 <div>
                                     <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
-                                        Signboard Card Density
+                                        Task Card Density
                                     </label>
                                     <select
                                         value={density}
@@ -646,20 +650,22 @@ export default function SettingsPage() {
                                     </select>
                                 </div>
 
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
-                                        Default Tasks Workspace View
-                                    </label>
-                                    <select
-                                        value={defaultView}
-                                        onChange={(e) => setDefaultView(e.target.value)}
-                                        style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px', background: '#fff' }}
-                                    >
-                                        <option value="kanban">Signboard Columns (Kanban)</option>
-                                        <option value="list">Structured List View</option>
-                                        <option value="calendar">Sprint Timeline Calendar</option>
-                                    </select>
-                                </div>
+                                {userRole === 'MEMBER' && (
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
+                                            Default Tasks Workspace View
+                                        </label>
+                                        <select
+                                            value={defaultView}
+                                            onChange={(e) => setDefaultView(e.target.value)}
+                                            style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px', background: '#fff' }}
+                                        >
+                                            <option value="kanban">Kanban Columns</option>
+                                            <option value="list">Structured List View</option>
+                                            <option value="calendar" disabled>Calendar View (Unavailable)</option>
+                                        </select>
+                                    </div>
+                                )}
                             </div>
 
                             <div style={{ marginTop: '28px', display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -671,7 +677,7 @@ export default function SettingsPage() {
                                     onClick={() => navigate('/tasks')}
                                     style={{ padding: '10px 16px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff', fontSize: '13px', cursor: 'pointer' }}
                                 >
-                                    Open Signboard ➔
+                                    Open My Tasks ➔
                                 </button>
                                 <button
                                     type="button"
@@ -710,21 +716,23 @@ export default function SettingsPage() {
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                                     <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px', border: '1px solid #f3f4f6', borderRadius: '8px', cursor: 'pointer', background: '#fafaf9' }}>
                                         <div>
-                                            <strong style={{ display: 'block', fontSize: '14px', color: '#111827' }}>Email Notifications</strong>
-                                            <small style={{ color: '#6b7280', fontSize: '12px' }}>Receive summary emails about assigned tasks and milestone deadlines.</small>
+                                            <strong style={{ display: 'block', fontSize: '14px', color: '#111827' }}>Email Notifications (Unavailable)</strong>
+                                            <small style={{ color: '#6b7280', fontSize: '12px' }}>Email delivery preferences are not connected to a mail-notification workflow.</small>
                                         </div>
                                         <input
                                             type="checkbox"
-                                            checked={emailAlerts}
-                                            onChange={(e) => setEmailAlerts(e.target.checked)}
-                                            style={{ width: '18px', height: '18px', accentColor: '#ee785e', cursor: 'pointer' }}
+                                            checked={false}
+                                            readOnly
+                                            disabled
+                                            aria-label="Email notifications are unavailable"
+                                            style={{ width: '18px', height: '18px', accentColor: '#ee785e', cursor: 'not-allowed' }}
                                         />
                                     </label>
 
                                     <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px', border: '1px solid #f3f4f6', borderRadius: '8px', cursor: 'pointer', background: '#fafaf9' }}>
                                         <div>
-                                            <strong style={{ display: 'block', fontSize: '14px', color: '#111827' }}>Mentions & Comments</strong>
-                                            <small style={{ color: '#6b7280', fontSize: '12px' }}>Instant browser badge when someone @mentions your name or replies.</small>
+                                            <strong style={{ display: 'block', fontSize: '14px', color: '#111827' }}>In-app Comment Alerts</strong>
+                                            <small style={{ color: '#6b7280', fontSize: '12px' }}>Show a live alert when a new task comment arrives.</small>
                                         </div>
                                         <input
                                             type="checkbox"
@@ -737,7 +745,7 @@ export default function SettingsPage() {
                                     <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px', border: '1px solid #f3f4f6', borderRadius: '8px', cursor: 'pointer', background: '#fafaf9' }}>
                                         <div>
                                             <strong style={{ display: 'block', fontSize: '14px', color: '#111827' }}>Task Status Transitions</strong>
-                                            <small style={{ color: '#6b7280', fontSize: '12px' }}>Notify when cards transition between Backlog, In Progress, and Done.</small>
+                                            <small style={{ color: '#6b7280', fontSize: '12px' }}>Show a live alert when one of your assigned tasks changes.</small>
                                         </div>
                                         <input
                                             type="checkbox"
@@ -750,7 +758,7 @@ export default function SettingsPage() {
                                     <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px', border: '1px solid #f3f4f6', borderRadius: '8px', cursor: 'pointer', background: '#fafaf9' }}>
                                         <div>
                                             <strong style={{ display: 'block', fontSize: '14px', color: '#111827' }}>Sound Alerts</strong>
-                                            <small style={{ color: '#6b7280', fontSize: '12px' }}>Play subtle chime upon receiving live messages or task drops.</small>
+                                            <small style={{ color: '#6b7280', fontSize: '12px' }}>Play a chime for live task, comment, and assignment alerts.</small>
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                             <button
@@ -792,9 +800,9 @@ export default function SettingsPage() {
                             <div className="panel" style={{ background: '#fff', borderRadius: '12px', padding: '24px', border: '1px solid #e5e7eb' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <div>
-                                        <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#111827' }}>Browser Desktop Push</h3>
+                                        <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#111827' }}>Browser Notifications</h3>
                                         <p style={{ fontSize: '13px', color: '#6b7280', margin: 0 }}>
-                                            Allow native OS notifications even when the WorkFlowX tab is running in the background.
+                                            Show operating-system notifications while WorkFlowX is open. Delivery when the app is closed is not supported.
                                         </p>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -808,9 +816,13 @@ export default function SettingsPage() {
                                                 color: browserNotificationStatus === 'granted' ? '#065f46' : '#991b1b',
                                             }}
                                         >
-                                            {browserNotificationStatus === 'granted' ? 'Active ✓' : 'Permission Required'}
+                                            {browserNotificationStatus === 'granted'
+                                                ? 'Active ✓'
+                                                : browserNotificationStatus === 'denied'
+                                                    ? 'Blocked in browser'
+                                                    : browserNotificationStatus === 'unsupported' ? 'Not supported' : 'Permission Required'}
                                         </span>
-                                        {browserNotificationStatus !== 'granted' && (
+                                        {browserNotificationStatus === 'default' && (
                                             <button
                                                 type="button"
                                                 onClick={handleRequestBrowserNotifications}
@@ -858,7 +870,7 @@ export default function SettingsPage() {
                                         <span> As a <b>Manager</b>, you have administrative command over projects, member task allocations, and sprint metrics.</span>
                                     )}
                                     {userRole === 'MEMBER' && (
-                                        <span> As a <b>Developer</b>, your workspace access is focused on engineering execution, task updates, file uploads, and collaboration.</span>
+                                        <span> As a <b>Developer</b>, your workspace access is focused on assigned task execution, progress updates, and collaboration.</span>
                                     )}
                                     {userRole === 'ADMIN' && (
                                         <span> As an <b>Administrator</b>, you have full organizational control over security, memberships, and global settings.</span>
@@ -877,8 +889,7 @@ export default function SettingsPage() {
                                                 'View assigned signboard tasks',
                                                 'Work on tasks & update status',
                                                 'Add comments and replies',
-                                                'Upload task files & assets',
-                                                'Propose tasks for manager review',
+                                                'Submit completed tasks for manager review',
                                                 'Report blockers & communicate',
                                                 'Receive real-time notifications',
                                             ]
@@ -1090,18 +1101,18 @@ export default function SettingsPage() {
 
                             {/* Active Sessions & Security Audit */}
                             <div className="panel" style={{ background: '#fff', borderRadius: '12px', padding: '24px', border: '1px solid #e5e7eb' }}>
-                                <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#111827' }}>Active Device Sessions</h3>
+                                <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#111827' }}>Current Browser Session</h3>
                                 <p style={{ fontSize: '13px', color: '#6b7280', margin: '0 0 16px' }}>
-                                    Devices currently authenticated with access to this account.
+                                    This session is active in the current browser. Other signed-in devices are not listed here.
                                 </p>
 
                                 <div style={{ padding: '14px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                         <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#10b981' }} />
                                         <div>
-                                            <strong style={{ fontSize: '13.5px', color: '#0f172a' }}>Current Web Browser (Active Now)</strong>
+                                            <strong style={{ fontSize: '13.5px', color: '#0f172a' }}>Current browser (Active Now)</strong>
                                             <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>
-                                                Windows • Localhost Environment • Secure JWT Token
+                                                Authenticated application session
                                             </p>
                                         </div>
                                     </div>

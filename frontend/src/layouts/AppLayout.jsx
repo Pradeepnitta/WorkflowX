@@ -9,6 +9,28 @@ import { getNotifications } from '../services/notificationService.js'
 import { getUserInitials } from '../constants/avatarOptions.js'
 import '../App.css'
 
+function playNotificationChime() {
+    try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext
+        if (!AudioContextClass) return
+        const context = new AudioContextClass()
+        const oscillator = context.createOscillator()
+        const gain = context.createGain()
+        oscillator.type = 'sine'
+        oscillator.frequency.setValueAtTime(587.33, context.currentTime)
+        oscillator.frequency.exponentialRampToValueAtTime(880, context.currentTime + 0.15)
+        gain.gain.setValueAtTime(0.12, context.currentTime)
+        gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.35)
+        oscillator.connect(gain)
+        gain.connect(context.destination)
+        oscillator.start()
+        oscillator.stop(context.currentTime + 0.36)
+        oscillator.onended = () => context.close()
+    } catch (error) {
+        console.warn('Unable to play the notification chime.', error)
+    }
+}
+
 export default function AppLayout() {
     const location = useLocation()
     const navigate = useNavigate()
@@ -67,6 +89,8 @@ export default function AppLayout() {
             if (!notif) return
             // If targeted to a specific user, verify it matches the current user
             if (notif.userId && user?.id && notif.userId !== user.id) return
+            setUnreadCount((c) => c + 1)
+            if (String(notif.type || '').toUpperCase() === 'TASK_UPDATED') return
             const notificationPresentation = {
                 TASK_ASSIGNED: { icon: '🎯', title: 'Task Assigned to You' },
                 TASK_PROPOSAL: { icon: '💡', title: 'Task Proposal' },
@@ -79,25 +103,53 @@ export default function AppLayout() {
                 title: notificationPresentation.title,
                 message: notif.message,
             })
-            setUnreadCount((c) => c + 1)
+            if (localStorage.getItem('workflowx_sound') !== 'false') playNotificationChime()
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification(notificationPresentation.title, { body: notif.message })
+            }
         }
 
         function handleCommentCreated(payload) {
+            if (localStorage.getItem('workflowx_notify_mentions') === 'false') return
             addToast({
                 id: Date.now() + Math.random(),
                 icon: '💬',
                 title: 'New Discussion Comment',
                 message: payload?.comment?.content || payload?.comment?.text || 'A new comment was posted on a task.',
             })
-            setUnreadCount((c) => c + 1)
+            if (localStorage.getItem('workflowx_sound') !== 'false') playNotificationChime()
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification('New Discussion Comment', {
+                    body: payload?.comment?.content || 'A new comment was posted on a task.',
+                })
+            }
+        }
+
+        function handleTaskUpdated(task) {
+            if (!task || localStorage.getItem('workflowx_notify_tasks') === 'false') return
+            if (task.assigneeId && user?.id && String(task.assigneeId) !== String(user.id)) return
+            addToast({
+                id: Date.now() + Math.random(),
+                icon: '📋',
+                title: 'Assigned Task Updated',
+                message: `${task.title || 'Your task'} is now ${String(task.status || 'updated').replaceAll('_', ' ')}.`,
+            })
+            if (localStorage.getItem('workflowx_sound') !== 'false') playNotificationChime()
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification('Assigned Task Updated', {
+                    body: `${task.title || 'Your task'} is now ${String(task.status || 'updated').replaceAll('_', ' ')}.`,
+                })
+            }
         }
 
         socket.on('notification:new', handleNotificationNew)
         socket.on('comment:created', handleCommentCreated)
+        socket.on('task:updated', handleTaskUpdated)
 
         return () => {
             socket.off('notification:new', handleNotificationNew)
             socket.off('comment:created', handleCommentCreated)
+            socket.off('task:updated', handleTaskUpdated)
         }
     }, [authVersion, user?.id])
 
@@ -380,9 +432,14 @@ export default function AppLayout() {
                                 {unreadCount > 0 && <span className="nav-count">{unreadCount}</span>}
                             </NavLink>
                             {isDeveloper ? (
-                                <NavLink to="/profile" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                                    <span className="nav-icon">⚙</span>Profile Settings
-                                </NavLink>
+                                <>
+                                    <NavLink to="/profile" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                                        <span className="nav-icon">♙</span>Profile
+                                    </NavLink>
+                                    <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                                        <span className="nav-icon">⚙</span>Settings
+                                    </NavLink>
+                                </>
                             ) : (
                                 <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
                                     <span className="nav-icon">⚙</span>Settings

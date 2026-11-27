@@ -43,6 +43,17 @@ test('project task service rejects invalid task options', async () => {
     )
 })
 
+test('project task service rejects statuses reserved for review and completion', async () => {
+    const service = createProjectTaskService({})
+
+    for (const status of ['IN_REVIEW', 'COMPLETED']) {
+        await assert.rejects(
+            service.create({ title: 'Task', projectId: 'project-1', status }, 'user-1'),
+            (error) => error.statusCode === 400 && /TODO or IN_PROGRESS/.test(error.message),
+        )
+    }
+})
+
 test('project task service updates task fields', async () => {
     let updateInput
     let scheduledTask

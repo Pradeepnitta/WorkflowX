@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getOrganizations, getOrganizationMembers } from '../services/organizationService.js'
 import { getCurrentUser } from '../services/authService.js'
 import { getNotifications } from '../services/notificationService.js'
@@ -10,9 +10,12 @@ import {
     getProjectTaskReviews,
     getProjectTasks,
     getProjects,
+    deleteProjectTaskComment,
     submitProjectTaskForReview,
+    updateProjectTaskComment,
     updateProjectTask,
 } from '../services/projectService.js'
+import { getSocket } from '../services/socketService.js'
 import { getTeams } from '../services/teamService.js'
 import '../App.css'
 import './DeveloperDashboardPage.css'
@@ -42,39 +45,59 @@ function statusLabel(status) {
     return TASK_COLUMNS.find((column) => column.status === status)?.label || String(status || '').replaceAll('_', ' ')
 }
 
+function priorityLabel(priority) {
+    const normalized = String(priority || '').toUpperCase()
+    if (normalized === 'URGENT' || normalized === 'CRITICAL') return 'Critical'
+    return normalized ? `${normalized[0]}${normalized.slice(1).toLowerCase()}` : 'Medium'
+}
+
 async function fetchDeveloperWorkspace(organizationId) {
-    const [loadedProjects, loadedTeams, loadedMembers, loadedNotifications] = await Promise.all([
+    const [projectsResult, teamsResult, membersResult, notificationsResult] = await Promise.allSettled([
         getProjects(organizationId),
         getTeams(organizationId),
         getOrganizationMembers(organizationId),
         getNotifications(),
     ])
-    const projects = (Array.isArray(loadedProjects) ? loadedProjects : [])
+    if (projectsResult.status === 'rejected') throw projectsResult.reason
+
+    const projects = (Array.isArray(projectsResult.value) ? projectsResult.value : [])
         .filter((project) => project.isMember)
-    const taskGroups = await Promise.all(projects.map(async (project) => ({
-        project,
-        tasks: await getProjectTasks(project.id),
-    })))
-    const tasks = taskGroups.flatMap(({ project, tasks: projectTasks }) =>
-        (Array.isArray(projectTasks) ? projectTasks : []).map((task) => ({
+    const taskResults = await Promise.allSettled(projects.map((project) => getProjectTasks(project.id)))
+    const tasks = taskResults.flatMap((result, index) => {
+        if (result.status !== 'fulfilled') return []
+        const project = projects[index]
+        return (Array.isArray(result.value) ? result.value : []).map((task) => ({
             ...task,
             projectName: project.name,
         }))
-    )
+    })
+    const errors = [
+        [teamsResult, 'Unable to load your teams.'],
+        [membersResult, 'Unable to load workspace members.'],
+        [notificationsResult, 'Unable to load recent notifications.'],
+        ...taskResults.map((result) => [result, 'Unable to load tasks for one of your projects.']),
+    ]
+        .filter(([result]) => result.status === 'rejected')
+        .map(([result, fallback]) => `${fallback} ${result.reason?.message || ''}`.trim())
 
     return {
         projects,
-        teams: Array.isArray(loadedTeams) ? loadedTeams : [],
-        members: Array.isArray(loadedMembers) ? loadedMembers : [],
+        teams: teamsResult.status === 'fulfilled' && Array.isArray(teamsResult.value) ? teamsResult.value : [],
+        members: membersResult.status === 'fulfilled' && Array.isArray(membersResult.value) ? membersResult.value : [],
         tasks,
-        notifications: Array.isArray(loadedNotifications)
-            ? loadedNotifications
-            : Array.isArray(loadedNotifications?.data) ? loadedNotifications.data : [],
+        notifications: notificationsResult.status === 'fulfilled'
+            ? Array.isArray(notificationsResult.value)
+                ? notificationsResult.value
+                : Array.isArray(notificationsResult.value?.data) ? notificationsResult.value.data : []
+            : [],
+        errors,
     }
 }
 
 export default function DeveloperDashboardPage({ view = 'overview' }) {
     const navigate = useNavigate()
+    const [searchParams, setSearchParams] = useSearchParams()
+    const requestedTaskId = searchParams.get('taskId')
     const [organizations, setOrganizations] = useState([])
     const [organizationId, setOrganizationId] = useState('')
     const [user, setUser] = useState(null)
@@ -91,19 +114,17 @@ export default function DeveloperDashboardPage({ view = 'overview' }) {
     const [attachments, setAttachments] = useState([])
     const [reviewHistory, setReviewHistory] = useState([])
     const [commentDraft, setCommentDraft] = useState('')
+    const [editingCommentId, setEditingCommentId] = useState(null)
+    const [commentEditDraft, setCommentEditDraft] = useState('')
     const [progressDraft, setProgressDraft] = useState(0)
     const [submissionDetails, setSubmissionDetails] = useState('')
     const [savingAction, setSavingAction] = useState(false)
-
-    const refreshWorkspace = useCallback(async (orgId) => {
-        const data = await fetchDeveloperWorkspace(orgId)
-        setProjects(data.projects)
-        setTeams(data.teams)
-        setMembers(data.members)
-        setTasks(data.tasks)
-        setNotifications(data.notifications)
-        return data
-    }, [])
+    const [taskSearch, setTaskSearch] = useState('')
+    const [statusFilter, setStatusFilter] = useState('ALL')
+    const [priorityFilter, setPriorityFilter] = useState('ALL')
+    const [dueDateSort, setDueDateSort] = useState('ASC')
+    const [taskLayout] = useState(() => localStorage.getItem('workflowx_default_view') === 'list' ? 'list' : 'kanban')
+    const [calendarViewUnavailable] = useState(() => localStorage.getItem('workflowx_default_view') === 'calendar')
 
     useEffect(() => {
         let current = true
@@ -142,7 +163,7 @@ export default function DeveloperDashboardPage({ view = 'overview' }) {
                 setMembers(data.members)
                 setTasks(data.tasks)
                 setNotifications(data.notifications)
-                setError('')
+                setError(data.errors.join(' '))
             })
             .catch((requestError) => {
                 if (current) setError(requestError.message || 'Unable to load your developer workspace.')
@@ -160,11 +181,15 @@ export default function DeveloperDashboardPage({ view = 'overview' }) {
         () => tasks.filter((task) => String(task.assigneeId) === String(user?.id)),
         [tasks, user?.id]
     )
+    const requestedTaskMissing = Boolean(requestedTaskId)
+        && !loading
+        && !error
+        && !assignedTasks.some((task) => String(task.id) === String(requestedTaskId))
     const pendingTasks = assignedTasks.filter((task) => task.status !== 'COMPLETED')
     const overdueTasks = assignedTasks.filter(isOverdue)
     const upcomingDeadlines = useMemo(
         () => pendingTasks
-            .filter((task) => task.dueDate)
+            .filter((task) => task.dueDate && !isOverdue(task))
             .sort((left, right) => new Date(left.dueDate) - new Date(right.dueDate))
             .slice(0, 6),
         [pendingTasks]
@@ -179,10 +204,36 @@ export default function DeveloperDashboardPage({ view = 'overview' }) {
         weekAgo.setDate(weekAgo.getDate() - 7)
         return completedAt >= weekAgo
     }).length
+    const completedThisMonth = assignedTasks.filter((task) => {
+        if (task.status !== 'COMPLETED' || !task.completedAt) return false
+        const completedAt = new Date(task.completedAt)
+        const now = new Date()
+        return completedAt.getFullYear() === now.getFullYear()
+            && completedAt.getMonth() === now.getMonth()
+    }).length
     const taskCounts = Object.fromEntries(TASK_COLUMNS.map(({ status }) => [
         status,
         assignedTasks.filter((task) => task.status === status).length,
     ]))
+    const filteredTasks = useMemo(() => {
+        const query = taskSearch.trim().toLowerCase()
+        return assignedTasks
+            .filter((task) => statusFilter === 'ALL' || task.status === statusFilter)
+            .filter((task) => priorityFilter === 'ALL' || String(task.priority || '').toUpperCase() === priorityFilter)
+            .filter((task) => !query || [
+                task.title,
+                task.description,
+                task.projectName,
+            ].some((value) => String(value || '').toLowerCase().includes(query)))
+            .sort((left, right) => {
+                const leftDate = left.dueDate ? new Date(left.dueDate).getTime() : Number.POSITIVE_INFINITY
+                const rightDate = right.dueDate ? new Date(right.dueDate).getTime() : Number.POSITIVE_INFINITY
+                const byDate = dueDateSort === 'ASC' ? leftDate - rightDate : rightDate - leftDate
+                return Number.isNaN(byDate) || byDate === 0
+                    ? String(left.title || '').localeCompare(String(right.title || ''))
+                    : byDate
+            })
+    }, [assignedTasks, dueDateSort, priorityFilter, statusFilter, taskSearch])
     const completedCount = taskCounts.COMPLETED || 0
     const completionRate = assignedTasks.length
         ? Math.round((completedCount / assignedTasks.length) * 100)
@@ -199,30 +250,138 @@ export default function DeveloperDashboardPage({ view = 'overview' }) {
     }
     const [pageTitle, pageSubtitle] = viewHeadings[view] || viewHeadings.overview
 
-    async function openTask(task) {
+    function managerNameForId(userId) {
+        const manager = members.find((member) => String(member.userId) === String(userId))
+        return manager?.name || manager?.email || 'Project manager'
+    }
+
+    function teamNameFor(workItem) {
+        const project = projects.find((item) => String(item.id) === String(workItem.projectId))
+        const teamId = workItem.teamId || project?.teamId
+        return teams.find((team) => String(team.id) === String(teamId))?.name || 'Not assigned'
+    }
+
+    const openTask = useCallback(async (task) => {
         setSelectedTask(task)
         setProgressDraft(Number(task.progress || 0))
         setCommentDraft('')
+        setEditingCommentId(null)
         setSubmissionDetails('')
         setDetailsLoading(true)
+        setError('')
         setComments([])
         setAttachments([])
         setReviewHistory([])
         try {
-            const [taskComments, taskAttachments, taskReviews] = await Promise.all([
+            const [commentsResult, attachmentsResult, reviewsResult] = await Promise.allSettled([
                 getProjectTaskComments(task.id),
                 getProjectTaskAttachments(task.id),
                 getProjectTaskReviews(task.id),
             ])
-            setComments(Array.isArray(taskComments) ? taskComments : [])
-            setAttachments(Array.isArray(taskAttachments) ? taskAttachments : [])
-            setReviewHistory(Array.isArray(taskReviews) ? taskReviews : [])
-        } catch (requestError) {
-            setError(requestError.message || 'Unable to load task details.')
+            if (commentsResult.status === 'fulfilled') {
+                setComments(Array.isArray(commentsResult.value) ? commentsResult.value : [])
+            }
+            if (attachmentsResult.status === 'fulfilled') {
+                setAttachments(Array.isArray(attachmentsResult.value) ? attachmentsResult.value : [])
+            }
+            if (reviewsResult.status === 'fulfilled') {
+                setReviewHistory(Array.isArray(reviewsResult.value) ? reviewsResult.value : [])
+            }
+            const failures = [
+                [commentsResult, 'comments'],
+                [attachmentsResult, 'attachments'],
+                [reviewsResult, 'review history'],
+            ]
+                .filter(([result]) => result.status === 'rejected')
+                .map(([result, label]) => `Unable to load ${label}: ${result.reason?.message || 'request failed'}`)
+            if (failures.length > 0) setError(failures.join(' '))
         } finally {
             setDetailsLoading(false)
         }
-    }
+    }, [])
+
+    useEffect(() => {
+        if (!requestedTaskId || loading) return
+        const task = assignedTasks.find((item) => String(item.id) === String(requestedTaskId))
+        if (!task) return
+        // A taskId query parameter represents an explicit navigation action that opens the details modal.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        openTask(task)
+        setSearchParams((current) => {
+            const next = new URLSearchParams(current)
+            next.delete('taskId')
+            return next
+        }, { replace: true })
+    }, [assignedTasks, loading, openTask, requestedTaskId, setSearchParams])
+
+    useEffect(() => {
+        const socket = getSocket()
+        if (!socket || !user?.id) return
+
+        function handleTaskCreated(task) {
+            if (!task?.id || String(task.assigneeId) !== String(user.id)) return
+            const projectName = projects.find((project) => String(project.id) === String(task.projectId))?.name || task.projectName
+            setTasks((current) => [
+                { ...task, projectName },
+                ...current.filter((item) => String(item.id) !== String(task.id)),
+            ])
+        }
+
+        function handleTaskUpdated(task) {
+            if (!task?.id) return
+            const existing = tasks.find((item) => String(item.id) === String(task.id))
+            if (String(task.assigneeId) !== String(user.id)) {
+                setTasks((current) => current.filter((item) => String(item.id) !== String(task.id)))
+                setSelectedTask((current) => current && String(current.id) === String(task.id) ? null : current)
+                return
+            }
+            const projectName = task.projectName
+                || existing?.projectName
+                || projects.find((project) => String(project.id) === String(task.projectId))?.name
+            const updatedTask = { ...existing, ...task, projectName }
+            setTasks((current) => current.some((item) => String(item.id) === String(task.id))
+                ? current.map((item) => String(item.id) === String(task.id) ? updatedTask : item)
+                : [updatedTask, ...current])
+            if (
+                selectedTask
+                && String(selectedTask.id) === String(task.id)
+                && selectedTask.status === 'IN_REVIEW'
+                && task.status !== 'IN_REVIEW'
+            ) {
+                getProjectTaskReviews(task.id)
+                    .then((reviews) => setReviewHistory(Array.isArray(reviews) ? reviews : []))
+                    .catch((requestError) => setError(requestError.message || 'Unable to refresh review history.'))
+            }
+            setSelectedTask((current) => current && String(current.id) === String(task.id)
+                ? { ...current, ...updatedTask }
+                : current)
+        }
+
+        function handleTaskDeleted(payload) {
+            const taskId = payload?.id || payload?.taskId
+            if (!taskId) return
+            setTasks((current) => current.filter((item) => String(item.id) !== String(taskId)))
+            setSelectedTask((current) => current && String(current.id) === String(taskId) ? null : current)
+        }
+
+        function handleCommentCreated(payload) {
+            if (!selectedTask || String(payload?.taskId) !== String(selectedTask.id) || !payload.comment) return
+            setComments((current) => current.some((comment) => String(comment.id) === String(payload.comment.id))
+                ? current
+                : [...current, payload.comment])
+        }
+
+        socket.on('task:created', handleTaskCreated)
+        socket.on('task:updated', handleTaskUpdated)
+        socket.on('task:deleted', handleTaskDeleted)
+        socket.on('comment:created', handleCommentCreated)
+        return () => {
+            socket.off('task:created', handleTaskCreated)
+            socket.off('task:updated', handleTaskUpdated)
+            socket.off('task:deleted', handleTaskDeleted)
+            socket.off('comment:created', handleCommentCreated)
+        }
+    }, [projects, selectedTask, tasks, user?.id])
 
     function replaceTask(updatedTask) {
         setTasks((current) => current.map((task) =>
@@ -268,10 +427,19 @@ export default function DeveloperDashboardPage({ view = 'overview' }) {
         setSavingAction(true)
         setError('')
         try {
-            await submitProjectTaskForReview(selectedTask.id, submissionDetails.trim())
-            const data = await refreshWorkspace(organizationId)
-            const updated = data.tasks.find((task) => String(task.id) === String(selectedTask.id))
-            if (updated) setSelectedTask(updated)
+            const updated = await submitProjectTaskForReview(selectedTask.id, submissionDetails.trim())
+            const review = {
+                status: 'PENDING',
+                submittedAt: new Date().toISOString(),
+                submissionDetails: submissionDetails.trim(),
+                submittedById: user?.id,
+                submitterName: user?.name,
+            }
+            replaceTask({ ...updated, review })
+            setReviewHistory((current) => [{
+                id: `pending-${updated.id}`,
+                ...review,
+            }, ...current.filter((item) => item.status !== 'PENDING')])
             setSubmissionDetails('')
         } catch (requestError) {
             setError(requestError.message || 'Unable to submit this task for review.')
@@ -296,9 +464,39 @@ export default function DeveloperDashboardPage({ view = 'overview' }) {
         }
     }
 
+    async function saveCommentEdit(event, commentId) {
+        event.preventDefault()
+        if (!commentEditDraft.trim()) return
+        setSavingAction(true)
+        setError('')
+        try {
+            const updated = await updateProjectTaskComment(commentId, commentEditDraft.trim())
+            setComments((current) => current.map((comment) => String(comment.id) === String(commentId) ? updated : comment))
+            setEditingCommentId(null)
+            setCommentEditDraft('')
+        } catch (requestError) {
+            setError(requestError.message || 'Unable to update this comment.')
+        } finally {
+            setSavingAction(false)
+        }
+    }
+
+    async function removeComment(commentId) {
+        if (!window.confirm('Delete your comment?')) return
+        setSavingAction(true)
+        setError('')
+        try {
+            await deleteProjectTaskComment(commentId)
+            setComments((current) => current.filter((comment) => String(comment.id) !== String(commentId)))
+        } catch (requestError) {
+            setError(requestError.message || 'Unable to delete this comment.')
+        } finally {
+            setSavingAction(false)
+        }
+    }
+
     function managerName(task) {
-        const manager = members.find((member) => String(member.userId) === String(task.createdById))
-        return manager?.name || manager?.email || 'Project manager'
+        return managerNameForId(task.createdById)
     }
 
     function taskCard(task) {
@@ -306,7 +504,7 @@ export default function DeveloperDashboardPage({ view = 'overview' }) {
             <button className="developer-task-card" key={task.id} type="button" onClick={() => openTask(task)}>
                 <span className={`developer-status status-${String(task.status).toLowerCase()}`}>{statusLabel(task.status)}</span>
                 <strong>{task.title}</strong>
-                <span className="developer-task-project">{task.projectName} · {task.priority}</span>
+                <span className="developer-task-project">{task.projectName} · {priorityLabel(task.priority)}</span>
                 <span className="developer-progress-track">
                     <span style={{ width: `${Math.min(100, Number(task.progress || 0))}%` }} />
                 </span>
@@ -353,7 +551,7 @@ export default function DeveloperDashboardPage({ view = 'overview' }) {
                 )}
             </header>
 
-            {error && <p className="service-error" role="alert">{error}</p>}
+            {(error || requestedTaskMissing) && <p className="service-error" role="alert">{error || 'That assigned task could not be found in your workspace.'}</p>}
             {loading && <p className="loading-state">Loading your assigned work…</p>}
             {!loading && !activeOrganization && (
                 <section className="panel developer-empty">
@@ -443,21 +641,73 @@ export default function DeveloperDashboardPage({ view = 'overview' }) {
                     )}
 
                     {view === 'tasks' && (
-                        <div className="developer-kanban" aria-label="My tasks by status">
-                            {TASK_COLUMNS.map((column) => {
-                                const columnTasks = assignedTasks.filter((task) => task.status === column.status)
-                                return (
-                                    <section className="panel developer-kanban-column" key={column.status}>
-                                        <div className="developer-section-heading">
-                                            <h2>{column.label}</h2><span>{columnTasks.length}</span>
+                        <>
+                            <div className="developer-task-filters" aria-label="Filter and sort tasks">
+                                <input
+                                    type="search"
+                                    aria-label="Search tasks"
+                                    placeholder="Search title, description, or project"
+                                    value={taskSearch}
+                                    onChange={(event) => setTaskSearch(event.target.value)}
+                                />
+                                <select aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                                    <option value="ALL">All statuses</option>
+                                    {TASK_COLUMNS.map((column) => <option key={column.status} value={column.status}>{column.label}</option>)}
+                                </select>
+                                <select aria-label="Filter by priority" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}>
+                                    <option value="ALL">All priorities</option>
+                                    <option value="URGENT">Critical</option>
+                                    <option value="HIGH">High</option>
+                                    <option value="MEDIUM">Medium</option>
+                                    <option value="LOW">Low</option>
+                                </select>
+                                <select aria-label="Sort by due date" value={dueDateSort} onChange={(event) => setDueDateSort(event.target.value)}>
+                                    <option value="ASC">Due date: soonest first</option>
+                                    <option value="DESC">Due date: latest first</option>
+                                </select>
+                            </div>
+                            {calendarViewUnavailable && (
+                                <p className="service-error" role="status">Calendar view is not available yet. Showing your tasks in Kanban view.</p>
+                            )}
+                            {taskLayout === 'list' ? (
+                                <div className="developer-task-table-wrap">
+                                    <div className="developer-task-table" role="table" aria-label="My assigned tasks">
+                                        <div className="developer-task-table-row is-header" role="row">
+                                            <span role="columnheader">Task</span><span role="columnheader">Project</span>
+                                            <span role="columnheader">Status</span><span role="columnheader">Priority</span>
+                                            <span role="columnheader">Due date</span><span role="columnheader">Progress</span>
                                         </div>
-                                        {columnTasks.length === 0
-                                            ? <p className="developer-empty-copy">No tasks</p>
-                                            : <div className="developer-task-list">{columnTasks.map(taskCard)}</div>}
-                                    </section>
-                                )
-                            })}
-                        </div>
+                                        {filteredTasks.map((task) => (
+                                            <button className="developer-task-table-row" key={task.id} type="button" role="row" onClick={() => openTask(task)}>
+                                                <strong role="cell">{task.title}</strong><span role="cell">{task.projectName}</span>
+                                                <span role="cell">{statusLabel(task.status)}</span><span role="cell">{priorityLabel(task.priority)}</span>
+                                                <span role="cell" className={isOverdue(task) ? 'developer-overdue' : ''}>{formatDate(task.dueDate)}</span>
+                                                <span role="cell">{Number(task.progress || 0)}%</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {filteredTasks.length === 0 && <p className="developer-empty-copy">No tasks match your filters.</p>}
+                                </div>
+                            ) : (
+                                <div className="developer-kanban" aria-label="My tasks by status">
+                                    {TASK_COLUMNS
+                                        .filter((column) => statusFilter === 'ALL' || statusFilter === column.status)
+                                        .map((column) => {
+                                            const columnTasks = filteredTasks.filter((task) => task.status === column.status)
+                                            return (
+                                                <section className="panel developer-kanban-column" key={column.status}>
+                                                    <div className="developer-section-heading">
+                                                        <h2>{column.label}</h2><span>{columnTasks.length}</span>
+                                                    </div>
+                                                    {columnTasks.length === 0
+                                                        ? <p className="developer-empty-copy">No matching tasks</p>
+                                                        : <div className="developer-task-list">{columnTasks.map(taskCard)}</div>}
+                                                </section>
+                                            )
+                                        })}
+                                </div>
+                            )}
+                        </>
                     )}
 
                     {view === 'projects' && (
@@ -475,12 +725,22 @@ export default function DeveloperDashboardPage({ view = 'overview' }) {
                                                 <span className={`developer-status status-${String(project.status).toLowerCase()}`}>{String(project.status || 'ACTIVE').replaceAll('_', ' ')}</span>
                                             </div>
                                             <div className="developer-project-meta">
-                                                <span>Priority <b>{project.priority}</b></span>
+                                                <span>Priority <b>{priorityLabel(project.priority)}</b></span>
                                                 <span>Deadline <b>{formatDate(project.dueDate)}</b></span>
                                                 <span>Tasks <b>{complete} / {total} completed</b></span>
+                                                <span>Manager <b>{managerNameForId(project.createdById)}</b></span>
+                                                <span>Team <b>{teamNameFor(project)}</b></span>
                                             </div>
                                             <div className="developer-progress-track"><span style={{ width: `${progress}%` }} /></div>
                                             <small>{progress}% complete</small>
+                                            <div className="developer-project-task-list">
+                                                <strong>Your assigned tasks</strong>
+                                                {assignedTasks.filter((task) => String(task.projectId) === String(project.id)).length === 0
+                                                    ? <p className="developer-empty-copy">No tasks assigned to you in this project.</p>
+                                                    : assignedTasks
+                                                        .filter((task) => String(task.projectId) === String(project.id))
+                                                        .map(taskCard)}
+                                            </div>
                                         </article>
                                     )
                                 })}
@@ -491,34 +751,49 @@ export default function DeveloperDashboardPage({ view = 'overview' }) {
                         <section className="developer-team-grid">
                             {teams.length === 0
                                 ? <div className="panel developer-empty-copy">You are not currently assigned to a team.</div>
-                                : teams.map((team) => (
-                                    <article className="panel developer-team-card" key={team.id}>
-                                        <div className="developer-section-heading">
-                                            <div><h2>{team.name}</h2><p>{team.description || 'Team workspace'}</p></div>
-                                        </div>
-                                        <div className="developer-team-members">
-                                            {(team.members || []).map((entry) => {
-                                                const member = entry.user || {}
-                                                return (
-                                                    <div className="developer-team-member" key={entry.userId}>
-                                                        <span className="developer-avatar">
-                                                            {member.avatarUrl
-                                                                ? <img src={member.avatarUrl} alt="" />
-                                                                : (member.name || member.email || 'TM').slice(0, 2).toUpperCase()}
-                                                        </span>
-                                                        <span><strong>{member.name || member.email}</strong><small>{member.role || 'Member'}</small></span>
-                                                    </div>
-                                                )
-                                            })}
-                                        </div>
-                                        <div className="developer-team-projects">
-                                            <strong>Team projects</strong>
-                                            {(team.projects || []).length === 0
-                                                ? <small>No projects assigned.</small>
-                                                : team.projects.map((project) => <span key={project.id}>{project.name}</span>)}
-                                        </div>
-                                    </article>
-                                ))}
+                                : teams.map((team) => {
+                                    const teamTasks = assignedTasks.filter((task) => {
+                                        const project = projects.find((item) => String(item.id) === String(task.projectId))
+                                        return String(task.teamId || project?.teamId) === String(team.id)
+                                    })
+                                    const teamCompleted = teamTasks.filter((task) => task.status === 'COMPLETED').length
+                                    const teamActive = teamTasks.length - teamCompleted
+                                    return (
+                                        <article className="panel developer-team-card" key={team.id}>
+                                            <div className="developer-section-heading">
+                                                <div><h2>{team.name}</h2><p>{team.description || 'Team workspace'}</p></div>
+                                            </div>
+                                            <p className="developer-team-manager">Manager: {managerNameForId(team.createdById)}</p>
+                                            <div className="developer-team-members">
+                                                {(team.members || []).map((entry) => {
+                                                    const member = entry.user || {}
+                                                    return (
+                                                        <div className="developer-team-member" key={entry.userId}>
+                                                            <span className="developer-avatar">
+                                                                {member.avatarUrl
+                                                                    ? <img src={member.avatarUrl} alt="" />
+                                                                    : (member.name || member.email || 'TM').slice(0, 2).toUpperCase()}
+                                                            </span>
+                                                            <span><strong>{member.name || member.email}</strong><small>{member.role || 'Member'}</small></span>
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+                                            <div className="developer-team-stats">
+                                                <strong>Your assigned tasks</strong>
+                                                <span>{teamTasks.length} total</span>
+                                                <span>{teamActive} active</span>
+                                                <span>{teamCompleted} completed</span>
+                                            </div>
+                                            <div className="developer-team-projects">
+                                                <strong>Team projects</strong>
+                                                {(team.projects || []).length === 0
+                                                    ? <small>No projects assigned.</small>
+                                                    : team.projects.map((project) => <span key={project.id}>{project.name}</span>)}
+                                            </div>
+                                        </article>
+                                    )
+                                })}
                         </section>
                     )}
 
@@ -564,6 +839,7 @@ export default function DeveloperDashboardPage({ view = 'overview' }) {
                                 <p>{completedCount} of {assignedTasks.length} assigned tasks completed.</p>
                                 <div className="developer-performance-facts">
                                     <span><b>{completedThisWeek}</b> completed this week</span>
+                                    <span><b>{completedThisMonth}</b> completed this month</span>
                                     <span><b>{taskCounts.IN_REVIEW || 0}</b> submitted for review</span>
                                     <span><b>{overdueTasks.length}</b> overdue</span>
                                 </div>
@@ -581,9 +857,13 @@ export default function DeveloperDashboardPage({ view = 'overview' }) {
                             <button className="icon-button" type="button" aria-label="Close task details" onClick={() => setSelectedTask(null)}>×</button>
                         </header>
                         <div className="developer-task-detail-meta">
-                            <span>{selectedTask.projectName}</span><span>{selectedTask.priority}</span>
+                            <span>Project: {selectedTask.projectName}</span>
+                            <span>Status: {statusLabel(selectedTask.status)}</span>
+                            <span>Priority: {priorityLabel(selectedTask.priority)}</span>
+                            <span>Team: {teamNameFor(selectedTask)}</span>
                             <span>Manager: {managerName(selectedTask)}</span>
-                            <span>Due {formatDate(selectedTask.dueDate)}</span>
+                            <span>Start: {formatDate(selectedTask.startDate)}</span>
+                            <span>Due: {formatDate(selectedTask.dueDate)}</span>
                         </div>
                         <p className="developer-task-description">{selectedTask.description || 'No task requirements have been provided.'}</p>
                         {detailsLoading ? <p className="loading-state">Loading comments, attachments, and review history…</p> : (
@@ -641,9 +921,9 @@ export default function DeveloperDashboardPage({ view = 'overview' }) {
                                 <section className="developer-detail-section">
                                     <h3>Attachments</h3>
                                     {attachments.length === 0 ? <p className="developer-empty-copy">No attachments.</p> : attachments.map((attachment) => (
-                                        <a className="developer-attachment-row" key={attachment.id} href={attachment.fileUrl || undefined} target={attachment.fileUrl ? '_blank' : undefined} rel={attachment.fileUrl ? 'noreferrer' : undefined}>
-                                            {attachment.fileName}
-                                        </a>
+                                        attachment.fileUrl
+                                            ? <a className="developer-attachment-row" key={attachment.id} href={attachment.fileUrl} target="_blank" rel="noreferrer">{attachment.fileName}</a>
+                                            : <span className="developer-attachment-row" key={attachment.id}>{attachment.fileName} (No download link available)</span>
                                     ))}
                                 </section>
                                 <section className="developer-detail-section">
@@ -653,8 +933,29 @@ export default function DeveloperDashboardPage({ view = 'overview' }) {
                                             {comments.map((comment) => (
                                                 <article className="developer-comment" key={comment.id}>
                                                     <strong>{comment.author?.name || (String(comment.authorId) === String(user?.id) ? 'You' : 'Team member')}</strong>
-                                                    <p>{comment.content}</p>
-                                                    <small>{formatDate(comment.createdAt)}</small>
+                                                    {editingCommentId === comment.id ? (
+                                                        <form onSubmit={(event) => saveCommentEdit(event, comment.id)}>
+                                                            <textarea rows={2} value={commentEditDraft} onChange={(event) => setCommentEditDraft(event.target.value)} />
+                                                            <div className="developer-modal-actions">
+                                                                <button className="secondary-button" type="button" onClick={() => setEditingCommentId(null)}>Cancel</button>
+                                                                <button className="primary-button" type="submit" disabled={savingAction || !commentEditDraft.trim()}>Save comment</button>
+                                                            </div>
+                                                        </form>
+                                                    ) : (
+                                                        <>
+                                                            <p>{comment.content}</p>
+                                                            <small>{formatDate(comment.createdAt)}</small>
+                                                            {String(comment.authorId) === String(user?.id) && (
+                                                                <div className="developer-comment-actions">
+                                                                    <button type="button" onClick={() => {
+                                                                        setEditingCommentId(comment.id)
+                                                                        setCommentEditDraft(comment.content)
+                                                                    }}>Edit</button>
+                                                                    <button type="button" disabled={savingAction} onClick={() => removeComment(comment.id)}>Delete</button>
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    )}
                                                 </article>
                                             ))}
                                         </div>

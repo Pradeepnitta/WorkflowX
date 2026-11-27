@@ -115,6 +115,21 @@ export async function createProjectTaskComment(taskId, content, parentId) {
     return data?.data || data
 }
 
+export async function updateProjectTaskComment(commentId, content) {
+    const data = await authenticatedRequest(`/api/comments/${commentId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ content }),
+    })
+    return data?.data || data
+}
+
+export async function deleteProjectTaskComment(commentId) {
+    const data = await authenticatedRequest(`/api/comments/${commentId}`, {
+        method: 'DELETE',
+    })
+    return data?.data || data
+}
+
 export async function getProjectTaskAttachments(taskId) {
     const data = await authenticatedRequest(`/api/projects/tasks/${taskId}/attachments`)
     return Array.isArray(data) ? data : data?.data || []

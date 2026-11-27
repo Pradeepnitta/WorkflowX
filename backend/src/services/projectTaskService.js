@@ -102,6 +102,9 @@ export function createProjectTaskService(
             if (!title) throw serviceError('Task title is required', 400)
             if (!projectId) throw serviceError('Project is required', 400)
             if (!statuses.has(status) || !priorities.has(priority)) throw serviceError('Invalid task options', 400)
+            if (!['TODO', 'IN_PROGRESS'].includes(status)) {
+                throw serviceError('New tasks must start as TODO or IN_PROGRESS', 400)
+            }
             if (startDate && dueDate && dueDate < startDate) {
                 throw serviceError('Due date cannot be earlier than the start date', 400)
             }

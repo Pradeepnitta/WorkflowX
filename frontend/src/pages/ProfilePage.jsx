@@ -18,12 +18,10 @@ function ProfilePage() {
     const [error, setError] = useState('')
 
     useEffect(() => {
-        setIsLoading(true)
-        Promise.all([
-            getCurrentUser().catch(() => null),
-            getOrganizations().catch(() => []),
-        ])
-            .then(([user, orgs]) => {
+        Promise.allSettled([getCurrentUser(), getOrganizations()])
+            .then(([userResult, organizationsResult]) => {
+                const user = userResult.status === 'fulfilled' ? userResult.value : null
+                const orgs = organizationsResult.status === 'fulfilled' ? organizationsResult.value : []
                 if (user) {
                     setProfile(user)
                     setName(user.name || '')
@@ -31,6 +29,14 @@ function ProfilePage() {
                 }
                 const role = (orgs?.[0]?.role || localStorage.getItem('workflowx_registered_role') || 'MEMBER').toUpperCase()
                 setUserRole(role)
+
+                const errors = [
+                    [userResult, 'Unable to load your profile.'],
+                    [organizationsResult, 'Unable to load your workspace role.'],
+                ]
+                    .filter(([result]) => result.status === 'rejected')
+                    .map(([result, fallback]) => `${fallback} ${result.reason?.message || ''}`.trim())
+                if (errors.length > 0) setError(errors.join(' '))
             })
             .catch((requestError) => setError(requestError.message))
             .finally(() => setIsLoading(false))

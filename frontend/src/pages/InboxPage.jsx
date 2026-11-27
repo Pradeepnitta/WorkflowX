@@ -13,6 +13,7 @@ import { getCurrentUser } from '../services/authService.js'
 import { getOrganizations } from '../services/organizationService.js'
 import { getSocket } from '../services/socketService.js'
 import { getTasks, updateTaskStatus } from '../services/taskService.js'
+import { getProjectTasks, getProjects, updateProjectTask } from '../services/projectService.js'
 import { isTaskAssignedToUser } from './TasksPage.jsx'
 import '../App.css'
 import './InboxPage.css'
@@ -53,6 +54,36 @@ function getCat(n) {
     return 'SYSTEM'
 }
 
+function isAssignedToUser(task, user) {
+    if (task?.projectId) return Boolean(user?.id) && String(task.assigneeId) === String(user.id)
+    return isTaskAssignedToUser(task, user)
+}
+
+function taskDetailsPath(task) {
+    const taskId = encodeURIComponent(task.id)
+    return task.projectId ? `/developer/tasks?taskId=${taskId}` : `/tasks?taskId=${taskId}`
+}
+
+function taskStatusLabel(status) {
+    const labels = {
+        TODO: 'To Do',
+        IN_PROGRESS: 'In Progress',
+        IN_REVIEW: 'Under Review',
+        COMPLETED: 'Completed',
+    }
+    return labels[String(status || '').toUpperCase()] || status || 'To Do'
+}
+
+function isTaskTodo(task) {
+    const status = String(task.status || '').trim().toUpperCase()
+    return status === 'TODO'
+}
+
+function isTaskInProgress(task) {
+    const status = String(task.status || '').trim().toUpperCase()
+    return status === 'IN_PROGRESS' || status === 'IN PROGRESS'
+}
+
 const CMETA = {
     ASSIGNED: { icon: '🎯', label: 'Assigned to Me',    color: '#047857', bg: '#ecfdf5', border: '#a7f3d0' },
     REVIEW:   { icon: '💡', label: 'Proposal / Review', color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
@@ -84,24 +115,55 @@ export default function InboxPage() {
 
     // Load User, Notifications, and Assigned Tasks
     useEffect(() => {
-        setLoading(true)
-        Promise.all([
-            getCurrentUser().catch(() => null),
-            getOrganizations().catch(() => []),
-            getNotifications().catch(() => []),
-            getTasks().catch(() => []),
+        Promise.allSettled([
+            getCurrentUser(),
+            getOrganizations(),
+            getNotifications(),
+            getTasks(),
         ])
-            .then(([userData, orgs, notifs, loadedTasks]) => {
-                if (userData) {
-                    setCurrentUser(userData)
-                }
+            .then(async ([userResult, organizationsResult, notificationsResult, tasksResult]) => {
+                const userData = userResult.status === 'fulfilled' ? userResult.value : null
+                const orgs = organizationsResult.status === 'fulfilled' ? organizationsResult.value : []
+                const notifs = notificationsResult.status === 'fulfilled' ? notificationsResult.value : []
+                if (userData) setCurrentUser(userData)
+
                 const activeRole = (orgs?.[0]?.role || localStorage.getItem('workflowx_registered_role') || 'MEMBER').toUpperCase()
                 setUserRole(activeRole)
 
                 const list = Array.isArray(notifs) ? notifs : notifs?.data || []
                 setItems(list)
 
-                const rawTasks = Array.isArray(loadedTasks) ? loadedTasks : loadedTasks?.data || []
+                const loadedTasks = tasksResult.status === 'fulfilled' ? tasksResult.value : []
+                let rawTasks = Array.isArray(loadedTasks) ? loadedTasks : loadedTasks?.data || []
+                const failedRequests = [
+                    [userResult, 'Unable to load your profile.'],
+                    [organizationsResult, 'Unable to load your workspace role.'],
+                    [notificationsResult, 'Unable to load notifications.'],
+                    [tasksResult, 'Unable to load assigned tasks.'],
+                ]
+                if (activeRole === 'MEMBER' && orgs?.[0]?.id) {
+                    const projectsResult = await Promise.allSettled([getProjects(orgs[0].id)])
+                    if (projectsResult[0].status === 'fulfilled') {
+                        const memberProjects = (Array.isArray(projectsResult[0].value) ? projectsResult[0].value : [])
+                            .filter((project) => project.isMember)
+                        const taskResults = await Promise.allSettled(memberProjects.map((project) => getProjectTasks(project.id)))
+                        const projectTasks = taskResults.flatMap((result, index) => {
+                            if (result.status !== 'fulfilled') return []
+                            const project = memberProjects[index]
+                            const projectTaskList = Array.isArray(result.value) ? result.value : []
+                            return projectTaskList.map((task) => ({
+                                ...task,
+                                project: project.name,
+                                projectName: project.name,
+                                due: task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No deadline',
+                            }))
+                        })
+                        rawTasks = [...projectTasks, ...rawTasks]
+                        failedRequests.push(...taskResults.map((result) => [result, 'Unable to load tasks for one of your projects.']))
+                    } else {
+                        failedRequests.push([projectsResult[0], 'Unable to load your assigned projects.'])
+                    }
+                }
                 setAssignedTasks(rawTasks)
 
                 // If developer has assigned tasks or unread assigned notifications, focus on Assigned tab
@@ -110,8 +172,13 @@ export default function InboxPage() {
                 } else if (activeRole === 'MANAGER' && list.some(n => getCat(n) === 'REVIEW' && !n.isRead)) {
                     setFilter('REVIEW')
                 }
+
+                const requestErrors = failedRequests
+                    .filter(([result]) => result.status === 'rejected')
+                    .map(([result, fallback]) => `${fallback} ${result.reason?.message || ''}`.trim())
+                if (requestErrors.length > 0) setErr(requestErrors.join(' '))
             })
-            .catch(e => setErr(e.message))
+            .catch((requestError) => setErr(requestError.message || 'Unable to load your inbox.'))
             .finally(() => setLoading(false))
     }, [])
 
@@ -140,12 +207,31 @@ export default function InboxPage() {
 
         function onTaskCreated(task) {
             if (!task) return
-            setAssignedTasks(prev => [task, ...prev.filter(t => t.id !== task.id)])
+            if (task.projectId && String(task.assigneeId) !== String(currentUser?.id)) return
+            const incomingTask = task.projectId
+                ? {
+                    ...task,
+                    project: task.project || task.projectName || 'Project task',
+                    due: task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No deadline',
+                }
+                : task
+            setAssignedTasks(prev => [incomingTask, ...prev.filter(t => String(t.id) !== String(task.id))])
         }
 
         function onTaskUpdated(task) {
             if (!task) return
-            setAssignedTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...task } : t))
+            if (task.projectId && String(task.assigneeId) !== String(currentUser?.id)) {
+                setAssignedTasks(prev => prev.filter(t => String(t.id) !== String(task.id)))
+                return
+            }
+            const incomingTask = task.projectId
+                ? {
+                    ...task,
+                    project: task.project || task.projectName || 'Project task',
+                    due: task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No deadline',
+                }
+                : task
+            setAssignedTasks(prev => prev.map(t => String(t.id) === String(task.id) ? { ...t, ...incomingTask } : t))
         }
 
         function onTaskDeleted(payload) {
@@ -167,61 +253,97 @@ export default function InboxPage() {
     }, [currentUser])
 
     async function markRead(id) {
-        await markNotificationRead(id).catch(() => null)
-        setItems(p => p.map(n => n.id === id ? { ...n, isRead: true } : n))
-        window.dispatchEvent(new CustomEvent('notification:read'))
+        setErr('')
+        try {
+            await markNotificationRead(id)
+            setItems(p => p.map(n => n.id === id ? { ...n, isRead: true } : n))
+            window.dispatchEvent(new CustomEvent('notification:read'))
+        } catch (requestError) {
+            setErr(requestError.message || 'Unable to mark this notification as read.')
+        }
     }
 
     async function toggleRead(n, e) {
         e?.stopPropagation()
-        if (n.isRead) {
-            await markNotificationUnread(n.id).catch(() => null)
-            setItems(p => p.map(x => x.id === n.id ? { ...x, isRead: false } : x))
-            flash('Notification marked as unread.')
-        } else {
-            await markNotificationRead(n.id).catch(() => null)
-            setItems(p => p.map(x => x.id === n.id ? { ...x, isRead: true } : x))
-            flash('Notification marked as read.')
+        setErr('')
+        try {
+            if (n.isRead) {
+                await markNotificationUnread(n.id)
+                setItems(p => p.map(x => x.id === n.id ? { ...x, isRead: false } : x))
+                flash('Notification marked as unread.')
+            } else {
+                await markNotificationRead(n.id)
+                setItems(p => p.map(x => x.id === n.id ? { ...x, isRead: true } : x))
+                flash('Notification marked as read.')
+            }
+            window.dispatchEvent(new CustomEvent('notification:read'))
+        } catch (requestError) {
+            setErr(requestError.message || 'Unable to update this notification.')
         }
-        window.dispatchEvent(new CustomEvent('notification:read'))
     }
 
     async function markAll() {
-        await markAllNotificationsRead().catch(() => null)
-        setItems(p => p.map(n => ({ ...n, isRead: true })))
-        flash('All notifications marked as read.')
-        window.dispatchEvent(new CustomEvent('notification:read'))
+        setErr('')
+        try {
+            await markAllNotificationsRead()
+            setItems(p => p.map(n => ({ ...n, isRead: true })))
+            flash('All notifications marked as read.')
+            window.dispatchEvent(new CustomEvent('notification:read'))
+        } catch (requestError) {
+            setErr(requestError.message || 'Unable to mark notifications as read.')
+        }
     }
 
     async function del(id, e) {
         e?.stopPropagation()
-        await deleteNotification(id).catch(() => null)
-        setItems(p => p.filter(n => n.id !== id))
-        if (sel === id) setSel(null)
-        flash('Notification deleted.')
+        setErr('')
+        try {
+            await deleteNotification(id)
+            setItems(p => p.filter(n => n.id !== id))
+            if (sel === id) setSel(null)
+            flash('Notification deleted.')
+        } catch (requestError) {
+            setErr(requestError.message || 'Unable to delete this notification.')
+        }
     }
 
     async function clearRead() {
-        await clearReadNotifications().catch(() => null)
-        setItems(p => p.filter(n => !n.isRead))
-        if (selItem && selItem.isRead) setSel(null)
-        flash('Read notifications removed.')
+        setErr('')
+        try {
+            await clearReadNotifications()
+            setItems(p => p.filter(n => !n.isRead))
+            if (selItem && selItem.isRead) setSel(null)
+            flash('Read notifications removed.')
+        } catch (requestError) {
+            setErr(requestError.message || 'Unable to remove read notifications.')
+        }
     }
 
     async function clearAll() {
         if (!window.confirm('Clear your entire inbox history?')) return
-        await clearAllNotifications().catch(() => null)
-        setItems([])
-        setSel(null)
-        flash('Inbox cleared.')
+        setErr('')
+        try {
+            await clearAllNotifications()
+            setItems([])
+            setSel(null)
+            flash('Inbox cleared.')
+        } catch (requestError) {
+            setErr(requestError.message || 'Unable to clear your inbox.')
+        }
     }
 
     // Direct developer task action from Inbox
     async function handleStartTask(taskId, e) {
         e?.stopPropagation()
         try {
-            await updateTaskStatus(taskId, 'In progress')
-            setAssignedTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'In progress' } : t))
+            const task = assignedTasks.find((item) => String(item.id) === String(taskId))
+            if (task?.projectId) {
+                const updated = await updateProjectTask(taskId, { status: 'IN_PROGRESS' })
+                setAssignedTasks(prev => prev.map(t => String(t.id) === String(taskId) ? { ...t, ...updated } : t))
+            } else {
+                await updateTaskStatus(taskId, 'In progress')
+                setAssignedTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'In progress' } : t))
+            }
             flash('⚡ Task moved to In Progress!')
         } catch (taskErr) {
             flash(`Unable to update task: ${taskErr.message}`)
@@ -230,6 +352,11 @@ export default function InboxPage() {
 
     async function handleSubmitReview(taskId, e) {
         e?.stopPropagation()
+        const task = assignedTasks.find((item) => String(item.id) === String(taskId))
+        if (task?.projectId) {
+            nav(taskDetailsPath(task))
+            return
+        }
         try {
             await updateTaskStatus(taskId, 'Review')
             setAssignedTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'Review' } : t))
@@ -251,7 +378,7 @@ export default function InboxPage() {
             const taskTitle = titleMatch[1].trim().toLowerCase()
             const found = assignedTasks.find((at) => (at.title || '').trim().toLowerCase() === taskTitle)
             if (found) {
-                nav(`/tasks?taskId=${found.id}`)
+                nav(taskDetailsPath(found))
                 return
             }
         }
@@ -259,19 +386,19 @@ export default function InboxPage() {
         if (t.includes('project') || t.includes('milestone')) {
             nav('/projects')
         } else if (t.includes('proposal')) {
-            nav('/tasks?filter=proposals')
+            nav(userRole === 'MEMBER' ? '/developer/submissions' : '/tasks?filter=proposals')
         } else if (t.includes('assigned to you') || t.includes('task_assigned')) {
-            nav('/tasks?filter=mine')
+            nav(userRole === 'MEMBER' ? '/developer/tasks' : '/tasks?filter=mine')
         } else if (t.includes('team') || t.includes('squad') || t.includes('roster')) {
             nav('/teams')
         } else {
-            nav('/tasks?filter=mine')
+            nav(userRole === 'MEMBER' ? '/developer/tasks' : '/tasks?filter=mine')
         }
     }
 
     const myAssignedTasks = useMemo(() => {
         if (!currentUser) return []
-        return assignedTasks.filter((t) => isTaskAssignedToUser(t, currentUser) && (!t.isSuggestion || t.approvalStatus === 'APPROVED') && t.approvalStatus !== 'REJECTED')
+        return assignedTasks.filter((t) => isAssignedToUser(t, currentUser) && (!t.isSuggestion || t.approvalStatus === 'APPROVED') && t.approvalStatus !== 'REJECTED')
     }, [assignedTasks, currentUser])
 
     const counts = useMemo(() => ({
@@ -516,7 +643,7 @@ export default function InboxPage() {
                                     </div>
                                     <button
                                         type="button"
-                                        onClick={() => nav('/tasks?filter=mine')}
+                                        onClick={() => nav('/developer/tasks')}
                                         style={{ background: 'none', border: 'none', color: '#047857', fontWeight: 700, fontSize: '11.5px', cursor: 'pointer', padding: 0 }}
                                     >
                                         View on Signboard ➔
@@ -526,7 +653,7 @@ export default function InboxPage() {
                                     {myAssignedTasks.map((t) => (
                                         <div
                                             key={t.id}
-                                            onClick={() => nav(`/tasks?taskId=${t.id}`)}
+                                            onClick={() => nav(taskDetailsPath(t))}
                                             style={{
                                                 background: '#ffffff',
                                                 border: '1px solid #d1fae5',
@@ -546,7 +673,7 @@ export default function InboxPage() {
                                             <div style={{ minWidth: 0, flex: 1 }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
                                                     <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: '#eff6ff', color: '#1d4ed8', fontWeight: 700 }}>
-                                                        {t.status || 'Todo'}
+                                                        {taskStatusLabel(t.status)}
                                                     </span>
                                                     <span style={{ fontSize: '11px', color: '#64748b' }}>
                                                         📁 {t.project || 'General'}
@@ -561,7 +688,7 @@ export default function InboxPage() {
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                                                 <span style={{ fontSize: '11px', color: '#64748b' }}>Due: {t.due || 'Next week'}</span>
-                                                {t.status === 'Todo' ? (
+                                                {isTaskTodo(t) ? (
                                                     <button
                                                         type="button"
                                                         onClick={(e) => handleStartTask(t.id, e)}
@@ -582,7 +709,7 @@ export default function InboxPage() {
                                                     >
                                                         ⚡ Start
                                                     </button>
-                                                ) : t.status === 'In progress' ? (
+                                                ) : isTaskInProgress(t) ? (
                                                     <button
                                                         type="button"
                                                         onClick={(e) => handleSubmitReview(t.id, e)}
@@ -701,7 +828,7 @@ export default function InboxPage() {
                                                     Associated Workspace Task
                                                 </span>
                                                 <span style={{ fontSize: '11px', padding: '2px 7px', borderRadius: '4px', background: '#eff6ff', color: '#1d4ed8', fontWeight: 700 }}>
-                                                    {matchedTaskForSel.status || 'Todo'}
+                                                    {taskStatusLabel(matchedTaskForSel.status)}
                                                 </span>
                                             </div>
                                             <h4 style={{ margin: '0 0 6px', fontSize: '14px', color: '#0f172a' }}>{matchedTaskForSel.title}</h4>
@@ -711,7 +838,7 @@ export default function InboxPage() {
                                                 <span>📅 Due: <strong>{matchedTaskForSel.due || 'Next week'}</strong></span>
                                             </div>
                                             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                                {matchedTaskForSel.status === 'Todo' && (
+                                                {isTaskTodo(matchedTaskForSel) && (
                                                     <button
                                                         type="button"
                                                         onClick={(e) => handleStartTask(matchedTaskForSel.id, e)}
@@ -720,7 +847,7 @@ export default function InboxPage() {
                                                         ⚡ Start Working
                                                     </button>
                                                 )}
-                                                {matchedTaskForSel.status === 'In progress' && (
+                                                {isTaskInProgress(matchedTaskForSel) && (
                                                     <button
                                                         type="button"
                                                         onClick={(e) => handleSubmitReview(matchedTaskForSel.id, e)}
@@ -731,7 +858,7 @@ export default function InboxPage() {
                                                 )}
                                                 <button
                                                     type="button"
-                                                    onClick={() => nav(`/tasks?taskId=${matchedTaskForSel.id}`)}
+                                                    onClick={() => nav(taskDetailsPath(matchedTaskForSel))}
                                                     style={{ padding: '6px 12px', fontSize: '11.5px', fontWeight: 700, background: '#f1f5f9', color: '#334151', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer' }}
                                                 >
                                                     View on Signboard ➔

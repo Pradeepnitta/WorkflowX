@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getOrganizations, getOrganizationMembers } from '../services/organizationService.js'
 import { getOverview } from '../services/analyticsService.js'
@@ -129,28 +129,43 @@ function getTrendPoints(rows, key, maxValueOverride = 0, width = 320, height = 1
 }
 
 async function fetchDashboardData(organizationId) {
-    const [overview, loadedProjects, loadedTeams, loadedMembers, loadedNotifications] = await Promise.all([
+    const [overviewResult, projectsResult, teamsResult, membersResult, notificationsResult] = await Promise.allSettled([
         getOverview(organizationId),
         getProjects(organizationId),
         getTeams(organizationId),
         getOrganizationMembers(organizationId),
         getNotifications(),
     ])
-    const projects = Array.isArray(loadedProjects) ? loadedProjects : []
+    if (projectsResult.status === 'rejected') throw projectsResult.reason
+
+    const projects = Array.isArray(projectsResult.value) ? projectsResult.value : []
     const manageableProjects = projects.filter((project) => project.canManage)
     const taskGroups = await Promise.all(manageableProjects.map(async (project) => ({
         project,
         tasks: await getProjectTasks(project.id),
     })))
+    const loadErrors = [
+        [overviewResult, 'Unable to load workspace analytics.'],
+        [teamsResult, 'Unable to load workspace teams.'],
+        [membersResult, 'Unable to load workspace developers.'],
+        [notificationsResult, 'Unable to load workspace notifications.'],
+    ]
+        .filter(([result]) => result.status === 'rejected')
+        .map(([result, fallback]) => `${fallback} ${result.reason?.message || ''}`.trim())
 
     return {
-        overview,
+        overview: overviewResult.status === 'fulfilled' ? overviewResult.value : null,
         projects,
-        teams: Array.isArray(loadedTeams) ? loadedTeams : [],
-        members: Array.isArray(loadedMembers) ? loadedMembers.filter((member) => member.role === 'MEMBER') : [],
-        notifications: Array.isArray(loadedNotifications)
-            ? loadedNotifications
-            : Array.isArray(loadedNotifications?.data) ? loadedNotifications.data : [],
+        teams: teamsResult.status === 'fulfilled' && Array.isArray(teamsResult.value) ? teamsResult.value : [],
+        members: membersResult.status === 'fulfilled' && Array.isArray(membersResult.value)
+            ? membersResult.value.filter((member) => member.role === 'MEMBER')
+            : [],
+        notifications: notificationsResult.status === 'fulfilled'
+            ? Array.isArray(notificationsResult.value)
+                ? notificationsResult.value
+                : Array.isArray(notificationsResult.value?.data) ? notificationsResult.value.data : []
+            : [],
+        errors: loadErrors,
         tasks: taskGroups.flatMap(({ project, tasks }) =>
             (Array.isArray(tasks) ? tasks : []).map((task) => ({
                 ...task,
@@ -162,6 +177,7 @@ async function fetchDashboardData(organizationId) {
 
 export default function ManagerDashboardPage({ view = 'overview' }) {
     const reviewsOnly = view === 'reviews'
+    const tasksOnly = view === 'tasks'
     const navigate = useNavigate()
     const [organizations, setOrganizations] = useState([])
     const [organizationId, setOrganizationId] = useState('')
@@ -175,6 +191,8 @@ export default function ManagerDashboardPage({ view = 'overview' }) {
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
+    const [successMessage, setSuccessMessage] = useState('')
+    const savingRef = useRef(false)
     const [showTaskForm, setShowTaskForm] = useState(false)
     const [editingTask, setEditingTask] = useState(null)
     const [taskForm, setTaskForm] = useState(EMPTY_FORM)
@@ -193,6 +211,7 @@ export default function ManagerDashboardPage({ view = 'overview' }) {
             setMembers(data.members)
             setTasks(data.tasks)
             setNotifications(data.notifications)
+            setError(data.errors.join(' '))
         } catch (requestError) {
             setError(requestError.message || 'Unable to load Manager dashboard data.')
         }
@@ -240,6 +259,7 @@ export default function ManagerDashboardPage({ view = 'overview' }) {
                 setMembers(data.members)
                 setTasks(data.tasks)
                 setNotifications(data.notifications)
+                setError(data.errors.join(' '))
             })
             .catch((requestError) => {
                 if (current) setError(requestError.message || 'Unable to load Manager dashboard data.')
@@ -288,8 +308,11 @@ export default function ManagerDashboardPage({ view = 'overview' }) {
 
     async function saveTask(event) {
         event.preventDefault()
+        if (savingRef.current) return
+        savingRef.current = true
         setSaving(true)
         setError('')
+        setSuccessMessage('')
         try {
             const payload = {
                 ...taskForm,
@@ -299,6 +322,9 @@ export default function ManagerDashboardPage({ view = 'overview' }) {
                 assigneeId: taskForm.assigneeId || null,
                 progress: Number(taskForm.progress),
             }
+            if (editingTask && taskForm.status === editingTask.status) {
+                delete payload.status
+            }
             if (editingTask) {
                 await updateProjectTask(editingTask.id, payload)
             } else {
@@ -306,9 +332,11 @@ export default function ManagerDashboardPage({ view = 'overview' }) {
             }
             setShowTaskForm(false)
             await loadDashboard(organizationId)
+            setSuccessMessage(editingTask ? 'Task updated successfully.' : 'Task created successfully.')
         } catch (requestError) {
             setError(requestError.message || 'Unable to save this task.')
         } finally {
+            savingRef.current = false
             setSaving(false)
         }
     }
@@ -382,6 +410,48 @@ export default function ManagerDashboardPage({ view = 'overview' }) {
     const recentNotifications = [...notifications]
         .sort((left, right) => new Date(right.createdAt || 0) - new Date(left.createdAt || 0))
         .slice(0, 4)
+    const displayedTasks = tasksOnly ? managedTasks : managedTasks.slice(0, 30)
+    const taskManagementSection = (
+        <section className="panel manager-section manager-task-section">
+            <div className="manager-section-heading">
+                <div>
+                    <h2>{tasksOnly ? 'All project tasks' : 'Project tasks'}</h2>
+                    <p>Create, reassign, edit, and monitor tasks in projects you manage.</p>
+                </div>
+                <button className="primary-button" type="button" onClick={openCreateTask} disabled={!projects.some((project) => project.canManage)}>
+                    Add task
+                </button>
+            </div>
+            {managedTasks.length === 0 ? (
+                <p className="manager-empty-copy">No project tasks found. Create a task to get started.</p>
+            ) : (
+                <div className="manager-task-table-wrap">
+                    <table className="manager-task-table">
+                        <thead>
+                            <tr><th>Task</th><th>Project</th><th>Status</th><th>Priority</th><th>Assignee</th><th>Due</th><th>Progress</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody>
+                            {displayedTasks.map((task) => (
+                                <tr key={task.id}>
+                                    <td><strong>{task.title}</strong></td>
+                                    <td>{task.projectName}</td>
+                                    <td>{formatStatus(task.status)}</td>
+                                    <td>{task.priority}</td>
+                                    <td>{members.find((member) => member.userId === task.assigneeId)?.name || 'Unassigned'}</td>
+                                    <td>{formatDate(task.dueDate)}</td>
+                                    <td>{Number(task.progress || 0)}%</td>
+                                    <td className="manager-task-actions">
+                                        <button type="button" onClick={() => openEditTask(task)}>Edit</button>
+                                        <button className="danger-text" type="button" onClick={() => removeTask(task)}>Delete</button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+        </section>
+    )
 
     if (!loading && activeOrganization && !isManager) {
         return (
@@ -401,17 +471,21 @@ export default function ManagerDashboardPage({ view = 'overview' }) {
                     <p className="eyebrow">{isAdmin ? 'Administrator workspace' : 'Manager workspace'}</p>
                     <h1>{reviewsOnly
                         ? 'Task Reviews'
-                        : <><span className="manager-waving-hand" aria-hidden="true">👋</span> Welcome back{user?.name ? `, ${user.name}` : ''}!</>}</h1>
+                        : tasksOnly
+                            ? 'All Tasks'
+                            : <><span className="manager-waving-hand" aria-hidden="true">👋</span> Welcome back{user?.name ? `, ${user.name}` : ''}!</>}</h1>
                     <p className="heading-subtitle">
                         {reviewsOnly
                             ? 'Review developer submissions for projects you are authorized to manage.'
+                            : tasksOnly
+                                ? 'Manage tasks across projects you are authorized to manage.'
                             : isAdmin
                                 ? 'Global workspace oversight across projects, teams, and task reviews.'
                                 : 'Manage the projects and teams assigned to you, track delivery, and review submissions.'}
                     </p>
                 </div>
                 <div className="manager-heading-actions">
-                    {!reviewsOnly && <span className="manager-period-label"><span aria-hidden="true">▦</span> Last 7 days</span>}
+                    {!reviewsOnly && !tasksOnly && <span className="manager-period-label"><span aria-hidden="true">▦</span> Last 7 days</span>}
                     {organizations.length > 1 && (
                         <label className="organization-select">
                             Workspace
@@ -437,6 +511,7 @@ export default function ManagerDashboardPage({ view = 'overview' }) {
             </header>
 
             {error && <p className="service-error" role="alert">{error}</p>}
+            {successMessage && <p className="service-success" role="status">{successMessage}</p>}
             {loading && <p className="loading-state">Loading live workspace data…</p>}
             {!loading && !activeOrganization && (
                 <section className="panel manager-empty">
@@ -445,7 +520,7 @@ export default function ManagerDashboardPage({ view = 'overview' }) {
                 </section>
             )}
 
-            {!loading && overview && !reviewsOnly && (
+            {!loading && overview && !reviewsOnly && !tasksOnly && (
                 <>
                     <section className="manager-stat-grid" aria-label="Manager dashboard metrics">
                         {overviewCards.map((card) => (
@@ -663,48 +738,11 @@ export default function ManagerDashboardPage({ view = 'overview' }) {
                         </section>
                     </div>
 
-                    <section className="panel manager-section manager-task-section">
-                        <div className="manager-section-heading">
-                            <div>
-                                <h2>Project tasks</h2>
-                                <p>Create, reassign, edit, and monitor tasks in projects you manage.</p>
-                            </div>
-                            <button className="primary-button" type="button" onClick={openCreateTask} disabled={!projects.some((project) => project.canManage)}>
-                                Add task
-                            </button>
-                        </div>
-                        {managedTasks.length === 0 ? (
-                            <p className="manager-empty-copy">No project tasks found. Create a task to get started.</p>
-                        ) : (
-                            <div className="manager-task-table-wrap">
-                                <table className="manager-task-table">
-                                    <thead>
-                                        <tr><th>Task</th><th>Project</th><th>Status</th><th>Priority</th><th>Assignee</th><th>Due</th><th>Progress</th><th>Actions</th></tr>
-                                    </thead>
-                                    <tbody>
-                                        {managedTasks.slice(0, 30).map((task) => (
-                                            <tr key={task.id}>
-                                                <td><strong>{task.title}</strong></td>
-                                                <td>{task.projectName}</td>
-                                                <td>{formatStatus(task.status)}</td>
-                                                <td>{task.priority}</td>
-                                                <td>{members.find((member) => member.userId === task.assigneeId)?.name || 'Unassigned'}</td>
-                                                <td>{formatDate(task.dueDate)}</td>
-                                                <td>{Number(task.progress || 0)}%</td>
-                                                <td className="manager-task-actions">
-                                                    <button type="button" onClick={() => openEditTask(task)}>Edit</button>
-                                                    <button className="danger-text" type="button" onClick={() => removeTask(task)}>Delete</button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
-                    </section>
-
+                    {taskManagementSection}
                 </>
             )}
+
+            {!loading && tasksOnly && activeOrganization && taskManagementSection}
 
             {!loading && overview && reviewsOnly && (
                 <section className="panel manager-section manager-review-page">
@@ -763,8 +801,14 @@ export default function ManagerDashboardPage({ view = 'overview' }) {
                             <label>Priority<select value={taskForm.priority} onChange={(event) => setTaskForm({ ...taskForm, priority: event.target.value })}>
                                 <option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Critical</option>
                             </select></label>
-                            <label>Status<select value={taskForm.status} onChange={(event) => setTaskForm({ ...taskForm, status: event.target.value })}>
-                                <option value="TODO">To do</option><option value="IN_PROGRESS">In progress</option><option value="IN_REVIEW">Review</option><option value="COMPLETED">Completed</option>
+                            <label>Status<select
+                                value={taskForm.status}
+                                disabled={editingTask?.status === 'IN_REVIEW'}
+                                onChange={(event) => setTaskForm({ ...taskForm, status: event.target.value })}
+                            >
+                                <option value="TODO">To do</option><option value="IN_PROGRESS">In progress</option>
+                                {editingTask && <option value="COMPLETED">Completed</option>}
+                                {editingTask?.status === 'IN_REVIEW' && <option value="IN_REVIEW">In review</option>}
                             </select></label>
                             <label>Progress (%)<input type="number" min="0" max="100" step="1" value={taskForm.progress} onChange={(event) => setTaskForm({ ...taskForm, progress: event.target.value })} /></label>
                             <label>Start date<input type="date" value={taskForm.startDate} onChange={(event) => setTaskForm({ ...taskForm, startDate: event.target.value })} /></label>

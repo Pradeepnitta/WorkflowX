@@ -116,6 +116,14 @@
     transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
 }
 
+[data-density="compact"] .developer-task-card {
+    padding: 8px;
+}
+
+[data-density="spacious"] .developer-task-card {
+    padding: 20px;
+}
+
 .developer-task-card:hover {
     transform: translateY(-1px);
     border-color: #c7d2fe;
@@ -300,6 +308,81 @@
     padding-bottom: 8px;
 }
 
+.developer-task-filters {
+    display: grid;
+    grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(150px, 1fr));
+    gap: 10px;
+}
+
+.developer-task-filters input,
+.developer-task-filters select {
+    min-width: 0;
+    padding: 9px 11px;
+    border: 1px solid #dbe1ea;
+    border-radius: 8px;
+    background: #fff;
+    color: #334155;
+    font: inherit;
+    font-size: 12px;
+}
+
+.developer-task-table-wrap {
+    overflow-x: auto;
+}
+
+.developer-task-table {
+    min-width: 760px;
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #fff;
+}
+
+.developer-task-table-row {
+    width: 100%;
+    min-height: 48px;
+    display: grid;
+    grid-template-columns: minmax(180px, 2fr) minmax(130px, 1.4fr) minmax(110px, 1fr) minmax(90px, .8fr) minmax(110px, 1fr) minmax(85px, .7fr);
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border: 0;
+    border-bottom: 1px solid #eef2f7;
+    background: #fff;
+    color: #475569;
+    text-align: left;
+    font: inherit;
+    font-size: 12px;
+}
+
+button.developer-task-table-row:not(.is-header) {
+    cursor: pointer;
+}
+
+button.developer-task-table-row:not(.is-header):hover {
+    background: #f8fafc;
+}
+
+.developer-task-table-row:last-child {
+    border-bottom: 0;
+}
+
+.developer-task-table-row.is-header {
+    min-height: 42px;
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.developer-task-table-row strong {
+    overflow: hidden;
+    color: #1e293b;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .developer-kanban-column {
     min-height: 220px;
     padding: 15px;
@@ -378,10 +461,47 @@
     font-size: 12px;
 }
 
+.developer-project-task-list {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.developer-project-task-list > strong {
+    color: #334155;
+    font-size: 11px;
+}
+
 .developer-team-members {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
+}
+
+.developer-team-manager {
+    margin: -4px 0 14px;
+    color: #64748b;
+    font-size: 11px;
+}
+
+.developer-team-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    margin-top: 16px;
+    padding-top: 13px;
+    border-top: 1px solid #e5e7eb;
+    color: #64748b;
+    font-size: 11px;
+}
+
+.developer-team-stats > strong {
+    width: 100%;
+    color: #334155;
+    font-size: 11px;
 }
 
 .developer-team-member {
@@ -712,6 +832,35 @@
     font-size: 12px;
 }
 
+.developer-comment textarea {
+    width: 100%;
+    margin-top: 8px;
+    padding: 8px 10px;
+    border: 1px solid #dbe1ea;
+    border-radius: 7px;
+    font: inherit;
+}
+
+.developer-comment-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.developer-comment-actions button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #4f46e5;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.developer-comment-actions button:disabled {
+    cursor: not-allowed;
+    opacity: .5;
+}
+
 .developer-review-history-row small,
 .developer-comment small {
     display: block;
@@ -763,6 +912,14 @@
     .developer-kanban {
         grid-template-columns: repeat(4, minmax(260px, 1fr));
     }
+
+    .developer-task-table {
+        min-width: 680px;
+    }
+
+    .developer-task-filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 @media (max-width: 600px) {
@@ -787,6 +944,10 @@
 
     .developer-team-members,
     .developer-project-meta {
+        grid-template-columns: 1fr;
+    }
+
+    .developer-task-filters {
         grid-template-columns: 1fr;
     }
 
