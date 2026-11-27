@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useOutletContext } from 'react-router-dom'
 import AppLayout from './layouts/AppLayout.jsx'
 import { ProtectedRoute, PublicRoute } from './routes/ProtectedRoute.jsx'
 import DashboardOverviewPage from './pages/DashboardOverviewPage.jsx'
@@ -18,6 +18,20 @@ import SystemAdminPage from './pages/SystemAdminPage.jsx'
 import ManagerDashboardPage from './pages/ManagerDashboardPage.jsx'
 import DeveloperDashboardPage from './pages/DeveloperDashboardPage.jsx'
 import './App.css'
+
+function DashboardHomeRoute() {
+    const { organization, organizationLoaded } = useOutletContext()
+
+    if (!organizationLoaded) {
+        return <main className="feature-page"><p className="loading-state">Loading your workspace…</p></main>
+    }
+
+    if (String(organization?.role || '').toUpperCase() === 'MANAGER') {
+        return <Navigate to="/manager" replace />
+    }
+
+    return <DashboardOverviewPage />
+}
 
 function App() {
     return (
@@ -44,7 +58,7 @@ function App() {
                 {/* Protected SPA Application Shell Routes */}
                 <Route element={<ProtectedRoute />}>
                     <Route element={<AppLayout />}>
-                        <Route path="/" element={<DashboardOverviewPage />} />
+                        <Route path="/" element={<DashboardHomeRoute />} />
                         <Route path="/manager" element={<ManagerDashboardPage />} />
                         <Route path="/manager/reviews" element={<ManagerDashboardPage view="reviews" />} />
                         <Route path="/developer" element={<DeveloperDashboardPage view="overview" />} />

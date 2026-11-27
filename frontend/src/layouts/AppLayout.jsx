@@ -14,6 +14,7 @@ export default function AppLayout() {
     const navigate = useNavigate()
     const [user, setUser] = useState(null)
     const [organization, setOrganization] = useState(null)
+    const [organizationLoaded, setOrganizationLoaded] = useState(false)
     const [authVersion, setAuthVersion] = useState(0)
     const [unreadCount, setUnreadCount] = useState(0)
     const [toasts, setToasts] = useState([])
@@ -141,8 +142,12 @@ export default function AppLayout() {
                         - (rolePriority[String(right.role || '').toUpperCase()] ?? 4)
                     )[0]
                 setOrganization(preferredOrganization || null)
+                setOrganizationLoaded(true)
             })
-            .catch(() => setOrganization(null))
+            .catch(() => {
+                setOrganization(null)
+                setOrganizationLoaded(true)
+            })
         // Fetch real unread count
         getNotifications()
             .then(d => {
@@ -622,7 +627,7 @@ export default function AppLayout() {
                             <button type="button" className="primary-button" onClick={() => navigate('/')}>Go to My Dashboard</button>
                         </div>
                     ) : (
-                        <Outlet />
+                        <Outlet context={{ organization, organizationLoaded }} />
                     )}
                 </div>
 
