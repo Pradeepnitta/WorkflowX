@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
+    createSystemAdminUser,
     getSystemAdminAuditLogs,
     getSystemAdminOverview,
     getSystemAdminUsers,
@@ -51,15 +52,33 @@ export default function SystemAdminPage() {
     const [busyUserId, setBusyUserId] = useState('')
     const [error, setError] = useState('')
     const [success, setSuccess] = useState('')
+    const [showCreateUser, setShowCreateUser] = useState(false)
+    const [newUserName, setNewUserName] = useState('')
+    const [newUserEmail, setNewUserEmail] = useState('')
+    const [newUserPassword, setNewUserPassword] = useState('')
+    const [newUserSystemRole, setNewUserSystemRole] = useState('USER')
+    const [newUserStatus, setNewUserStatus] = useState('ACTIVE')
+    const [creatingUser, setCreatingUser] = useState(false)
+    const [auditSearch, setAuditSearch] = useState('')
+    const [auditAction, setAuditAction] = useState('')
+    const [auditOffset, setAuditOffset] = useState(0)
+    const [auditTotal, setAuditTotal] = useState(0)
 
-    const loadOverviewAndAudit = useCallback(async () => {
+    const loadOverviewAndAudit = useCallback(async (nextAuditOffset = auditOffset) => {
         const [nextOverview, auditResult] = await Promise.all([
             getSystemAdminOverview(),
-            getSystemAdminAuditLogs({ limit: 10 }),
+            getSystemAdminAuditLogs({
+                search: auditSearch.trim(),
+                action: auditAction,
+                limit: 15,
+                offset: nextAuditOffset,
+            }),
         ])
         setOverview(nextOverview)
         setAuditLogs(auditResult?.logs || [])
-    }, [])
+        setAuditTotal(Number(auditResult?.total || 0))
+        setAuditOffset(nextAuditOffset)
+    }, [auditAction, auditOffset, auditSearch])
 
     const loadUsers = useCallback(async (nextOffset = 0) => {
         setUsersLoading(true)
@@ -83,13 +102,14 @@ export default function SystemAdminPage() {
         let current = true
         Promise.all([
             getSystemAdminOverview(),
-            getSystemAdminAuditLogs({ limit: 10 }),
+            getSystemAdminAuditLogs({ limit: 15, offset: 0 }),
             getSystemAdminUsers({ limit: pageSize, offset: 0 }),
         ])
             .then(([nextOverview, auditResult, result]) => {
                 if (!current) return
                 setOverview(nextOverview)
                 setAuditLogs(auditResult?.logs || [])
+                setAuditTotal(Number(auditResult?.total || 0))
                 setUsers(result?.users || [])
                 setTotalUsers(Number(result?.total || 0))
             })
@@ -102,7 +122,35 @@ export default function SystemAdminPage() {
         return () => {
             current = false
         }
-    }, [loadOverviewAndAudit])
+    }, [])
+
+    async function handleCreateUser(event) {
+        event.preventDefault()
+        setError('')
+        setSuccess('')
+        setCreatingUser(true)
+        try {
+            const created = await createSystemAdminUser({
+                name: newUserName,
+                email: newUserEmail,
+                password: newUserPassword,
+                systemRole: newUserSystemRole,
+                accountStatus: newUserStatus,
+            })
+            setShowCreateUser(false)
+            setNewUserName('')
+            setNewUserEmail('')
+            setNewUserPassword('')
+            setNewUserSystemRole('USER')
+            setNewUserStatus('ACTIVE')
+            await Promise.all([loadOverviewAndAudit(0), loadUsers(0)])
+            setSuccess(`Created account for ${created.email}.`)
+        } catch (requestError) {
+            setError(getErrorMessage(requestError))
+        } finally {
+            setCreatingUser(false)
+        }
+    }
 
     async function applyFilters(event) {
         event.preventDefault()
@@ -193,8 +241,48 @@ export default function SystemAdminPage() {
                         <h2>Global accounts</h2>
                         <p>Account role and status apply across the application. Workspace roles remain organization-scoped.</p>
                     </div>
-                    <strong>{totalUsers.toLocaleString()} accounts</strong>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <strong>{totalUsers.toLocaleString()} accounts</strong>
+                        <button className="primary-button" type="button" onClick={() => setShowCreateUser((v) => !v)}>
+                            {showCreateUser ? 'Close Form' : '+ Create User'}
+                        </button>
+                    </div>
                 </div>
+
+                {showCreateUser && (
+                    <form className="system-admin-filters" onSubmit={handleCreateUser} style={{ marginBottom: '16px', padding: '14px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                        <label>
+                            Full Name
+                            <input type="text" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} placeholder="Jane Doe" required />
+                        </label>
+                        <label>
+                            Email
+                            <input type="email" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} placeholder="jane@company.com" required />
+                        </label>
+                        <label>
+                            Password (min 8 chars)
+                            <input type="password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} placeholder="••••••••" minLength={8} required />
+                        </label>
+                        <label>
+                            System Role
+                            <select value={newUserSystemRole} onChange={(e) => setNewUserSystemRole(e.target.value)}>
+                                <option value="USER">User</option>
+                                <option value="ADMIN">System Admin</option>
+                            </select>
+                        </label>
+                        <label>
+                            Status
+                            <select value={newUserStatus} onChange={(e) => setNewUserStatus(e.target.value)}>
+                                <option value="ACTIVE">Active</option>
+                                <option value="INACTIVE">Inactive</option>
+                                <option value="SUSPENDED">Suspended</option>
+                            </select>
+                        </label>
+                        <button className="primary-button" type="submit" disabled={creatingUser}>
+                            {creatingUser ? 'Creating...' : 'Create Account'}
+                        </button>
+                    </form>
+                )}
 
                 <form className="system-admin-filters" onSubmit={applyFilters}>
                     <label>
@@ -306,9 +394,46 @@ export default function SystemAdminPage() {
                 <div className="panel-heading">
                     <div>
                         <h2>Recent audit activity</h2>
-                        <p>Administrative account actions are recorded on the server.</p>
+                        <p>Administrative account and workspace actions are recorded on the server.</p>
                     </div>
+                    <strong>{auditTotal.toLocaleString()} events</strong>
                 </div>
+                <form
+                    className="system-admin-filters"
+                    onSubmit={(e) => {
+                        e.preventDefault()
+                        loadOverviewAndAudit(0).catch((requestError) => setError(getErrorMessage(requestError)))
+                    }}
+                >
+                    <label>
+                        Search logs
+                        <input
+                            type="search"
+                            value={auditSearch}
+                            onChange={(e) => setAuditSearch(e.target.value)}
+                            placeholder="Actor, action, resource..."
+                        />
+                    </label>
+                    <label>
+                        Action
+                        <select value={auditAction} onChange={(e) => setAuditAction(e.target.value)}>
+                            <option value="">All actions</option>
+                            <option value="USER_CREATED">User Created</option>
+                            <option value="USER_ROLE_CHANGED">User Role Changed</option>
+                            <option value="USER_ACTIVE">User Activated</option>
+                            <option value="USER_INACTIVE">User Deactivated</option>
+                            <option value="USER_SUSPENDED">User Suspended</option>
+                            <option value="ORGANIZATION_MEMBER_ROLE_CHANGED">Org Role Changed</option>
+                            <option value="ORGANIZATION_MEMBER_REMOVED">Org Member Removed</option>
+                            <option value="PROJECT_CREATED">Project Created</option>
+                            <option value="PROJECT_UPDATED">Project Updated</option>
+                            <option value="PROJECT_ARCHIVED">Project Archived</option>
+                            <option value="TEAM_CREATED">Team Created</option>
+                            <option value="WORKSPACE_SETTINGS_UPDATED">Workspace Settings Updated</option>
+                        </select>
+                    </label>
+                    <button className="primary-button" type="submit">Filter logs</button>
+                </form>
                 {auditLogs.length === 0 ? (
                     <p className="system-admin-empty">No audit activity has been recorded.</p>
                 ) : (
@@ -322,6 +447,13 @@ export default function SystemAdminPage() {
                         ))}
                     </div>
                 )}
+                <div className="system-admin-pagination">
+                    <span>Showing {auditTotal === 0 ? 0 : auditOffset + 1}–{Math.min(auditOffset + auditLogs.length, auditTotal)} of {auditTotal}</span>
+                    <div>
+                        <button className="secondary-button" type="button" disabled={auditOffset === 0} onClick={() => loadOverviewAndAudit(Math.max(0, auditOffset - 15))}>Previous</button>
+                        <button className="secondary-button" type="button" disabled={auditOffset + 15 >= auditTotal} onClick={() => loadOverviewAndAudit(auditOffset + 15)}>Next</button>
+                    </div>
+                </div>
             </section>
         </main>
     )

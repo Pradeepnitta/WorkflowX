@@ -43,6 +43,8 @@ export async function getGlobalOverview({ registeredSince }) {
             (SELECT COUNT(*)::int FROM "User" WHERE "createdAt" >= $1) AS "newRegistrations",
             (SELECT COUNT(*)::int FROM "Project" WHERE status <> 'ARCHIVED') AS "totalProjects",
             (SELECT COUNT(*)::int FROM "Project" WHERE status = 'ACTIVE') AS "activeProjects",
+            (SELECT COUNT(*)::int FROM "Project" WHERE status = 'COMPLETED') AS "completedProjects",
+            (SELECT COUNT(*)::int FROM "Project" WHERE "dueDate" < CURRENT_TIMESTAMP AND status NOT IN ('COMPLETED', 'ARCHIVED')) AS "delayedProjects",
             (SELECT COUNT(*)::int FROM "Team") AS "totalTeams",
             (SELECT COUNT(*)::int FROM "Task") AS "totalTasks",
             (SELECT COUNT(*)::int FROM "Task" WHERE status = 'TODO') AS "pendingTasks",
@@ -110,6 +112,37 @@ export async function listUsers({ search, role, accountStatus, limit, offset }) 
         values
     )
     return { users: usersResult.rows, total: countResult.rows[0]?.count || 0 }
+}
+
+export async function createUser({ actorUserId, name, email, passwordHash, systemRole, accountStatus }) {
+    return withTransaction(async (client) => {
+        await assertAdminWithClient(client, actorUserId)
+
+        const existingRes = await client.query(
+            `SELECT id FROM "User" WHERE LOWER(email) = $1 LIMIT 1`,
+            [email]
+        )
+        if (existingRes.rows.length > 0) {
+            throw serviceError('A user with that email already exists', 409)
+        }
+
+        const userId = randomUUID()
+        const now = new Date()
+        const createdRes = await client.query(
+            `INSERT INTO "User" (id, name, email, "passwordHash", "systemRole", "accountStatus", "createdAt", "updatedAt")
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             RETURNING id, name, email, "avatarUrl", "systemRole", "accountStatus", "createdAt", "lastActiveAt"`,
+            [userId, name, email, passwordHash, systemRole, accountStatus, now, now]
+        )
+        await client.query(
+            `INSERT INTO "AuditLog" (
+                id, "actorUserId", action, "resourceType", "resourceId", result, details, "createdAt"
+             )
+             VALUES ($1, $2, 'USER_CREATED', 'USER', $3, 'SUCCESS', $4::jsonb, $5)`,
+            [randomUUID(), actorUserId, userId, JSON.stringify({ systemRole, accountStatus }), now]
+        )
+        return createdRes.rows[0]
+    })
 }
 
 export async function updateUser({ actorUserId, targetUserId, changes }) {
@@ -189,19 +222,52 @@ export async function updateUser({ actorUserId, targetUserId, changes }) {
     })
 }
 
-export async function listAuditLogs({ limit, offset }) {
-    const [countResult, logsResult] = await Promise.all([
-        query(`SELECT COUNT(*)::int AS count FROM "AuditLog"`),
-        query(
-            `SELECT log.id, log.action, log."resourceType", log."resourceId",
-                    log.result, log.details, log."createdAt",
-                    actor.id AS "actorUserId", actor.name AS "actorName", actor.email AS "actorEmail"
-             FROM "AuditLog" log
-             LEFT JOIN "User" actor ON actor.id = log."actorUserId"
-             ORDER BY log."createdAt" DESC
-             LIMIT $1 OFFSET $2`,
-            [limit, offset]
-        ),
-    ])
+export async function listAuditLogs({ search, action, resourceType, from, to, limit, offset }) {
+    const conditions = []
+    const values = []
+    const addValue = (value) => {
+        values.push(value)
+        return `$${values.length}`
+    }
+
+    if (search) {
+        const param = addValue(`%${search}%`)
+        conditions.push(`(log.action ILIKE ${param} OR log."resourceType" ILIKE ${param} OR COALESCE(actor.name, '') ILIKE ${param} OR COALESCE(actor.email, '') ILIKE ${param})`)
+    }
+    if (action) {
+        conditions.push(`log.action = ${addValue(action)}`)
+    }
+    if (resourceType) {
+        conditions.push(`log."resourceType" = ${addValue(resourceType)}`)
+    }
+    if (from) {
+        conditions.push(`log."createdAt" >= ${addValue(from)}`)
+    }
+    if (to) {
+        conditions.push(`log."createdAt" <= ${addValue(to)}`)
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+    const countPromise = query(
+        `SELECT COUNT(*)::int AS count
+         FROM "AuditLog" log
+         LEFT JOIN "User" actor ON actor.id = log."actorUserId"
+         ${where}`,
+        values
+    )
+    const limitParam = addValue(limit)
+    const offsetParam = addValue(offset)
+    const logsPromise = query(
+        `SELECT log.id, log.action, log."resourceType", log."resourceId",
+                log.result, log.details, log."createdAt",
+                actor.id AS "actorUserId", actor.name AS "actorName", actor.email AS "actorEmail"
+         FROM "AuditLog" log
+         LEFT JOIN "User" actor ON actor.id = log."actorUserId"
+         ${where}
+         ORDER BY log."createdAt" DESC
+         LIMIT ${limitParam} OFFSET ${offsetParam}`,
+        values
+    )
+    const [countResult, logsResult] = await Promise.all([countPromise, logsPromise])
     return { logs: logsResult.rows, total: countResult.rows[0]?.count || 0 }
 }

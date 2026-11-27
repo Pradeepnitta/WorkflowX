@@ -25,7 +25,6 @@ function OrganizationMembersPage() {
     const [organizationId, setOrganizationId] = useState('')
     const [members, setMembers] = useState([])
     const [currentUser, setCurrentUser] = useState(null)
-    const [overrideRole, setOverrideRole] = useState(null)
     const [isLoading, setIsLoading] = useState(true)
     const [isInviting, setIsInviting] = useState(false)
     const [inviteSuccess, setInviteSuccess] = useState('')
@@ -47,8 +46,7 @@ function OrganizationMembersPage() {
 
     const currentOrg = organizations.find((org) => org.id === organizationId)
     const myMembership = members.find((m) => m.userId === currentUser?.id || m.email === currentUser?.email)
-    const baseRole = (myMembership?.role || currentOrg?.role || currentUser?.role || localStorage.getItem('workflowx_registered_role') || 'MEMBER').toUpperCase()
-    const activeRole = overrideRole || baseRole
+    const activeRole = (myMembership?.role || currentOrg?.role || currentUser?.role || 'MEMBER').toUpperCase()
     const isAdmin = activeRole === 'ADMIN'
     const isManager = activeRole === 'MANAGER'
 
@@ -99,6 +97,12 @@ function OrganizationMembersPage() {
         if (!isAdmin) {
             setError('Admin permission required: Managers cannot assign or change user roles.')
             return
+        }
+        const target = members.find((m) => m.userId === targetUserId)
+        if (target && target.role !== newRole && (newRole === 'ADMIN' || target.role === 'ADMIN')) {
+            if (!window.confirm(`Change role for ${target.name || target.email} from ${target.role} to ${newRole}?`)) {
+                return
+            }
         }
         setError('')
         try {
@@ -170,45 +174,6 @@ function OrganizationMembersPage() {
                     </p>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                    {/* Role Simulator for testing manager vs admin permissions */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', background: '#f4f4f2', padding: '4px 8px', borderRadius: '6px' }}>
-                        <span style={{ color: '#64748b' }}>Simulate View:</span>
-                        <button
-                            type="button"
-                            onClick={() => setOverrideRole('MANAGER')}
-                            style={{
-                                padding: '3px 8px',
-                                fontSize: '11px',
-                                borderRadius: '4px',
-                                border: 'none',
-                                cursor: 'pointer',
-                                background: activeRole === 'MANAGER' ? '#d4a523' : 'transparent',
-                                color: activeRole === 'MANAGER' ? '#fff' : '#475569',
-                                fontWeight: activeRole === 'MANAGER' ? 700 : 400,
-                            }}
-                            title="Test as Manager (No Admin Role Assignment Permission)"
-                        >
-                            Manager
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setOverrideRole('ADMIN')}
-                            style={{
-                                padding: '3px 8px',
-                                fontSize: '11px',
-                                borderRadius: '4px',
-                                border: 'none',
-                                cursor: 'pointer',
-                                background: activeRole === 'ADMIN' ? '#ee785e' : 'transparent',
-                                color: activeRole === 'ADMIN' ? '#fff' : '#475569',
-                                fontWeight: activeRole === 'ADMIN' ? 700 : 400,
-                            }}
-                            title="Test as Admin (Full Role Assignment Permission)"
-                        >
-                            Admin
-                        </button>
-                    </div>
-
                     {(organizations?.length || 0) > 0 && (
                         <label className="organization-select">
                             Organization

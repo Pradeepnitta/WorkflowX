@@ -11,6 +11,11 @@ export function registerAdminRoutes({ router, adminController }) {
         await adminController.globalUsers(req, res, user)
     })
 
+    router.post('/api/admin/users', async (req, res) => {
+        const user = authenticateRequest(req)
+        await adminController.createGlobalUser(req, res, user)
+    })
+
     router.patch('/api/admin/users/:userId', async (req, res) => {
         const user = authenticateRequest(req)
         await adminController.updateGlobalUser(req, res, user, req.params.userId)
@@ -39,5 +44,20 @@ export function registerAdminRoutes({ router, adminController }) {
     router.delete('/api/organizations/:organizationId/members/:memberId', async (req, res) => {
         const user = authenticateRequest(req)
         await adminController.removeMember(req, res, user, req.params.organizationId, req.params.memberId)
+    })
+
+    router.patch('/api/organizations/:organizationId', async (req, res) => {
+        const user = authenticateRequest(req)
+        await adminController.updateOrganization(req, res, user, req.params.organizationId)
+    })
+
+    router.post('/api/organizations/:organizationId/users', async (req, res) => {
+        const user = authenticateRequest(req)
+        await adminController.createOrganizationUser(req, res, user, req.params.organizationId)
+    })
+
+    router.get('/api/organizations/:organizationId/audit-logs', async (req, res) => {
+        const user = authenticateRequest(req)
+        await adminController.organizationAuditLogs(req, res, user, req.params.organizationId)
     })
 }

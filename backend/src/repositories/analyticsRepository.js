@@ -1,4 +1,4 @@
-import { query } from '../config/db.js'
+import { pool, query } from '../config/db.js'
 
 function serviceError(message, statusCode) {
     const error = new Error(message)
@@ -38,21 +38,9 @@ export async function overview({ organizationId, userId }) {
     const projectParams = membership.role === 'MANAGER' ? [organizationId, userId] : [organizationId]
     const now = new Date()
 
-    const [
-        projectCountsRes,
-        taskCountsRes,
-        priorityCountsRes,
-        membersRes,
-        teamsRes,
-        developersRes,
-        projectsRes,
-        teamsOverviewRes,
-        developerWorkloadRes,
-        weeklyRes,
-        deadlinesRes,
-        pendingReviewsRes,
-    ] = await Promise.all([
-        query(
+    const client = await pool.connect()
+    try {
+        const projectCountsRes = await client.query(
             `SELECT
                 COUNT(*) FILTER (WHERE p.status <> 'ARCHIVED')::int AS total,
                 COUNT(*) FILTER (WHERE p.status = 'ACTIVE')::int AS active,
@@ -60,8 +48,8 @@ export async function overview({ organizationId, userId }) {
              FROM "Project" p
              WHERE p."organizationId" = $1 ${managerScope}`,
             projectParams
-        ),
-        query(
+        )
+        const taskCountsRes = await client.query(
             `SELECT
                 COUNT(*)::int AS total,
                 COUNT(*) FILTER (WHERE task.status = 'TODO')::int AS pending,
@@ -76,27 +64,36 @@ export async function overview({ organizationId, userId }) {
              JOIN "Project" p ON p.id = task."projectId"
              WHERE p."organizationId" = $1 ${managerScope}`,
             membership.role === 'MANAGER' ? [organizationId, userId, now] : [organizationId, now]
-        ),
-        query(
+        )
+        const priorityCountsRes = await client.query(
             `SELECT task.priority, COUNT(*)::int AS count
              FROM "Task" task
              JOIN "Project" p ON p.id = task."projectId"
              WHERE p."organizationId" = $1 ${managerScope}
              GROUP BY task.priority`,
             projectParams
-        ),
-        query(
-            `SELECT COUNT(*)::int AS count
-             FROM "OrganizationMember" WHERE "organizationId" = $1`,
+        )
+        const membersRes = await client.query(
+            `SELECT
+                COUNT(*)::int AS count,
+                COUNT(*) FILTER (WHERE om.role = 'ADMIN')::int AS admins,
+                COUNT(*) FILTER (WHERE om.role = 'MANAGER')::int AS managers,
+                COUNT(*) FILTER (WHERE om.role = 'MEMBER')::int AS developers,
+                COUNT(*) FILTER (WHERE om.role = 'VIEWER')::int AS viewers,
+                COUNT(*) FILTER (WHERE u."accountStatus" = 'ACTIVE')::int AS "activeUsers",
+                COUNT(*) FILTER (WHERE u."accountStatus" <> 'ACTIVE')::int AS "inactiveUsers"
+             FROM "OrganizationMember" om
+             JOIN "User" u ON u.id = om."userId"
+             WHERE om."organizationId" = $1`,
             [organizationId]
-        ),
-        query(
+        )
+        const teamsRes = await client.query(
             `SELECT COUNT(*)::int AS count
              FROM "Team" t
              WHERE t."organizationId" = $1 ${teamScope}`,
             projectParams
-        ),
-        query(
+        )
+        const developersRes = await client.query(
             `WITH scoped_projects AS (
                 SELECT p.id
                 FROM "Project" p
@@ -120,8 +117,8 @@ export async function overview({ organizationId, userId }) {
                ON om."userId" = vd."userId" AND om."organizationId" = $1
              WHERE om.role = 'MEMBER'`,
             projectParams
-        ),
-        query(
+        )
+        const projectsRes = await client.query(
             `SELECT p.id, p.name, p.description, p.status, p.priority, p."startDate", p."dueDate",
                     p."teamId", team.name AS "teamName",
                     COUNT(task.id)::int AS "taskCount",
@@ -139,8 +136,8 @@ export async function overview({ organizationId, userId }) {
              GROUP BY p.id, team.name
              ORDER BY p."dueDate" NULLS LAST, p."createdAt" DESC`,
             projectParams
-        ),
-        query(
+        )
+        const teamsOverviewRes = await client.query(
             `SELECT t.id, t.name,
                     COUNT(DISTINCT tm."userId")::int AS developers,
                     COUNT(DISTINCT task.id)::int AS "activeTasks",
@@ -168,8 +165,8 @@ export async function overview({ organizationId, userId }) {
              GROUP BY t.id
              ORDER BY t.name`,
             projectParams
-        ),
-        query(
+        )
+        const developerWorkloadRes = await client.query(
             `SELECT u.id AS "userId", u.name, u.email, u."avatarUrl",
                     COUNT(DISTINCT p.id)::int AS "assignedProjects",
                     COUNT(task.id)::int AS "totalTasks",
@@ -189,8 +186,8 @@ export async function overview({ organizationId, userId }) {
              GROUP BY u.id
              ORDER BY "totalTasks" DESC, u.name`,
             membership.role === 'MANAGER' ? [organizationId, userId, now] : [organizationId, now]
-        ),
-        query(
+        )
+        const weeklyRes = await client.query(
             `WITH scoped_projects AS (
                 SELECT p.id
                 FROM "Project" p
@@ -229,8 +226,8 @@ export async function overview({ organizationId, userId }) {
              GROUP BY days.day
              ORDER BY days.day`,
             projectParams
-        ),
-        query(
+        )
+        const deadlinesRes = await client.query(
             `SELECT task.id, task.title, task.status, task.priority, task."dueDate",
                     p.id AS "projectId", p.name AS "projectName",
                     u.id AS "assigneeId", u.name AS "assigneeName"
@@ -246,8 +243,8 @@ export async function overview({ organizationId, userId }) {
             membership.role === 'MANAGER'
                 ? [organizationId, userId, now, now]
                 : [organizationId, now, now]
-        ),
-        query(
+        )
+        const pendingReviewsRes = await client.query(
             `SELECT task.id, task.title, task.description, task.status, task.priority,
                     task."dueDate", task."projectId", p.name AS "projectName",
                     task."assigneeId", assignee.name AS "assigneeName",
@@ -265,31 +262,42 @@ export async function overview({ organizationId, userId }) {
                AND task.status = 'IN_REVIEW' ${managerScope}
              ORDER BY review."submittedAt" ASC`,
             projectParams
-        ),
-    ])
+        )
 
-    const projectCounts = projectCountsRes.rows[0]
-    const taskCounts = taskCountsRes.rows[0]
-    return {
-        projects: projectCounts.total,
-        activeProjects: projectCounts.active,
-        completedProjects: projectCounts.completed,
-        members: membersRes.rows[0].count,
-        totalTeams: teamsRes.rows[0].count,
-        totalDevelopers: developersRes.rows[0].count,
-        tasks: taskCounts.total,
-        pendingTasks: taskCounts.pending,
-        todoTasks: taskCounts.pending,
-        inProgressTasks: taskCounts.in_progress,
-        tasksUnderReview: taskCounts.in_review,
-        completedTasks: taskCounts.completed,
-        overdueTasks: taskCounts.overdue,
-        projectStats: projectsRes.rows,
-        teamStats: teamsOverviewRes.rows,
-        developerWorkload: developerWorkloadRes.rows,
-        weeklyTaskCompletion: weeklyRes.rows,
-        deadlineTracking: deadlinesRes.rows,
-        pendingReviews: pendingReviewsRes.rows,
-        priorityDistribution: priorityCountsRes.rows,
+        const projectCounts = projectCountsRes.rows[0]
+        const taskCounts = taskCountsRes.rows[0]
+        return {
+            projects: projectCounts.total,
+            activeProjects: projectCounts.active,
+            completedProjects: projectCounts.completed,
+            members: membersRes.rows[0].count,
+            userCounts: {
+                total: membersRes.rows[0].count,
+                admins: membersRes.rows[0].admins,
+                managers: membersRes.rows[0].managers,
+                developers: membersRes.rows[0].developers,
+                viewers: membersRes.rows[0].viewers,
+                active: membersRes.rows[0].activeUsers,
+                inactive: membersRes.rows[0].inactiveUsers,
+            },
+            totalTeams: teamsRes.rows[0].count,
+            totalDevelopers: developersRes.rows[0].count,
+            tasks: taskCounts.total,
+            pendingTasks: taskCounts.pending,
+            todoTasks: taskCounts.pending,
+            inProgressTasks: taskCounts.in_progress,
+            tasksUnderReview: taskCounts.in_review,
+            completedTasks: taskCounts.completed,
+            overdueTasks: taskCounts.overdue,
+            projectStats: projectsRes.rows,
+            teamStats: teamsOverviewRes.rows,
+            developerWorkload: developerWorkloadRes.rows,
+            weeklyTaskCompletion: weeklyRes.rows,
+            deadlineTracking: deadlinesRes.rows,
+            pendingReviews: pendingReviewsRes.rows,
+            priorityDistribution: priorityCountsRes.rows,
+        }
+    } finally {
+        client.release()
     }
 }

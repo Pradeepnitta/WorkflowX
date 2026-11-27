@@ -117,6 +117,13 @@ export async function createForMember({
              VALUES ($1, $2, $3)`,
             [project.id, userId, now]
         )
+        await client.query(
+            `INSERT INTO "AuditLog" (
+                id, "actorUserId", action, "resourceType", "resourceId", result, details, "createdAt"
+             )
+             VALUES ($1, $2, 'PROJECT_CREATED', 'PROJECT', $3, 'SUCCESS', $4::jsonb, $5)`,
+            [randomUUID(), userId, project.id, JSON.stringify({ organizationId, name, status }), now]
+        )
         return project
     })
 }
@@ -196,6 +203,20 @@ export async function updateForManager({ projectId, userId, changes }) {
             `UPDATE "Project" SET ${fields.join(', ')} WHERE id = $1 RETURNING *`,
             values
         )
+        await client.query(
+            `INSERT INTO "AuditLog" (
+                id, "actorUserId", action, "resourceType", "resourceId", result, details, "createdAt"
+             )
+             VALUES ($1, $2, $3, 'PROJECT', $4, 'SUCCESS', $5::jsonb, $6)`,
+            [
+                randomUUID(),
+                userId,
+                changes.status === 'ARCHIVED' ? 'PROJECT_ARCHIVED' : 'PROJECT_UPDATED',
+                projectId,
+                JSON.stringify({ organizationId: project.organizationId, changedFields: safeChanges.map(([f]) => f) }),
+                new Date(),
+            ]
+        )
         return updateRes.rows[0]
     })
 }
@@ -205,6 +226,13 @@ export async function deleteForManager({ projectId, userId }) {
         const { project } = await getManageableProject(client, projectId, userId)
         await client.query(`DELETE FROM "ProjectMember" WHERE "projectId" = $1`, [projectId])
         await client.query(`DELETE FROM "Project" WHERE id = $1`, [projectId])
+        await client.query(
+            `INSERT INTO "AuditLog" (
+                id, "actorUserId", action, "resourceType", "resourceId", result, details, "createdAt"
+             )
+             VALUES ($1, $2, 'PROJECT_DELETED', 'PROJECT', $3, 'SUCCESS', $4::jsonb, $5)`,
+            [randomUUID(), userId, projectId, JSON.stringify({ organizationId: project.organizationId, name: project.name }), new Date()]
+        )
         return project
     })
 }

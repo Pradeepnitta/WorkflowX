@@ -1,13 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
     getOrganizations,
     getOrganizationMembers,
     updateOrganizationMemberRole,
     removeOrganizationMember,
     inviteOrganizationMember,
+    updateOrganization,
+    createOrganizationUser,
+    getOrganizationAuditLogs,
 } from '../services/organizationService.js'
-import { getProjects, createProject } from '../services/projectService.js'
-import { getTeams, createTeam } from '../services/teamService.js'
+import { getProjects, createProject, updateProject, addProjectMember } from '../services/projectService.js'
+import { getTeams, createTeam, updateTeam, addTeamMember, removeTeamMember } from '../services/teamService.js'
+import { getOverview } from '../services/analyticsService.js'
 import { authenticatedRequest } from '../services/authService.js'
 import { getUserInitials } from '../constants/avatarOptions.js'
 import '../App.css'
@@ -53,12 +57,39 @@ export default function AdminPage() {
     const [members, setMembers] = useState([])
     const [projects, setProjects] = useState([])
     const [teams, setTeams] = useState([])
+    const [overview, setOverview] = useState(null)
     const [activeTab, setActiveTab] = useState('users')
     
-    // User search & filters
+    // User search, filters & sort
     const [searchQuery, setSearchQuery] = useState('')
     const [roleFilter, setRoleFilter] = useState('ALL')
+    const [userSort, setUserSort] = useState('NAME')
     const [selectedUser, setSelectedUser] = useState(null)
+
+    // Create User directly form
+    const [createUserName, setCreateUserName] = useState('')
+    const [createUserEmail, setCreateUserEmail] = useState('')
+    const [createUserPassword, setCreateUserPassword] = useState('')
+    const [createUserRole, setCreateUserRole] = useState('MEMBER')
+    const [createUserStatus, setCreateUserStatus] = useState('ACTIVE')
+
+    // Org Settings form
+    const [orgName, setOrgName] = useState('')
+    const [orgDescription, setOrgDescription] = useState('')
+
+    // Audit Logs state
+    const [auditLogs, setAuditLogs] = useState([])
+    const [auditTotal, setAuditTotal] = useState(0)
+    const [auditOffset, setAuditOffset] = useState(0)
+    const [auditSearch, setAuditSearch] = useState('')
+    const [auditAction, setAuditAction] = useState('')
+    const [auditLoading, setAuditLoading] = useState(false)
+
+    // Team & Project editing state
+    const [editingTeam, setEditingTeam] = useState(null)
+    const [teamMemberToAdd, setTeamMemberToAdd] = useState('')
+    const [editingProject, setEditingProject] = useState(null)
+    const [projectManagerToAdd, setProjectManagerToAdd] = useState('')
 
     // In-app modal confirmation states
     const [pendingDeleteUser, setPendingDeleteUser] = useState(null)
@@ -97,20 +128,45 @@ export default function AdminPage() {
             })
     }, [])
 
+    const loadAuditLogs = useCallback(async (orgId, nextOffset = 0) => {
+        if (!orgId) return
+        setAuditLoading(true)
+        try {
+            const res = await getOrganizationAuditLogs(orgId, {
+                search: auditSearch.trim(),
+                action: auditAction,
+                limit: 20,
+                offset: nextOffset,
+            })
+            setAuditLogs(res?.logs || [])
+            setAuditTotal(Number(res?.total || 0))
+            setAuditOffset(nextOffset)
+        } catch (err) {
+            setError(err.message)
+        } finally {
+            setAuditLoading(false)
+        }
+    }, [auditAction, auditSearch])
+
     useEffect(() => {
         if (!organizationId) return
+        const selectedOrg = organizations.find((o) => o.id === organizationId)
         Promise.all([
             getOrganizationMembers(organizationId),
             getProjects(organizationId),
             getTeams(organizationId),
+            getOverview(organizationId).catch(() => null),
         ])
-            .then(([loadedMembers, loadedProjects, loadedTeams]) => {
+            .then(([loadedMembers, loadedProjects, loadedTeams, loadedOverview]) => {
                 const mList = Array.isArray(loadedMembers) ? [...loadedMembers] : []
                 const pList = Array.isArray(loadedProjects) ? [...loadedProjects] : []
                 const tList = Array.isArray(loadedTeams) ? [...loadedTeams] : []
+                setOrgName(selectedOrg?.name || '')
+                setOrgDescription(selectedOrg?.description || '')
                 setMembers(mList)
                 setProjects(pList)
                 setTeams(tList)
+                setOverview(loadedOverview)
             })
             .catch((err) => setError(err.message))
             .finally(() => setIsLoading(false))
@@ -126,6 +182,12 @@ export default function AdminPage() {
         if (!isAdmin) {
             setError('Admin permission required: Only organization administrators can assign or change roles.')
             return
+        }
+        const target = members.find((m) => (m.userId || m.id) === targetUserId)
+        if (target && target.role !== newRole && (newRole === 'ADMIN' || target.role === 'ADMIN')) {
+            if (!window.confirm(`Are you sure you want to change ${target.name || target.email}'s role from ${target.role} to ${newRole}?`)) {
+                return
+            }
         }
         setError('')
         setSuccessMessage('')
@@ -202,6 +264,146 @@ export default function AdminPage() {
             setMembers(Array.isArray(refreshedMembers) ? refreshedMembers : [])
             setSuccessMessage(`Invitation created for ${inviteEmail} as ${inviteRole}.`)
             setInviteEmail('')
+        } catch (err) {
+            setError(err.message)
+        } finally {
+            setIsActionBusy(false)
+        }
+    }
+
+    async function handleCreateUserSubmit(event) {
+        event.preventDefault()
+        if (!isAdmin) {
+            setError('Admin permission required: Only organization administrators can create user accounts.')
+            return
+        }
+        setIsActionBusy(true)
+        setError('')
+        setSuccessMessage('')
+        try {
+            await createOrganizationUser(organizationId, {
+                name: createUserName,
+                email: createUserEmail,
+                password: createUserPassword,
+                role: createUserRole,
+                accountStatus: createUserStatus,
+            })
+            const refreshedMembers = await getOrganizationMembers(organizationId)
+            setMembers(Array.isArray(refreshedMembers) ? refreshedMembers : [])
+            setSuccessMessage(`User account created for ${createUserEmail} (${createUserRole}).`)
+            setCreateUserName('')
+            setCreateUserEmail('')
+            setCreateUserPassword('')
+            setCreateUserRole('MEMBER')
+            setCreateUserStatus('ACTIVE')
+        } catch (err) {
+            setError(err.message)
+        } finally {
+            setIsActionBusy(false)
+        }
+    }
+
+    async function handleSaveOrgSettings(event) {
+        event.preventDefault()
+        if (!isAdmin) {
+            setError('Admin permission required to update workspace settings.')
+            return
+        }
+        if (!window.confirm('Save changes to workspace organization settings?')) return
+        setIsActionBusy(true)
+        setError('')
+        setSuccessMessage('')
+        try {
+            const updated = await updateOrganization(organizationId, {
+                name: orgName,
+                description: orgDescription,
+            })
+            setOrganizations((prev) => prev.map((o) => (o.id === organizationId ? { ...o, ...updated } : o)))
+            setSuccessMessage('Workspace settings saved and persisted.')
+        } catch (err) {
+            setError(err.message)
+        } finally {
+            setIsActionBusy(false)
+        }
+    }
+
+    async function handleSaveEditTeam(event) {
+        event.preventDefault()
+        if (!editingTeam) return
+        setIsActionBusy(true)
+        setError('')
+        setSuccessMessage('')
+        try {
+            const updated = await updateTeam(editingTeam.id, {
+                name: editingTeam.name,
+                description: editingTeam.description,
+            })
+            setTeams((prev) => prev.map((t) => (t.id === editingTeam.id ? { ...t, ...updated } : t)))
+            setSuccessMessage(`Team "${updated.name}" updated.`)
+            setEditingTeam(null)
+        } catch (err) {
+            setError(err.message)
+        } finally {
+            setIsActionBusy(false)
+        }
+    }
+
+    async function handleAddMemberToTeam(teamId) {
+        if (!teamMemberToAdd) return
+        setError('')
+        setSuccessMessage('')
+        try {
+            await addTeamMember(teamId, teamMemberToAdd)
+            const refreshedTeams = await getTeams(organizationId)
+            setTeams(Array.isArray(refreshedTeams) ? refreshedTeams : [])
+            const updatedTeam = refreshedTeams.find((t) => t.id === teamId)
+            if (updatedTeam) setEditingTeam(updatedTeam)
+            setTeamMemberToAdd('')
+            setSuccessMessage('Member added to team.')
+        } catch (err) {
+            setError(err.message)
+        }
+    }
+
+    async function handleRemoveMemberFromTeam(teamId, memberUserId) {
+        setError('')
+        setSuccessMessage('')
+        try {
+            await removeTeamMember(teamId, memberUserId)
+            const refreshedTeams = await getTeams(organizationId)
+            setTeams(Array.isArray(refreshedTeams) ? refreshedTeams : [])
+            const updatedTeam = refreshedTeams.find((t) => t.id === teamId)
+            if (updatedTeam) setEditingTeam(updatedTeam)
+            setSuccessMessage('Member removed from team.')
+        } catch (err) {
+            setError(err.message)
+        }
+    }
+
+    async function handleSaveEditProject(event) {
+        event.preventDefault()
+        if (!editingProject) return
+        setIsActionBusy(true)
+        setError('')
+        setSuccessMessage('')
+        try {
+            const updated = await updateProject(editingProject.id, {
+                name: editingProject.name,
+                description: editingProject.description,
+                status: editingProject.status,
+                priority: editingProject.priority,
+                teamId: editingProject.teamId || null,
+                startDate: editingProject.startDate || null,
+                dueDate: editingProject.dueDate || null,
+            })
+            if (projectManagerToAdd) {
+                await addProjectMember(editingProject.id, projectManagerToAdd)
+            }
+            const refreshedProjects = await getProjects(organizationId)
+            setProjects(Array.isArray(refreshedProjects) ? refreshedProjects : [])
+            setSuccessMessage(`Project "${updated.name}" updated.`)
+            setEditingProject(null)
+            setProjectManagerToAdd('')
         } catch (err) {
             setError(err.message)
         } finally {
@@ -318,6 +520,10 @@ export default function AdminPage() {
         const matchesQuery = !query || name.includes(query) || email.includes(query) || role.includes(query)
         const matchesRole = roleFilter === 'ALL' || m.role === roleFilter
         return matchesQuery && matchesRole
+    }).sort((a, b) => {
+        if (userSort === 'ROLE') return String(a.role || '').localeCompare(String(b.role || ''))
+        if (userSort === 'JOINED') return new Date(b.joinedAt || 0) - new Date(a.joinedAt || 0)
+        return String(a.name || a.email || '').localeCompare(String(b.name || b.email || ''))
     })
 
     return (
@@ -366,27 +572,35 @@ export default function AdminPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '16px' }}>
                     <div style={{ background: '#292c38', padding: '14px', borderRadius: '8px', borderLeft: '4px solid #ee785e' }}>
                         <p style={{ margin: 0, fontSize: '11px', color: '#858996', textTransform: 'uppercase' }}>Users</p>
-                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>{members?.length || 0}</strong>
+                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>{overview?.userCounts?.total ?? members?.length ?? 0}</strong>
+                        <small style={{ display: 'block', fontSize: '10px', color: '#9ca3af', marginTop: '4px' }}>
+                            {overview?.userCounts?.admins ?? members.filter((m) => m.role === 'ADMIN').length}A · {overview?.userCounts?.managers ?? members.filter((m) => m.role === 'MANAGER').length}M · {overview?.userCounts?.developers ?? members.filter((m) => m.role === 'MEMBER').length}D
+                        </small>
                     </div>
                     <div style={{ background: '#292c38', padding: '14px', borderRadius: '8px', borderLeft: '4px solid #6d9ee8' }}>
                         <p style={{ margin: 0, fontSize: '11px', color: '#858996', textTransform: 'uppercase' }}>Projects</p>
-                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>{projects?.length || 0}</strong>
+                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>{overview?.projects ?? projects?.length ?? 0}</strong>
+                        <small style={{ display: 'block', fontSize: '10px', color: '#9ca3af', marginTop: '4px' }}>
+                            {overview?.activeProjects ?? projects.filter((p) => p.status === 'ACTIVE').length} active
+                        </small>
                     </div>
                     <div style={{ background: '#292c38', padding: '14px', borderRadius: '8px', borderLeft: '4px solid #f2c85b' }}>
                         <p style={{ margin: 0, fontSize: '11px', color: '#858996', textTransform: 'uppercase' }}>Teams</p>
-                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>{teams?.length || 0}</strong>
+                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>{overview?.totalTeams ?? teams?.length ?? 0}</strong>
                     </div>
                     <div style={{ background: '#292c38', padding: '14px', borderRadius: '8px', borderLeft: '4px solid #72b79a' }}>
-                        <p style={{ margin: 0, fontSize: '11px', color: '#858996', textTransform: 'uppercase' }}>Active Tasks</p>
-                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>{projects?.reduce((acc, p) => acc + (p.tasksSummary?.inProgress || 0) + (p.tasksSummary?.todo || 0), 0) || 0}</strong>
+                        <p style={{ margin: 0, fontSize: '11px', color: '#858996', textTransform: 'uppercase' }}>Pending / Active Tasks</p>
+                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>
+                            {overview ? ((overview.pendingTasks || 0) + (overview.inProgressTasks || 0) + (overview.tasksUnderReview || 0)) : (projects?.reduce((acc, p) => acc + (p.tasksSummary?.inProgress || 0) + (p.tasksSummary?.todo || 0) + (p.tasksSummary?.review || 0), 0) || 0)}
+                        </strong>
                     </div>
                     <div style={{ background: '#292c38', padding: '14px', borderRadius: '8px', borderLeft: '4px solid #72b79a' }}>
                         <p style={{ margin: 0, fontSize: '11px', color: '#858996', textTransform: 'uppercase' }}>Completed Tasks</p>
-                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>{projects?.reduce((acc, p) => acc + (p.tasksSummary?.completed || 0), 0) || 0}</strong>
+                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#fff' }}>{overview?.completedTasks ?? (projects?.reduce((acc, p) => acc + (p.tasksSummary?.completed || 0), 0) || 0)}</strong>
                     </div>
                     <div style={{ background: '#292c38', padding: '14px', borderRadius: '8px', borderLeft: '4px solid #ee785e' }}>
                         <p style={{ margin: 0, fontSize: '11px', color: '#858996', textTransform: 'uppercase' }}>Overdue Tasks</p>
-                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#e96f59' }}>0</strong>
+                        <strong style={{ fontSize: '26px', font: "700 26px 'Space Grotesk'", color: '#e96f59' }}>{overview?.overdueTasks ?? 0}</strong>
                     </div>
                 </div>
             </section>
@@ -405,7 +619,12 @@ export default function AdminPage() {
                         <button
                             key={tab.id}
                             className={activeTab === tab.id ? 'selected' : ''}
-                            onClick={() => setActiveTab(tab.id)}
+                            onClick={() => {
+                                setActiveTab(tab.id)
+                                if (tab.id === 'logs' && organizationId && isAdmin) {
+                                    loadAuditLogs(organizationId, 0)
+                                }
+                            }}
                             style={{ fontWeight: activeTab === tab.id ? 700 : 500, fontSize: '12px' }}
                         >
                             {tab.label}
@@ -477,6 +696,17 @@ export default function AdminPage() {
                                             {r} ({members.filter((m) => m.role === r).length})
                                         </option>
                                     ))}
+                                </select>
+                                <select
+                                    id="sort-user-select"
+                                    aria-label="Sort users"
+                                    value={userSort}
+                                    onChange={(e) => setUserSort(e.target.value)}
+                                    style={{ padding: '9px 12px', border: '1px solid #ebe9e5', borderRadius: '7px', fontSize: '12px', background: '#fff' }}
+                                >
+                                    <option value="NAME">Sort: Name</option>
+                                    <option value="ROLE">Sort: Role</option>
+                                    <option value="JOINED">Sort: Recently Joined</option>
                                 </select>
                             </div>
 
@@ -660,6 +890,73 @@ export default function AdminPage() {
                             {isActionBusy ? 'Sending...' : 'Invite User'}
                         </button>
                     </form>
+
+                    <form className="project-create-panel panel" onSubmit={handleCreateUserSubmit} style={{ flex: '1 1 320px' }}>
+                        <p className="eyebrow">Direct Provisioning</p>
+                        <h2>Create User Account</h2>
+                        <label>
+                            Full Name
+                            <input
+                                id="create-user-name-input"
+                                type="text"
+                                value={createUserName}
+                                onChange={(e) => setCreateUserName(e.target.value)}
+                                placeholder="Alex Morgan"
+                                required
+                                disabled={!isAdmin}
+                            />
+                        </label>
+                        <label>
+                            Email Address
+                            <input
+                                id="create-user-email-input"
+                                type="email"
+                                value={createUserEmail}
+                                onChange={(e) => setCreateUserEmail(e.target.value)}
+                                placeholder="alex@organization.com"
+                                required
+                                disabled={!isAdmin}
+                            />
+                        </label>
+                        <label>
+                            Password (min 8 characters)
+                            <input
+                                id="create-user-password-input"
+                                type="password"
+                                value={createUserPassword}
+                                onChange={(e) => setCreateUserPassword(e.target.value)}
+                                placeholder="••••••••"
+                                minLength={8}
+                                required
+                                disabled={!isAdmin}
+                            />
+                        </label>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                            <label>
+                                Role
+                                <select value={createUserRole} onChange={(e) => setCreateUserRole(e.target.value)} disabled={!isAdmin}>
+                                    {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                                </select>
+                            </label>
+                            <label>
+                                Status
+                                <select value={createUserStatus} onChange={(e) => setCreateUserStatus(e.target.value)} disabled={!isAdmin}>
+                                    <option value="ACTIVE">ACTIVE</option>
+                                    <option value="INACTIVE">INACTIVE</option>
+                                    <option value="SUSPENDED">SUSPENDED</option>
+                                </select>
+                            </label>
+                        </div>
+                        <button
+                            id="create-user-btn"
+                            className="primary-button"
+                            type="submit"
+                            disabled={isActionBusy || !isAdmin}
+                            style={{ cursor: !isAdmin ? 'not-allowed' : 'pointer', opacity: !isAdmin ? 0.6 : 1 }}
+                        >
+                            {isActionBusy ? 'Creating...' : 'Create User'}
+                        </button>
+                    </form>
                 </section>
             )}
 
@@ -755,15 +1052,28 @@ export default function AdminPage() {
                                     </div>
 
                                     {isAdmin && (
-                                        <button
-                                            type="button"
-                                            id={`delete-team-${t.id}`}
-                                            className="secondary-button"
-                                            onClick={() => handleDeleteTeam(t.id, t.name)}
-                                            style={{ padding: '6px 12px', color: '#d9381e', background: '#fff2ee', border: '1px solid #ffd2c9', fontWeight: 600, cursor: 'pointer' }}
-                                        >
-                                            Delete Team
-                                        </button>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <button
+                                                type="button"
+                                                className="secondary-button"
+                                                onClick={() => {
+                                                    setTeamMemberToAdd('')
+                                                    setEditingTeam({ ...t })
+                                                }}
+                                                style={{ padding: '6px 12px', fontSize: '11px' }}
+                                            >
+                                                Edit &amp; Members
+                                            </button>
+                                            <button
+                                                type="button"
+                                                id={`delete-team-${t.id}`}
+                                                className="secondary-button"
+                                                onClick={() => handleDeleteTeam(t.id, t.name)}
+                                                style={{ padding: '6px 12px', color: '#d9381e', background: '#fff2ee', border: '1px solid #ffd2c9', fontWeight: 600, cursor: 'pointer' }}
+                                            >
+                                                Delete Team
+                                            </button>
+                                        </div>
                                     )}
                                 </article>
                             ))}
@@ -829,6 +1139,24 @@ export default function AdminPage() {
                                     </div>
 
                                     <div style={{ display: 'flex', gap: '8px' }}>
+                                        {isAdmin && (
+                                            <button
+                                                type="button"
+                                                className="secondary-button"
+                                                onClick={() => {
+                                                    setProjectManagerToAdd('')
+                                                    setEditingProject({
+                                                        ...p,
+                                                        startDate: p.startDate ? new Date(p.startDate).toISOString().slice(0, 10) : '',
+                                                        dueDate: p.dueDate ? new Date(p.dueDate).toISOString().slice(0, 10) : '',
+                                                        teamId: p.teamId || '',
+                                                    })
+                                                }}
+                                                style={{ padding: '5px 10px', fontSize: '11px' }}
+                                            >
+                                                Edit
+                                            </button>
+                                        )}
                                         <button
                                             type="button"
                                             id={`archive-project-${p.id}`}
@@ -860,24 +1188,255 @@ export default function AdminPage() {
 
             {/* Section 5: Organization Settings & Security */}
             {activeTab === 'settings' && (
-                <section className="panel" style={{ padding: '24px' }}>
-                    <p className="eyebrow">Workspace settings</p>
-                    <h2>Settings are not available through the current workspace API</h2>
-                    <p style={{ color: '#64748b', fontSize: '13px', lineHeight: 1.6 }}>
-                        This workspace Admin view does not save organization, security, SSO, or billing settings.
-                        No changes are made from this page.
+                <section className="panel" style={{ padding: '24px', maxWidth: '700px' }}>
+                    <p className="eyebrow">Workspace Settings</p>
+                    <h2>Organization Profile &amp; Configuration</h2>
+                    <p style={{ color: '#64748b', fontSize: '13px', lineHeight: 1.6, marginBottom: '20px' }}>
+                        Update your organization&apos;s workspace name and description. Changes are persisted in the database and recorded in audit logs.
                     </p>
+                    <form onSubmit={handleSaveOrgSettings} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <label>
+                            Workspace Name
+                            <input
+                                id="org-settings-name-input"
+                                type="text"
+                                value={orgName}
+                                onChange={(e) => setOrgName(e.target.value)}
+                                minLength={2}
+                                required
+                                disabled={!isAdmin}
+                            />
+                        </label>
+                        <label>
+                            Workspace Description
+                            <textarea
+                                id="org-settings-desc-input"
+                                rows="3"
+                                value={orgDescription}
+                                onChange={(e) => setOrgDescription(e.target.value)}
+                                placeholder="Describe your organization workspace..."
+                                disabled={!isAdmin}
+                            />
+                        </label>
+                        <div>
+                            <button
+                                id="save-org-settings-btn"
+                                type="submit"
+                                className="primary-button"
+                                disabled={isActionBusy || !isAdmin}
+                            >
+                                {isActionBusy ? 'Saving...' : 'Save Workspace Settings'}
+                            </button>
+                        </div>
+                    </form>
                 </section>
             )}
 
             {/* Section 6: Admin Activity Audit Log */}
             {activeTab === 'logs' && (
                 <section className="panel" style={{ padding: '24px' }}>
-                    <h2>Workspace audit logs are not exposed by the current API</h2>
-                    <p style={{ color: '#64748b', fontSize: '13px', lineHeight: 1.6 }}>
-                        System-wide account audit records are available to active System Admins in the System Admin dashboard.
-                    </p>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                        <div>
+                            <p className="eyebrow">Security &amp; Compliance</p>
+                            <h2 style={{ margin: 0 }}>Organization Activity Audit Logs</h2>
+                        </div>
+                        <strong>{auditTotal} events</strong>
+                    </div>
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault()
+                            loadAuditLogs(organizationId, 0)
+                        }}
+                        style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}
+                    >
+                        <input
+                            type="search"
+                            value={auditSearch}
+                            onChange={(e) => setAuditSearch(e.target.value)}
+                            placeholder="Search actor, action, resource..."
+                            style={{ flex: 1, minWidth: '200px', padding: '8px 12px', border: '1px solid #ebe9e5', borderRadius: '6px' }}
+                        />
+                        <select
+                            value={auditAction}
+                            onChange={(e) => setAuditAction(e.target.value)}
+                            style={{ padding: '8px 12px', border: '1px solid #ebe9e5', borderRadius: '6px', background: '#fff' }}
+                        >
+                            <option value="">All Actions</option>
+                            <option value="USER_CREATED">User Created</option>
+                            <option value="ORGANIZATION_MEMBER_ROLE_CHANGED">Role Changed</option>
+                            <option value="ORGANIZATION_MEMBER_REMOVED">Member Removed</option>
+                            <option value="PROJECT_CREATED">Project Created</option>
+                            <option value="PROJECT_UPDATED">Project Updated</option>
+                            <option value="PROJECT_ARCHIVED">Project Archived</option>
+                            <option value="PROJECT_DELETED">Project Deleted</option>
+                            <option value="TEAM_CREATED">Team Created</option>
+                            <option value="TEAM_MEMBER_ADDED">Team Member Added</option>
+                            <option value="WORKSPACE_SETTINGS_UPDATED">Workspace Settings Updated</option>
+                        </select>
+                        <button type="submit" className="primary-button" disabled={auditLoading}>
+                            {auditLoading ? 'Loading...' : 'Filter'}
+                        </button>
+                    </form>
+                    {auditLogs.length === 0 ? (
+                        <p className="empty-column">No audit logs found for this organization.</p>
+                    ) : (
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                                <thead>
+                                    <tr style={{ background: '#f7f7f5', borderBottom: '2px solid #ebe9e5' }}>
+                                        <th style={{ padding: '10px 12px' }}>Timestamp</th>
+                                        <th style={{ padding: '10px 12px' }}>Actor</th>
+                                        <th style={{ padding: '10px 12px' }}>Action</th>
+                                        <th style={{ padding: '10px 12px' }}>Resource</th>
+                                        <th style={{ padding: '10px 12px' }}>Result</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {auditLogs.map((log) => (
+                                        <tr key={log.id} style={{ borderBottom: '1px solid #ebe9e5' }}>
+                                            <td style={{ padding: '10px 12px', color: '#64748b' }}>{new Date(log.createdAt).toLocaleString()}</td>
+                                            <td style={{ padding: '10px 12px' }}>{log.actorName || log.actorEmail || 'System'}</td>
+                                            <td style={{ padding: '10px 12px', fontWeight: 600 }}>{log.action}</td>
+                                            <td style={{ padding: '10px 12px', color: '#475569' }}>{log.resourceType}{log.resourceId ? ` (${String(log.resourceId).slice(0, 8)}…)` : ''}</td>
+                                            <td style={{ padding: '10px 12px' }}>{log.result}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px', fontSize: '12px' }}>
+                        <span>Showing {auditTotal === 0 ? 0 : auditOffset + 1}–{Math.min(auditOffset + auditLogs.length, auditTotal)} of {auditTotal}</span>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <button type="button" className="secondary-button" disabled={auditOffset === 0 || auditLoading} onClick={() => loadAuditLogs(organizationId, Math.max(0, auditOffset - 20))}>Previous</button>
+                            <button type="button" className="secondary-button" disabled={auditOffset + 20 >= auditTotal || auditLoading} onClick={() => loadAuditLogs(organizationId, auditOffset + 20)}>Next</button>
+                        </div>
+                    </div>
                 </section>
+            )}
+
+            {/* Edit Team & Members Modal */}
+            {editingTeam && (
+                <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setEditingTeam(null)}>
+                    <form className="task-form" style={{ maxWidth: '520px' }} onSubmit={handleSaveEditTeam}>
+                        <div className="modal-heading">
+                            <div>
+                                <p className="eyebrow">Team Management</p>
+                                <h2>Edit Team &amp; Members</h2>
+                            </div>
+                            <button type="button" className="close-button" onClick={() => setEditingTeam(null)}>×</button>
+                        </div>
+                        <label>
+                            Team Name
+                            <input type="text" value={editingTeam.name || ''} onChange={(e) => setEditingTeam((p) => ({ ...p, name: e.target.value }))} required />
+                        </label>
+                        <label>
+                            Description
+                            <textarea rows="2" value={editingTeam.description || ''} onChange={(e) => setEditingTeam((p) => ({ ...p, description: e.target.value }))} />
+                        </label>
+                        <div style={{ margin: '12px 0', padding: '12px', background: '#f7f7f5', borderRadius: '8px' }}>
+                            <strong style={{ fontSize: '12px', display: 'block', marginBottom: '8px' }}>Team Members ({editingTeam.members?.length || 0})</strong>
+                            <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                                <select value={teamMemberToAdd} onChange={(e) => setTeamMemberToAdd(e.target.value)} style={{ flex: 1, padding: '6px 8px', borderRadius: '6px', border: '1px solid #ddd' }}>
+                                    <option value="">Select member to add...</option>
+                                    {members
+                                        .filter((m) => !(editingTeam.members || []).some((tm) => (tm.userId || tm.user?.id) === (m.userId || m.id)))
+                                        .map((m) => (
+                                            <option key={m.userId || m.id} value={m.userId || m.id}>{m.name || m.email} ({m.role})</option>
+                                        ))}
+                                </select>
+                                <button type="button" className="secondary-button" onClick={() => handleAddMemberToTeam(editingTeam.id)} disabled={!teamMemberToAdd}>Add</button>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '140px', overflowY: 'auto' }}>
+                                {(editingTeam.members || []).map((tm) => {
+                                    const uid = tm.userId || tm.user?.id
+                                    return (
+                                        <div key={uid} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', background: '#fff', padding: '6px 10px', borderRadius: '6px' }}>
+                                            <span>{tm.user?.name || tm.user?.email || uid} ({tm.user?.role || 'MEMBER'})</span>
+                                            <button type="button" onClick={() => handleRemoveMemberFromTeam(editingTeam.id, uid)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '11px' }}>Remove</button>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                        <div className="form-actions" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                            <button type="button" className="secondary-button" onClick={() => setEditingTeam(null)}>Cancel</button>
+                            <button type="submit" className="primary-button" disabled={isActionBusy}>{isActionBusy ? 'Saving...' : 'Save Team'}</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* Edit Project Modal */}
+            {editingProject && (
+                <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setEditingProject(null)}>
+                    <form className="task-form" style={{ maxWidth: '520px' }} onSubmit={handleSaveEditProject}>
+                        <div className="modal-heading">
+                            <div>
+                                <p className="eyebrow">Project Management</p>
+                                <h2>Edit Project</h2>
+                            </div>
+                            <button type="button" className="close-button" onClick={() => setEditingProject(null)}>×</button>
+                        </div>
+                        <label>
+                            Project Name
+                            <input type="text" value={editingProject.name || ''} onChange={(e) => setEditingProject((p) => ({ ...p, name: e.target.value }))} required />
+                        </label>
+                        <label>
+                            Description
+                            <textarea rows="2" value={editingProject.description || ''} onChange={(e) => setEditingProject((p) => ({ ...p, description: e.target.value }))} />
+                        </label>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                            <label>
+                                Status
+                                <select value={editingProject.status || 'PLANNING'} onChange={(e) => setEditingProject((p) => ({ ...p, status: e.target.value }))}>
+                                    <option value="PLANNING">PLANNING</option>
+                                    <option value="ACTIVE">ACTIVE</option>
+                                    <option value="ON_HOLD">ON_HOLD</option>
+                                    <option value="COMPLETED">COMPLETED</option>
+                                    <option value="ARCHIVED">ARCHIVED</option>
+                                </select>
+                            </label>
+                            <label>
+                                Priority
+                                <select value={editingProject.priority || 'MEDIUM'} onChange={(e) => setEditingProject((p) => ({ ...p, priority: e.target.value }))}>
+                                    <option value="LOW">LOW</option>
+                                    <option value="MEDIUM">MEDIUM</option>
+                                    <option value="HIGH">HIGH</option>
+                                    <option value="URGENT">URGENT</option>
+                                </select>
+                            </label>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                            <label>
+                                Start Date
+                                <input type="date" value={editingProject.startDate || ''} onChange={(e) => setEditingProject((p) => ({ ...p, startDate: e.target.value }))} />
+                            </label>
+                            <label>
+                                Deadline
+                                <input type="date" value={editingProject.dueDate || ''} onChange={(e) => setEditingProject((p) => ({ ...p, dueDate: e.target.value }))} />
+                            </label>
+                        </div>
+                        <label>
+                            Assigned Team
+                            <select value={editingProject.teamId || ''} onChange={(e) => setEditingProject((p) => ({ ...p, teamId: e.target.value }))}>
+                                <option value="">No Team Assigned</option>
+                                {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                            </select>
+                        </label>
+                        <label>
+                            Assign Manager / Project Member
+                            <select value={projectManagerToAdd} onChange={(e) => setProjectManagerToAdd(e.target.value)}>
+                                <option value="">Keep current members</option>
+                                {members.map((m) => <option key={m.userId || m.id} value={m.userId || m.id}>{m.name || m.email} ({m.role})</option>)}
+                            </select>
+                        </label>
+                        <div className="form-actions" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                            <button type="button" className="secondary-button" onClick={() => setEditingProject(null)}>Cancel</button>
+                            <button type="submit" className="primary-button" disabled={isActionBusy}>{isActionBusy ? 'Saving...' : 'Save Project'}</button>
+                        </div>
+                    </form>
+                </div>
             )}
 
             {/* User Details Modal */}

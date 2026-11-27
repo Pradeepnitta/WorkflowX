@@ -19,6 +19,13 @@ export async function getSystemAdminUsers(filters = {}) {
     return authenticatedRequest(`/api/admin/users${queryString(filters)}`)
 }
 
+export async function createSystemAdminUser(input) {
+    return authenticatedRequest('/api/admin/users', {
+        method: 'POST',
+        body: JSON.stringify(input),
+    })
+}
+
 export async function updateSystemAdminUser(userId, changes) {
     return authenticatedRequest(`/api/admin/users/${encodeURIComponent(userId)}`, {
         method: 'PATCH',

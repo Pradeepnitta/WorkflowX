@@ -1,3 +1,5 @@
+import { hashPassword } from '../utils/password.js'
+
 const allowedAccountStatuses = new Set(['ACTIVE', 'INACTIVE', 'SUSPENDED'])
 const allowedSystemRoles = new Set(['USER', 'ADMIN'])
 const allowedMembershipRoles = new Set(['ADMIN', 'MANAGER', 'MEMBER', 'VIEWER'])
@@ -60,6 +62,31 @@ export function createSystemAdminService(systemAdminRepository) {
             })
         },
 
+        async createUser(actorUserId, input = {}) {
+            await requireAdmin(actorUserId)
+            const name = typeof input.name === 'string' ? input.name.trim() : ''
+            const email = typeof input.email === 'string' ? input.email.trim().toLowerCase() : ''
+            const password = typeof input.password === 'string' ? input.password : ''
+            const systemRole = typeof input.systemRole === 'string' ? input.systemRole.trim().toUpperCase() : 'USER'
+            const accountStatus = typeof input.accountStatus === 'string' ? input.accountStatus.trim().toUpperCase() : 'ACTIVE'
+
+            if (name.length < 2) throw serviceError('Name must be at least 2 characters', 400)
+            if (!emailPattern.test(email)) throw serviceError('A valid email is required', 400)
+            if (password.length < 8) throw serviceError('Password must be at least 8 characters', 400)
+            if (!allowedSystemRoles.has(systemRole)) throw serviceError('Invalid system role', 400)
+            if (!allowedAccountStatuses.has(accountStatus)) throw serviceError('Invalid account status', 400)
+
+            const passwordHash = await hashPassword(password)
+            return systemAdminRepository.createUser({
+                actorUserId,
+                name,
+                email,
+                passwordHash,
+                systemRole,
+                accountStatus,
+            })
+        },
+
         async updateUser(actorUserId, targetUserId, input = {}) {
             await requireAdmin(actorUserId)
             if (!uuidPattern.test(targetUserId || '')) throw serviceError('User ID must be valid', 400)
@@ -96,7 +123,20 @@ export function createSystemAdminService(systemAdminRepository) {
 
         async auditLogs(actorUserId, input = {}) {
             await requireAdmin(actorUserId)
+            const search = typeof input.search === 'string' ? input.search.trim().slice(0, 120) : ''
+            const action = typeof input.action === 'string' ? input.action.trim().toUpperCase() : ''
+            const resourceType = typeof input.resourceType === 'string' ? input.resourceType.trim().toUpperCase() : ''
+            const from = input.from ? new Date(input.from) : null
+            const to = input.to ? new Date(input.to) : null
+            if (from && Number.isNaN(from.getTime())) throw serviceError('Start date filter must be valid', 400)
+            if (to && Number.isNaN(to.getTime())) throw serviceError('End date filter must be valid', 400)
+
             return systemAdminRepository.listAuditLogs({
+                search,
+                action,
+                resourceType,
+                from,
+                to,
                 limit: pageSize(input.limit, 50),
                 offset: pageOffset(input.offset),
             })

@@ -42,3 +42,31 @@ export async function inviteOrganizationMember(organizationId, { email, role }) 
     return data?.data || data
 }
 
+export async function updateOrganization(organizationId, input) {
+    const data = await authenticatedRequest(`/api/organizations/${organizationId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+    })
+    return data?.data || data
+}
+
+export async function createOrganizationUser(organizationId, input) {
+    const data = await authenticatedRequest(`/api/organizations/${organizationId}/users`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+    })
+    return data?.data || data
+}
+
+export async function getOrganizationAuditLogs(organizationId, filters = {}) {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(filters)) {
+        if (value !== undefined && value !== null && value !== '') {
+            params.set(key, String(value))
+        }
+    }
+    const qs = params.toString()
+    const data = await authenticatedRequest(`/api/organizations/${organizationId}/audit-logs${qs ? `?${qs}` : ''}`)
+    return data?.data || data
+}
+

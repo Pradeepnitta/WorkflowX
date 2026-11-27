@@ -1,14 +1,15 @@
 import { query } from '../config/db.js'
 import { randomUUID } from 'node:crypto'
 
-export async function createNotification({ userId, type, message }) {
+export async function createNotification({ userId, type, title, message }) {
     const id = randomUUID()
     const now = new Date()
+    const resolvedTitle = title || String(type || 'Workspace Update').replaceAll('_', ' ')
     const res = await query(
-        `INSERT INTO "Notification" (id, "userId", type, message, "isRead", "createdAt")
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO "Notification" (id, "userId", type, title, message, "isRead", "createdAt")
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
-        [id, userId, type, message, false, now]
+        [id, userId, type, resolvedTitle, message, false, now]
     )
     return res.rows[0]
 }

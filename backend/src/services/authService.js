@@ -122,6 +122,9 @@ export function createAuthService(userRepository, refreshTokenRepository, otpSer
             if (!user) {
                 throw serviceError('this email is not Existed', 401)
             }
+            if (user.passwordHash === 'INVITED_MEMBER') {
+                throw serviceError('Please complete account registration before signing in', 403)
+            }
             if (!(await verifyPassword(password, user.passwordHash))) {
                 throw serviceError('Invalid password', 401)
             }
@@ -169,7 +172,10 @@ export function createAuthService(userRepository, refreshTokenRepository, otpSer
                 }
                 const existingUser = await userRepository.findById(userId)
                 if (!existingUser) throw serviceError('User not found', 404)
-                if (existingUser.passwordHash && input.currentPassword) {
+                if (existingUser.passwordHash && existingUser.passwordHash !== 'INVITED_MEMBER') {
+                    if (typeof input.currentPassword !== 'string' || !input.currentPassword) {
+                        throw serviceError('Current password is required', 400)
+                    }
                     const matches = await verifyPassword(input.currentPassword, existingUser.passwordHash)
                     if (!matches) throw serviceError('Current password is incorrect', 400)
                 }

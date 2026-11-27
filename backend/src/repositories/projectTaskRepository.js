@@ -102,13 +102,13 @@ async function assertTeamAccess(client, teamId, organizationId, userId, organiza
     }
 }
 
-async function insertNotification(client, userId, message) {
+async function insertNotification(client, userId, message, title = 'Task Update') {
     if (!userId) return null
     const result = await client.query(
-        `INSERT INTO "Notification" (id, "userId", type, message, "isRead", "createdAt")
-         VALUES ($1, $2, 'TASK_UPDATED', $3, FALSE, $4)
+        `INSERT INTO "Notification" (id, "userId", type, title, message, "isRead", "createdAt")
+         VALUES ($1, $2, 'TASK_UPDATED', $3, $4, FALSE, $5)
          RETURNING *`,
-        [randomUUID(), userId, message, new Date()]
+        [randomUUID(), userId, title, message, new Date()]
     )
     return result.rows[0]
 }
@@ -196,10 +196,10 @@ export async function createForProject({
         const now = new Date()
         const result = await client.query(
             `INSERT INTO "Task" (
-                id, title, description, "projectId", "createdById", "assigneeId", status,
+                id, title, description, "projectId", "creatorId", "createdById", "assigneeId", status,
                 priority, "startDate", "dueDate", "teamId", progress, "createdAt", "updatedAt"
              )
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+             VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
              RETURNING *`,
             [id, title, description || null, projectId, userId, assigneeId || null, status, priority, startDate || null, dueDate || null, teamId || null, progress, now, now]
         )
@@ -409,10 +409,10 @@ export async function reviewTask({ taskId, userId, decision, feedback }) {
         )
         const taskRes = await client.query(
             `UPDATE "Task"
-             SET status = $2,
-                 progress = CASE WHEN $2 = 'COMPLETED' THEN 100 ELSE LEAST(progress, 99) END,
-                 "completedAt" = CASE WHEN $2 = 'COMPLETED' THEN $3 ELSE NULL END,
-                 "updatedAt" = $3
+             SET status = $2::"TaskStatus",
+                 progress = CASE WHEN $2::text = 'COMPLETED' THEN 100 ELSE LEAST(progress, 99) END,
+                 "completedAt" = CASE WHEN $2::text = 'COMPLETED' THEN $3::timestamptz ELSE NULL::timestamptz END,
+                 "updatedAt" = $3::timestamptz
              WHERE id = $1
              RETURNING *`,
             [taskId, nextStatus, reviewedAt]
@@ -420,8 +420,8 @@ export async function reviewTask({ taskId, userId, decision, feedback }) {
 
         if (feedback) {
             await client.query(
-                `INSERT INTO "Comment" (id, content, "taskId", "authorId", "createdAt", "updatedAt")
-                 VALUES ($1, $2, $3, $4, $5, $5)`,
+                `INSERT INTO "Comment" (id, content, "taskId", "userId", "authorId", "createdAt", "updatedAt")
+                 VALUES ($1, $2, $3, $4, $4, $5, $5)`,
                 [randomUUID(), feedback, taskId, userId, reviewedAt]
             )
         }

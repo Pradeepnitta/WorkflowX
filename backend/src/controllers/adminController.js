@@ -37,6 +37,12 @@ export function createAdminController({ organizationService, systemAdminService,
             sendJson(response, 200, { data })
         },
 
+        async createGlobalUser(request, response, user) {
+            const input = await readBody(request)
+            const data = await systemAdminService.createUser(user.sub, input)
+            sendJson(response, 201, { data })
+        },
+
         async updateGlobalUser(request, response, user, targetUserId) {
             const input = await readBody(request)
             const data = await systemAdminService.updateUser(user.sub, targetUserId, input)
@@ -50,6 +56,35 @@ export function createAdminController({ organizationService, systemAdminService,
 
         async auditLogs(request, response, user) {
             const data = await systemAdminService.auditLogs(user.sub, {
+                search: request.query?.search,
+                action: request.query?.action,
+                resourceType: request.query?.resourceType,
+                from: request.query?.from,
+                to: request.query?.to,
+                limit: request.query?.limit,
+                offset: request.query?.offset,
+            })
+            sendJson(response, 200, { data })
+        },
+
+        async updateOrganization(request, response, user, organizationId) {
+            const input = await readBody(request)
+            const data = await organizationService.updateOrganization(organizationId, input, user.sub)
+            sendJson(response, 200, { data })
+        },
+
+        async createOrganizationUser(request, response, user, organizationId) {
+            const input = await readBody(request)
+            const data = await organizationService.createUser(organizationId, input, user.sub)
+            sendJson(response, 201, { data })
+        },
+
+        async organizationAuditLogs(request, response, user, organizationId) {
+            const data = await organizationService.listAuditLogs(organizationId, user.sub, {
+                search: request.query?.search,
+                action: request.query?.action,
+                from: request.query?.from,
+                to: request.query?.to,
                 limit: request.query?.limit,
                 offset: request.query?.offset,
             })

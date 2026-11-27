@@ -112,6 +112,13 @@ export async function createForMember({ name, description, organizationId, userI
         const memberMap = await getTeamMembers(client, [team.id])
         team.members = memberMap[team.id] || []
         team.projects = []
+        await client.query(
+            `INSERT INTO "AuditLog" (
+                id, "actorUserId", action, "resourceType", "resourceId", result, details, "createdAt"
+             )
+             VALUES ($1, $2, 'TEAM_CREATED', 'TEAM', $3, 'SUCCESS', $4::jsonb, $5)`,
+            [randomUUID(), userId, team.id, JSON.stringify({ organizationId, name }), now]
+        )
         return team
     })
 }
@@ -238,6 +245,13 @@ export async function addMember({ teamId, userId, memberUserId }) {
              ON CONFLICT ("teamId", "userId") DO NOTHING
              RETURNING *`,
             [teamId, memberUserId, now]
+        )
+        await client.query(
+            `INSERT INTO "AuditLog" (
+                id, "actorUserId", action, "resourceType", "resourceId", result, details, "createdAt"
+             )
+             VALUES ($1, $2, 'TEAM_MEMBER_ADDED', 'TEAM', $3, 'SUCCESS', $4::jsonb, $5)`,
+            [randomUUID(), userId, teamId, JSON.stringify({ organizationId: team.organizationId, memberUserId }), now]
         )
         return result.rows[0] || { teamId, userId: memberUserId, joinedAt: now }
     })

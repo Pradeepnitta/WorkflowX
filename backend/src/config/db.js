@@ -25,7 +25,7 @@ export const pool = globalForDb.workflowxPool ?? new Pool({
     ssl: { rejectUnauthorized: false },
     max: 10,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
+    connectionTimeoutMillis: 25000,
     allowExitOnIdle: true,
 })
 

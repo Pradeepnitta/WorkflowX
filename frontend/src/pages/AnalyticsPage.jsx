@@ -99,10 +99,38 @@ export default function AnalyticsPage() {
     })
 
     const PRIORITY_COLORS = {
-        Critical: { color: '#ef4444', bg: '#fee2e2', icon: 'ðŸ”¥' },
-        High:     { color: '#f59e0b', bg: '#fef3c7', icon: 'âš¡' },
-        Medium:   { color: '#3b82f6', bg: '#dbeafe', icon: 'â—' },
-        Low:      { color: '#10b981', bg: '#d1fae5', icon: 'â—‹' },
+        Critical: { color: '#ef4444', bg: '#fee2e2', icon: '🔥' },
+        High:     { color: '#f59e0b', bg: '#fef3c7', icon: '⚡' },
+        Medium:   { color: '#3b82f6', bg: '#dbeafe', icon: '◆' },
+        Low:      { color: '#10b981', bg: '#d1fae5', icon: '○' },
+    }
+
+    function handleExportCsv() {
+        if (!overview) return
+        const rows = [
+            ['Metric', 'Value'],
+            ['Total Users', overview.userCounts?.total ?? overview.members ?? 0],
+            ['Admins', overview.userCounts?.admins ?? 0],
+            ['Managers', overview.userCounts?.managers ?? 0],
+            ['Developers', overview.userCounts?.developers ?? overview.totalDevelopers ?? 0],
+            ['Active Projects', overview.activeProjects ?? 0],
+            ['Completed Projects', overview.completedProjects ?? 0],
+            ['Total Teams', overview.totalTeams ?? 0],
+            ['Total Tasks', total],
+            ['Completed Tasks', completed],
+            ['In Progress Tasks', inProgress],
+            ['Todo Tasks', todo],
+            ['Tasks Under Review', review],
+            ['Overdue Tasks', overdue],
+        ]
+        const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `workflowx-analytics-${new Date().toISOString().slice(0, 10)}.csv`
+        a.click()
+        URL.revokeObjectURL(url)
     }
 
     return (
@@ -111,27 +139,32 @@ export default function AnalyticsPage() {
                 <div>
                     <p className="eyebrow">Manager &amp; Project Analytics</p>
                     <h1>Project Progress &amp; Analytics</h1>
-                    <p className="heading-subtitle">Real-time task metrics, project completion, priority distribution, and team performance â€” all from live data.</p>
+                    <p className="heading-subtitle">Real-time task metrics, project completion, priority distribution, and team performance — all from live data.</p>
                 </div>
-                {(organizations?.length || 0) > 0 && (
-                    <label className="organization-select">
-                        Organization
-                        <select value={organizationId} onChange={(event) => {
-                            setIsLoading(true)
-                            setError('')
-                            setOverview(null)
-                            setOrganizationId(event.target.value)
-                        }}>
-                            {organizations.map((org) => (
-                                <option key={org.id} value={org.id}>{org.name}</option>
-                            ))}
-                        </select>
-                    </label>
-                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <button type="button" className="secondary-button" onClick={handleExportCsv} disabled={!overview}>
+                        Export CSV
+                    </button>
+                    {(organizations?.length || 0) > 0 && (
+                        <label className="organization-select">
+                            Organization
+                            <select value={organizationId} onChange={(event) => {
+                                setIsLoading(true)
+                                setError('')
+                                setOverview(null)
+                                setOrganizationId(event.target.value)
+                            }}>
+                                {organizations.map((org) => (
+                                    <option key={org.id} value={org.id}>{org.name}</option>
+                                ))}
+                            </select>
+                        </label>
+                    )}
+                </div>
             </div>
 
             {error && <p className="service-error" role="alert">{error}</p>}
-            {isLoading && <p className="loading-state">Loading analyticsâ€¦</p>}
+            {isLoading && <p className="loading-state">Loading analytics…</p>}
 
             {/* Overall Progress Bar */}
             <section className="panel" style={{ padding: '24px', marginBottom: '24px', background: '#fff', border: '1px solid #ebe9e5', borderRadius: '10px' }}>
@@ -157,15 +190,15 @@ export default function AnalyticsPage() {
             {/* Stat Cards */}
             <section className="stats-grid" aria-label="Task Status Breakdown" style={{ marginBottom: '24px' }}>
                 <div className="stat-card">
-                    <span className="stat-icon green">âœ“</span>
-                    <div><p>Completed Tasks</p><strong>{completed}</strong><small className="positive">â†— Successfully delivered</small></div>
+                    <span className="stat-icon green">✓</span>
+                    <div><p>Completed Tasks</p><strong>{completed}</strong><small className="positive">↗ Successfully delivered</small></div>
                 </div>
                 <div className="stat-card">
-                    <span className="stat-icon blue">â—·</span>
+                    <span className="stat-icon blue">◷</span>
                     <div><p>In Progress</p><strong>{inProgress}</strong><small className="neutral">Active development</small></div>
                 </div>
                 <div className="stat-card">
-                    <span className="stat-icon yellow">â—Œ</span>
+                    <span className="stat-icon yellow">◌</span>
                     <div><p>Todo / Backlog</p><strong>{todo}</strong><small className="neutral">Ready to pick up</small></div>
                 </div>
                 <div className="stat-card">
@@ -173,6 +206,21 @@ export default function AnalyticsPage() {
                     <div><p>Overdue</p><strong style={{ color: '#e96f59' }}>{overdue}</strong><small style={{ color: '#e96f59' }}>{overdue > 0 ? 'Needs follow-up' : 'No overdue tasks'}</small></div>
                 </div>
             </section>
+
+            {/* User Analytics Summary */}
+            {overview?.userCounts && (
+                <section className="panel" style={{ padding: '20px 24px', marginBottom: '24px', background: '#fff', border: '1px solid #ebe9e5', borderRadius: '10px' }}>
+                    <h2 style={{ margin: '0 0 12px', font: "700 16px 'Space Grotesk'" }}>Workspace User Breakdown</h2>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '12px' }}>
+                        <div><small style={{ color: '#64748b' }}>Total Members</small><div style={{ fontSize: '20px', fontWeight: 700 }}>{overview.userCounts.total}</div></div>
+                        <div><small style={{ color: '#64748b' }}>Admins</small><div style={{ fontSize: '20px', fontWeight: 700 }}>{overview.userCounts.admins}</div></div>
+                        <div><small style={{ color: '#64748b' }}>Managers</small><div style={{ fontSize: '20px', fontWeight: 700 }}>{overview.userCounts.managers}</div></div>
+                        <div><small style={{ color: '#64748b' }}>Developers</small><div style={{ fontSize: '20px', fontWeight: 700 }}>{overview.userCounts.developers}</div></div>
+                        <div><small style={{ color: '#64748b' }}>Active</small><div style={{ fontSize: '20px', fontWeight: 700, color: '#10b981' }}>{overview.userCounts.active}</div></div>
+                        <div><small style={{ color: '#64748b' }}>Inactive</small><div style={{ fontSize: '20px', fontWeight: 700, color: '#ef4444' }}>{overview.userCounts.inactive}</div></div>
+                    </div>
+                </section>
+            )}
 
             {/* Donut Chart + Priority Distribution */}
             <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', marginBottom: '24px' }}>
@@ -182,8 +230,8 @@ export default function AnalyticsPage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap', justifyContent: 'center' }}>
                         {total === 0 ? (
                             <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
-                                <div style={{ fontSize: 40, marginBottom: 8 }}>ðŸ“Š</div>
-                                No tasks yet â€” create tasks to see analytics.
+                                <div style={{ fontSize: 40, marginBottom: 8 }}>📊</div>
+                                No tasks yet — create tasks to see analytics.
                             </div>
                         ) : (
                             <>
@@ -222,7 +270,7 @@ export default function AnalyticsPage() {
                     <p style={{ margin: '0 0 20px', fontSize: '13px', color: '#858996' }}>Priority allocation across {total} live tasks.</p>
                     {total === 0 ? (
                         <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
-                            <div style={{ fontSize: 40, marginBottom: 8 }}>ðŸ“‹</div>No tasks yet.
+                            <div style={{ fontSize: 40, marginBottom: 8 }}>📋</div>No tasks yet.
                         </div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -252,7 +300,7 @@ export default function AnalyticsPage() {
                 <p style={{ margin: '0 0 20px', fontSize: '13px', color: '#858996' }}>Live delivery progress per project.</p>
                 {(overview?.projectStats || []).length === 0 ? (
                     <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
-                        <div style={{ fontSize: 40, marginBottom: 8 }}>ðŸš€</div>
+                        <div style={{ fontSize: 40, marginBottom: 8 }}>🚀</div>
                         No projects found. Create projects to track their progress here.
                     </div>
                 ) : (
@@ -270,7 +318,7 @@ export default function AnalyticsPage() {
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b' }}>
                                     <span>{p.doneCount}/{p.taskCount} tasks done</span>
-                                    <span style={{ background: p.status === 'Active' ? '#dcfce7' : '#f1f5f9', color: p.status === 'Active' ? '#16a34a' : '#64748b', padding: '1px 8px', borderRadius: '10px', fontWeight: 600 }}>{p.status || 'Active'}</span>
+                                    <span style={{ background: String(p.status).toUpperCase() === 'ACTIVE' ? '#dcfce7' : '#f1f5f9', color: String(p.status).toUpperCase() === 'ACTIVE' ? '#16a34a' : '#64748b', padding: '1px 8px', borderRadius: '10px', fontWeight: 600 }}>{p.status || 'ACTIVE'}</span>
                                 </div>
                             </div>
                         ))}
@@ -284,7 +332,7 @@ export default function AnalyticsPage() {
                 <p style={{ margin: '0 0 20px', fontSize: '13px', color: '#858996' }}>Individual task ownership and delivery throughput from live data.</p>
                 {(overview?.developerWorkload || []).length === 0 ? (
                     <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
-                        <div style={{ fontSize: 40, marginBottom: 8 }}>ðŸ‘¥</div>No members found in this organization.
+                        <div style={{ fontSize: 40, marginBottom: 8 }}>👥</div>No members found in this organization.
                     </div>
                 ) : (
                     <div className="activity-list">
@@ -294,7 +342,7 @@ export default function AnalyticsPage() {
                                 <div key={m.name} className="activity-item">
                                     <span className={`activity-avatar ${avatarColors[i % avatarColors.length]}`}>{m.initials}</span>
                                     <p>
-                                        <strong>{m.name}</strong> ({m.role}) â€¢ {m.total} task{m.total !== 1 ? 's' : ''} assigned
+                                        <strong>{m.name}</strong> ({m.role}) • {m.total} task{m.total !== 1 ? 's' : ''} assigned
                                         {m.inProgress > 0 && `, ${m.inProgress} in progress`}
                                         {m.review > 0 && `, ${m.review} in review`}
                                         {m.done > 0 && `, ${m.done} completed`}
